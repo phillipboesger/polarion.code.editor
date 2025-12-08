@@ -1,0 +1,20 @@
+##This Github action is used to build a new plugin release.
+##the actions refers to the Github action in the masterPom-plugins repo 
+
+name: Release Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+        contents: write
+        actions: write
+        repository-projects: write
+        packages: write
+        pages: write
+        id-token: write
+      
+    uses: avasis-solutions/masterPom-plugins/.github/workflows/release.yml@main
+    secrets: inherit

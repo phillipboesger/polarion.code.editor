@@ -1,0 +1,17 @@
+##This Github action is used trigger the sonarcloud check.
+##the actions refers to the Github action in the masterPom-plugins repo 
+
+name: SonarCloud Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    permissions:
+      contents: write
+      packages: write
+    uses: avasis-solutions/masterPom-plugins/.github/workflows/sonarCloud.yml@main
+    secrets: inherit
