@@ -2,25 +2,18 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <artifactId />
+  <artifactId>copilot</artifactId>
   <version>1.0.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
-  <name>Polarion Plugin</name>
-  <description>Contains extended logic for Polarion.</description>
+  <name>Avasis Copilot Plugin for Polarion</name>
+  <description>Contains extended logic for avasis copilot features in Polarion.</description>
 
   <build>
     <resources>
       <resource>
-        <directory>META-INF</directory>
-        <includes>
-          <include>**/hivemodule.xml</include>
-        </includes>
-        <targetPath>META-INF</targetPath>
-      </resource>
-      <resource>
         <directory>src/main/webapp</directory>
-        <targetPath>/src/main/webapp</targetPath>
+        <targetPath>src/main/webapp</targetPath>
       </resource>
       <resource>
         <directory>.</directory>
@@ -42,8 +35,7 @@
               <Bundle-SymbolicName>${project.groupId}.${project.artifactId};singleton:=true</Bundle-SymbolicName>
               <Bundle-Version>${manifest.version}</Bundle-Version>
               <Bundle-Vendor>${project.organization.name}</Bundle-Vendor>
-              <Require-Bundle />
-              <Import-Package />
+              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload, org.apache.httpcomponents.httpclient</Require-Bundle>
             </manifestEntries>
           </archive>
         </configuration>
@@ -51,10 +43,47 @@
     </plugins>
   </build>
 
+  <dependencies>
+    <dependency>
+      <groupId>biz.avasis.polarion</groupId>
+      <artifactId>core</artifactId>
+      <version>[3.0.0,)</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>velocity-tools</groupId>
+      <artifactId>velocity-tools</artifactId>
+      <version>1.4</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>2.6</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>commons-fileupload</groupId>
+      <artifactId>commons-fileupload</artifactId>
+      <version>1.5</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>3.1.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+      <version>4.5.14</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
   <parent>
     <groupId>biz.avasis.polarion</groupId>
     <artifactId>masterpom-plugins</artifactId>
-    <version>1.2.1</version>
+    <version>1.6.1</version>
   </parent>
 
   <scm>

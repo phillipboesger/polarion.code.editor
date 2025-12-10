@@ -1,0 +1,271 @@
+/*
+ * avaCopilot-main.css
+ * --------------------
+ * Styling for the avasis Copilot icon, context menu and about dialog
+ * used inside Polarion rich text editor views.
+ */
+
+/* Container cell where the icon is positioned absolutely */
+.avaCopilot-field-cell {
+	position: relative;
+}
+
+/* Icon button placed next to the rich text field */
+.avaCopilot-icon {
+	position: absolute;
+	cursor: pointer;
+	z-index: 10;
+	width: 18px;
+	height: 18px;
+	display: inline-block;
+	background-image: url('/polarion/ava-copilot/resources/img/avasisIcon.svg');
+	background-size: contain;
+	background-repeat: no-repeat;
+	background-position: center;
+}
+
+.avaCopilot-icon:hover {
+	filter: drop-shadow(0 0 4px rgba(145, 175, 239, 0.2));
+	transform: scale(1.1);
+}
+
+/* Context menu panel shown when clicking the Copilot icon */
+.avaCopilot-context {
+	position: absolute;
+	min-width: 260px;
+	background: #ffffff;
+	border: 1px solid #ccc;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+	z-index: 20;
+	display: none;
+	font-size: 12px;
+	border-radius: 4px;
+	padding: 4px 0;
+}
+
+.avaCopilot-menu {
+	margin: 0;
+	padding: 0;
+}
+
+.avaCopilot-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 10px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	text-align: left;
+	font-family: inherit;
+	font-size: 12px;
+}
+
+.avaCopilot-menu-item-hover,
+.avaCopilot-menu-item:hover {
+	background-color: #f5f5f5;
+}
+
+.avaCopilot-menu-icon {
+	width: 16px;
+	display: inline-flex;
+	justify-content: center;
+}
+
+.avaCopilot-menu-svg {
+	width: 16px;
+	height: 16px;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	fill: none;
+}
+
+.avaCopilot-menu-separator {
+	border-top: 1px solid #eee;
+	margin: 4px 0;
+}
+
+/* Fullscreen overlay and dialog container for the About screen */
+.avaCopilot-dialog-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(15, 23, 42, 0.3);
+	z-index: 9999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.avaCopilot-dialog {
+	background: #ffffff;
+	color: #0f172a;
+	max-width: 640px;
+	width: 100%;
+	margin: 0 16px;
+	border-radius: 8px;
+	border: 1px solid #e5e7eb;
+	box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.1),
+		0 10px 10px -5px rgba(15, 23, 42, 0.04);
+	padding: 24px;
+	position: relative;
+	font-size: 14px;
+}
+
+.avaCopilot-dialog-header {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.avaCopilot-dialog-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.avaCopilot-dialog-title-icon {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.avaCopilot-dialog-logo {
+	width: 150px;
+	height: 40px;
+	display: inline-block;
+  margin-top: 0.83em;
+}
+
+.avaCopilot-dialog-description {
+	margin: 0;
+	color: #6b7280;
+}
+
+.avaCopilot-dialog-body {
+	padding: 8px 0 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.avaCopilot-dialog-section-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 4px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.avaCopilot-dialog-section-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.avaCopilot-dialog-text {
+	margin: 0;
+	color: #4b5563;
+}
+
+.avaCopilot-dialog-list {
+	margin: 4px 0 0 18px;
+	padding: 0;
+	color: #4b5563;
+}
+
+.avaCopilot-dialog-list li {
+	margin-bottom: 2px;
+}
+
+.avaCopilot-dialog-note {
+	background-color: #eff6ff;
+	border: 1px solid #bfdbfe;
+	border-radius: 8px;
+	padding: 8px 12px;
+}
+
+.avaCopilot-dialog-note-text {
+	margin: 0;
+	color: #1d4ed8;
+	font-size: 13px;
+}
+
+.avaCopilot-dialog-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.avaCopilot-dialog-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	padding: 6px 14px;
+	border: 1px solid #d1d5db;
+	background: #ffffff;
+	color: #111827;
+	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease,
+		box-shadow 0.15s ease;
+}
+
+.avaCopilot-dialog-button:hover {
+	background-color: #f3f4f6;
+}
+
+.avaCopilot-dialog-button-primary {
+	background-color: #111827;
+	color: #f9fafb;
+	border-color: #111827;
+}
+
+.avaCopilot-dialog-button-primary:hover {
+	background-color: #020617;
+}
+
+.avaCopilot-dialog-button-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.avaCopilot-dialog-close-icon {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+}
+
+.avaCopilot-dialog-close-icon:hover {
+	background-color: #f3f4f6;
+}
+
+.avaCopilot-dialog-svg {
+	width: 16px;
+	height: 16px;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	fill: none;
+}
+
+.avaCopilot-dialog-svg-zap {
+	color: #2563eb;
+}
+
