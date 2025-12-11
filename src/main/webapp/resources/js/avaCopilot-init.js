@@ -170,7 +170,7 @@
     var panel = document.createElement("div");
     panel.className = CONTEXT_CLASS;
 
-    // Feld-Konfiguration ermitteln (aktuell: ein Feld, später mehrere möglich)
+    // Determine field configuration (currently one field, more possible later)
     var fieldId = fieldCell.id;
     var fieldCfg = AVA_COPILOT_CONFIG.fields.find(function (cfg) {
       return cfg.id === fieldId;
@@ -278,7 +278,7 @@
         wireDialogEvents();
       })
       .catch(function () {
-        // Wenn das Laden fehlschlägt, den Overlay wieder entfernen
+        // If loading fails, remove the overlay again
         closeDialog();
       });
   }

@@ -225,13 +225,13 @@
 }
 
 .avaCopilot-dialog-button-primary {
-	background-color: #111827;
+	background-color: #351f65;
 	color: #f9fafb;
-	border-color: #111827;
+	border-color: #351f65;
 }
 
 .avaCopilot-dialog-button-primary:hover {
-	background-color: #020617;
+	background-color: #2a164f;
 }
 
 .avaCopilot-dialog-button-icon {
