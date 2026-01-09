@@ -5,6 +5,7 @@ Require-Bundle: com.polarion.portal.tomcat,
  com.polarion.alm.ui;bundle-version="3.9.2",
  com.polarion.alm.tracker;bundle-version="3.9.2",
  com.polarion.core.util;bundle-version="3.9.2",
+ biz.avasis.polarion.core,
  org.apache.commons.io,
 Bundle-Vendor: avasis Solutions GmbH
 Bundle-Version: 1.0.0.SNAPSHOT

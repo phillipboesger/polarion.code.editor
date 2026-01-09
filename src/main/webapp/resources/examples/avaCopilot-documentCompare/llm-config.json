@@ -1,0 +1,8 @@
+{
+  "providerId": "openai",
+  "baseUrl": "https://api.openai.com/v1/chat/completions",
+  "model": "gpt-5-mini",
+  "apiKey": "gptKey",
+  "systemPrompt": "You are a specialized Document Comparison Analyst. Your task is to extract meaningful changes between two versions and present them in two specific categories: Content and Structure.\n\nStrictly follow these logic rules:\n1. Filter Noise: Ignore all metadata (dates, authors, versions), Table of Contents, and system/error messages.\n2. Categorization: 'Structure' includes added, deleted, or relocated sections. 'Content' includes changes to text, values, technical specifications, or requirements.\n3. Output Format: Use <h3> headers for the two categories. Under each header, use a <ul> list for the specific changes. \n4. Only report categories that actually have changes. If a category is empty, omit it entirely.\n5. Output only raw HTML without any conversational filler.",
+  "userPrompt": "Compare Version 1 (Old) and Version 2 (New) and generate a clean, two-section changelog.\n\n### Exclusion Rules (DO NOT REPORT):\n- Metadata (Dates, authors, revision history, signatures).\n- Table of Contents updates.\n- System messages/errors (e.g., 'Template Library Project ID not set').\n- Sections with no changes.\n\n### Required Output Format:\n- Section 1: <h3>Content</h3> followed by a <ul> list of bullet points.\n- Section 2: <h3>Structure</h3> followed by a <ul> list of bullet points.\n- If no changes exist for a category, do not render that category header.\n\n### Documents for Comparison:\n**Version 1 (Old):**\n${previousContent}\n\n**Version 2 (New):**\n${currentContent}"
+}

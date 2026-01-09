@@ -9,6 +9,17 @@
 		<url-pattern>/resources/*</url-pattern>
 	</servlet-mapping>
 
+	<servlet>
+		<servlet-name>copilot-rest</servlet-name>
+		<servlet-class>biz.avasis.polarion.copilot.api.CopilotRestServlet</servlet-class>
+		<load-on-startup>0</load-on-startup>
+	</servlet>
+
+	<servlet-mapping>
+		<servlet-name>copilot-rest</servlet-name>
+		<url-pattern>/api/*</url-pattern>
+	</servlet-mapping>
+
 	<filter>
 		<filter-name>DoAsFilter</filter-name>
 		<filter-class>com.polarion.portal.tomcat.servlets.DoAsFilter</filter-class>

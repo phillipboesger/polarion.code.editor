@@ -1,33 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module id="biz.avasis.polarion.xxx" version="1.0.0">
-	
-	<!--configuration for new velocity context varibale-->
+<module id="biz.avasis.polarion.copilot" version="1.0.0">
+	<!-- Velocity context variable for the Copilot plugin. Accessible in wiki and rich pages as $ava-copilot -->
 	<contribution configuration-id="com.polarion.alm.wiki.renderingContext">
-		<item key="ava-xxx" value="instance:biz.avasis.polarion.xxx" />
+		<item key="ava-copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
 	</contribution>
 	<contribution configuration-id="com.polarion.alm.richpages.velocityContext">
-		<item key="ava-xxx" value="instance:biz.avasis.polarion.xxx" />
-	</contribution>
-	
-	<!--configuration for a new custom enumeration-->
-	<service-point id="xxx" interface="com.polarion.platform.persistence.IEnumObjectFactory" visibility="private">
-		<invoke-factory>
-			<construct class="biz.avasis.polarion.xxx">
-			</construct>
-		</invoke-factory>
-	</service-point>
-	<contribution configuration-id="com.polarion.platform.persistence.dataservice.typedInterfacesConfig">
-		<enum id="@WorkItems" factory="xxx" />
-	</contribution>
-
-	 <!--configuration for a new custom job--> 
-	<service-point id="xxx" interface="com.polarion.platform.jobs.IJobUnitFactory">
-		<invoke-factory>
-			<construct class="biz.avasis.polarion.xxx">
-			</construct>
-		</invoke-factory>
-	</service-point>
-	<contribution configuration-id="com.polarion.platform.jobs.configuration">
-		<jobUnitFactory name="xxx" factory="xxx"/>
+		<item key="ava-copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
 	</contribution>
 </module>

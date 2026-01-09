@@ -1,0 +1,41 @@
+{
+  "fields": [
+    {
+      "id": "FIELD_changeContent",
+      "actions": [
+        "compareLast",
+        "compareVersion"
+      ]
+    }
+  ],
+  "actions": {
+    "compareLast": {
+      "label": "Compare to last document version",
+      "iconPath": "avaCopilot/icons/compareLast.svg",
+      "uiMode": "writeToField",
+      "backend": {
+        "type": "velocity",
+        "includeDocumentContext": true,
+        "avasisPath": "avaCopilot/documentCompare.vm",
+        "params": {
+          "macroName": "compareLast",
+          "compareStatusId": "approved",
+          "loadingLabel": "Compare to last document version for target status 'approved'"
+        }
+      }
+    },
+    "compareVersion": {
+      "label": "Compare to document baseline...",
+      "iconPath": "avaCopilot/icons/compareVersion.svg",
+      "uiMode": "sidePanel",
+      "backend": {
+        "type": "velocity",
+        "includeDocumentContext": true,
+        "avasisPath": "avaCopilot/documentCompare.vm",
+        "params": {
+          "macroName": "compareVersion"
+        }
+      }
+    }
+  }
+}

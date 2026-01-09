@@ -12,6 +12,13 @@
   <build>
     <resources>
       <resource>
+        <directory>META-INF</directory>
+        <includes>
+          <include>**/hivemodule.xml</include>
+        </includes>
+        <targetPath>META-INF</targetPath>
+      </resource>
+      <resource>
         <directory>src/main/webapp</directory>
         <targetPath>src/main/webapp</targetPath>
       </resource>
@@ -35,7 +42,7 @@
               <Bundle-SymbolicName>${project.groupId}.${project.artifactId};singleton:=true</Bundle-SymbolicName>
               <Bundle-Version>${manifest.version}</Bundle-Version>
               <Bundle-Vendor>${project.organization.name}</Bundle-Vendor>
-              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload, org.apache.httpcomponents.httpclient</Require-Bundle>
+              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload,org.apache.httpcomponents.httpclient,biz.avasis.polarion.core,com.google.gson</Require-Bundle>
             </manifestEntries>
           </archive>
         </configuration>
@@ -47,7 +54,7 @@
     <dependency>
       <groupId>biz.avasis.polarion</groupId>
       <artifactId>core</artifactId>
-      <version>[3.0.0,)</version>
+      <version>[3.20.0,)</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
