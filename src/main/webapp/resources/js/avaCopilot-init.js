@@ -165,9 +165,15 @@
     // Look for "wiki" after the project ID
     // We start searching after the project ID segment
     const wikiIndex = segments.indexOf("wiki", projectIndex + 2);
-    if (wikiIndex !== -1 && wikiIndex + 2 < segments.length) {
-      spaceId = decodeSegment(segments[wikiIndex + 1]);
-      documentId = decodeSegment(segments[wikiIndex + 2]);
+    if (wikiIndex !== -1) {
+      if (wikiIndex + 2 < segments.length) {
+        spaceId = decodeSegment(segments[wikiIndex + 1]);
+        documentId = decodeSegment(segments[wikiIndex + 2]);
+      } else if (wikiIndex + 1 < segments.length) {
+        // Document in default space
+        spaceId = "_default";
+        documentId = decodeSegment(segments[wikiIndex + 1]);
+      }
     }
 
     return {

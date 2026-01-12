@@ -93,9 +93,10 @@
   ## Use the uiMode (passed from JS) to decide whether to render the selection list or the result.
   ## 'sidePanel' -> Show list of baselines
   ## 'writeToField' (with targetRevision) -> Show comparison result
-  #if($uiMode.isEquals("sidePanel"))
+  #if($uiMode.equals("sidePanel"))
     $ava-copilot.log("UI Mode is sidePanel, showing selection UI", "INFO")
-    #set($baselines = $
+    #set($moduleHelper = $ava-copilot.getModuleHelper)
+    #set($baselines = $moduleHelper.getModuleBaselines($currentModule))
     <div class="avaCopilot-version-list-container">
        <h4>Select Baseline</h4>
        <div class="avaCopilot-version-list">
