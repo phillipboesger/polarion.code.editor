@@ -67,7 +67,11 @@ This file defines which fields should have the Copilot icon and what actions are
 
 #### 2. LLM Configuration (`llm-config.json`)
 
-This file defines the connection parameters for the Large Language Model (LLM).
+The connection parameters for the Large Language Model (LLM) (provider, API key, prompts, etc.) can be defined in two places:
+
+**A) Global Configuration (`llm-config.json`)**
+
+This file serves as the base configuration for the project (or globally).
 
 **Example Structure:**
 
@@ -75,14 +79,30 @@ This file defines the connection parameters for the Large Language Model (LLM).
 {
   "providerId": "openai",
   "baseUrl": "https://api.openai.com/v1/chat/completions",
-  "model": "gpt-4-mini",
+  "model": "gpt-4o",
   "apiKey": "sk-proj-...", // API Key (or alias for User Account Vault)
   "systemPrompt": "You are a...", // Instructions for the AI
   "userPrompt": "Compare..." // Template for the user request
 }
 ```
 
-_Note: Currently, only OpenAI models (providerId: `openai`) are fully tested and supported._
+**B) Embedded Configuration (e.g. in `documentCompare.json`)**
+
+You can also define or override LLM settings directly within a specific action configuration file using the `llmConfig` property. This is useful for action-specific prompts.
+
+**Example Override:**
+
+```json
+{
+  "fields": [...],
+  "llmConfig": {
+    "systemPrompt": "Specialized prompt for this action...",
+    "userPrompt": "..."
+  }
+}
+```
+
+_Note: Settings in the specific file take precedence over the global `llm-config.json`. Currently, only OpenAI models (providerId: `openai`) are fully tested and supported._
 
 #### 3. Logic Script (`documentCompare.vm`)
 

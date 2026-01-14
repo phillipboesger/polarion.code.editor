@@ -100,16 +100,22 @@
     <div class="avaCopilot-version-list-container">
        <h4>Select Baseline</h4>
        <div class="avaCopilot-version-list">
-          #foreach($baseline in $baselines)
-             #set($rev = $baseline.baseRevision)
-             #set($name = $baseline.name)
-             #set($author = $baseline.author.id)
-             <div class="avaCopilot-version-item" 
-                  data-ava-action="compareVersion"
-                  data-ava-params='{"targetRevision": "$rev", "loadingLabel": "Compare to Baseline $name"}'>
-                <strong>$!name</strong><br/>
-                <span>Revision $rev ($author)</span>
-             </div>
+          #if($baselines && !$baselines.isEmpty())
+            #foreach($baseline in $baselines)
+               #set($rev = $baseline.baseRevision)
+               #set($name = $baseline.name)
+               #set($author = $baseline.author.id)
+               <div class="avaCopilot-version-item" 
+                    data-ava-action="compareVersion"
+                    data-ava-params='{"targetRevision": "$rev", "loadingLabel": "Compare to Baseline $name"}'>
+                  <strong>$!name</strong><br/>
+                  <span>Revision $rev ($author)</span>
+               </div>
+            #end
+          #else
+            <div class="avaCopilot-version-item" style="cursor: default; pointer-events: none; color: #666;">
+                <em>No baselines available.</em>
+            </div>
           #end
        </div>
     </div>
