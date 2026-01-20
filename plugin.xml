@@ -5,6 +5,6 @@
          point="com.polarion.portal.tomcat.webapps">
       <webapp
             contextRoot="src/main/webapp"
-            name="polarion/ava-copilot"/>
+            name="polarion/copilot"/>
    </extension>
 </plugin>

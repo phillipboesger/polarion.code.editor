@@ -18,7 +18,7 @@
 	width: 18px;
 	height: 18px;
 	display: inline-block;
-	background-image: url('/polarion/ava-copilot/resources/img/avasisIcon.svg');
+	background-image: url('/polarion/copilot/resources/img/avasisIcon.svg');
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center;
@@ -179,7 +179,7 @@
 .avaCopilot-loading-logo {
 	width: 32px;
 	height: 32px;
-	background-image: url('/polarion/ava-copilot/resources/img/avasisIcon.svg');
+	background-image: url('/polarion/copilot/resources/img/avasisIcon.svg');
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center;

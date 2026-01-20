@@ -1,10 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module id="biz.avasis.polarion.copilot" version="1.0.0">
-	<!-- Velocity context variable for the Copilot plugin. Accessible in wiki and rich pages as $ava-copilot -->
+<module id="boesger.polarion.copilot" version="1.0.0">
+	<!-- Velocity context variable for the Copilot plugin. Accessible in wiki and rich pages as $copilot -->
 	<contribution configuration-id="com.polarion.alm.wiki.renderingContext">
-		<item key="ava-copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
+		<item key="copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
 	</contribution>
 	<contribution configuration-id="com.polarion.alm.richpages.velocityContext">
-		<item key="ava-copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
+		<item key="copilot" value="instance:biz.avasis.polarion.copilot.services.CopilotWikiService" />
 	</contribution>
+
+    <contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
+        <extender name="Dashboard" parentNodeName="Copilot"
+            parentNodeIconUrl="/polarion/icons/default/topicIcons/Tools_157-wrench.png"
+            iconUrl="/polarion/icons/default/topicIconsSmall/Tools_158-wrench-2.png"
+            pageUrl="/polarion/copilot/index.html"
+            projectScope="true" projectGroupScope="true" repositoryScope="true" />
+    </contribution>
+
+    <contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
+        <extender name="Script Editor" parentNodeName="Copilot"
+            parentNodeIconUrl="/polarion/icons/default/topicIcons/Tools_157-wrench.png"
+            iconUrl="/polarion/icons/default/topicIconsSmall/Tools_158-wrench-2.png"
+            pageUrl="/polarion/copilot/editor.html"
+            projectScope="true" projectGroupScope="true" repositoryScope="true" />
+    </contribution>
+
+    <contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
+        <extender name="API Explorer" parentNodeName="Copilot"
+            parentNodeIconUrl="/polarion/icons/default/topicIcons/Tools_157-wrench.png"
+            iconUrl="/polarion/icons/default/topicIconsSmall/Tools_158-wrench-2.png"
+            pageUrl="/polarion/copilot/swagger.html"
+            projectScope="true" projectGroupScope="true" repositoryScope="true" />
+    </contribution>
 </module>

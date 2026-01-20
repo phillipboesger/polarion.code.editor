@@ -6,9 +6,11 @@
     "description": "This REST API provides endpoints for managing Copilot configurations within Polarion. It supports loading and storing configuration files in both JSON and XML formats. The API handles project-specific configurations as well as global settings stored in the `.avasis` repository folder. Additionally, it offers capabilities to retrieve image resources (e.g., SVG icons) used within the Copilot interface."
   },
   "paths": {
-    "/polarion/ava-copilot/api/projects/{projectId}/config/json/{fileName}": {
+    "/polarion/copilot/api/projects/{projectId}/config/json/{fileName}": {
       "get": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "Load JSON configuration file",
         "operationId": "getJsonConfig",
         "parameters": [
@@ -16,14 +18,18 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Polarion project ID or the literal 'global' for the global .avasis folder"
           },
           {
             "name": "fileName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "File name relative to the .avasis folder (e.g. config/copilot.json)"
           }
         ],
@@ -32,7 +38,9 @@
             "description": "JSON configuration successfully loaded",
             "content": {
               "application/json": {
-                "schema": { "type": "object" }
+                "schema": {
+                  "type": "object"
+                }
               }
             }
           },
@@ -45,7 +53,9 @@
         }
       },
       "put": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "Create or update JSON configuration file",
         "operationId": "putJsonConfig",
         "parameters": [
@@ -53,20 +63,26 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "fileName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "type": "object" }
+              "schema": {
+                "type": "object"
+              }
             }
           }
         },
@@ -80,9 +96,11 @@
         }
       }
     },
-    "/polarion/ava-copilot/api/projects/{projectId}/config/json": {
+    "/polarion/copilot/api/projects/{projectId}/config/json": {
       "get": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "List all JSON configuration files",
         "operationId": "listJsonConfigs",
         "parameters": [
@@ -90,7 +108,9 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Polarion project ID or 'global'"
           }
         ],
@@ -104,9 +124,15 @@
                   "items": {
                     "type": "object",
                     "properties": {
-                      "fileName": { "type": "string" },
-                      "projectId": { "type": "string" },
-                      "global": { "type": "boolean" }
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "global": {
+                        "type": "boolean"
+                      }
                     }
                   }
                 }
@@ -119,9 +145,11 @@
         }
       }
     },
-    "/polarion/ava-copilot/api/projects/{projectId}/config/xml/{fileName}": {
+    "/polarion/copilot/api/projects/{projectId}/config/xml/{fileName}": {
       "get": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "Load XML configuration file",
         "operationId": "getXmlConfig",
         "parameters": [
@@ -129,13 +157,17 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "fileName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -143,7 +175,9 @@
             "description": "XML configuration successfully loaded",
             "content": {
               "application/xml": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -156,7 +190,9 @@
         }
       },
       "put": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "Create or update XML configuration file",
         "operationId": "putXmlConfig",
         "parameters": [
@@ -164,20 +200,26 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "fileName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/xml": {
-              "schema": { "type": "string" }
+              "schema": {
+                "type": "string"
+              }
             }
           }
         },
@@ -191,9 +233,11 @@
         }
       }
     },
-    "/polarion/ava-copilot/api/projects/{projectId}/config/img/{fileName}": {
+    "/polarion/copilot/api/projects/{projectId}/config/img/{fileName}": {
       "get": {
-        "tags": ["config"],
+        "tags": [
+          "config"
+        ],
         "summary": "Load image file (SVG, PNG, JPG, GIF)",
         "operationId": "getImage",
         "parameters": [
@@ -201,13 +245,17 @@
             "name": "projectId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "fileName",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

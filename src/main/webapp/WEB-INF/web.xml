@@ -2,21 +2,25 @@
 <web-app xmlns="http://java.sun.com/xml/ns/javaee"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" version="3.0">
 
-	<display-name>avasis Interface</display-name>
+	<display-name>Copilot Interface</display-name>
 
 	<servlet-mapping>
 		<servlet-name>default</servlet-name>
-		<url-pattern>/resources/*</url-pattern>
+		<url-pattern>/</url-pattern>
 	</servlet-mapping>
 
+	<welcome-file-list>
+		<welcome-file>index.html</welcome-file>
+	</welcome-file-list>
+
 	<servlet>
-		<servlet-name>copilot-rest</servlet-name>
-		<servlet-class>biz.avasis.polarion.copilot.api.CopilotRestServlet</servlet-class>
+		<servlet-name>polarion-copilot</servlet-name>
+		<servlet-class>boesger.polarion.copilot.api.CopilotGenericServlet</servlet-class>
 		<load-on-startup>0</load-on-startup>
 	</servlet>
 
 	<servlet-mapping>
-		<servlet-name>copilot-rest</servlet-name>
+		<servlet-name>polarion-copilot</servlet-name>
 		<url-pattern>/api/*</url-pattern>
 	</servlet-mapping>
 

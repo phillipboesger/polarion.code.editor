@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Copilot Editor</title>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com data:;">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      font-family: sans-serif;
+    }
+
+    #sidebar {
+      width: 250px;
+      background: #f0f0f0;
+      border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #editor-container {
+      flex-grow: 1;
+    }
+
+    .file-list {
+      flex-grow: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .file-item {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .file-item:hover {
+      background: #e0e0e0;
+    }
+
+    .file-item.active {
+      background: #007acc;
+      color: white;
+    }
+
+    .toolbar {
+      padding: 10px;
+      border-top: 1px solid #ccc;
+      background: #eee;
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="sidebar">
+    <div style="padding: 10px; font-weight: bold; background: #ddd;">Configuration Files</div>
+    <ul class="file-list" id="fileList">
+      <!-- Populated by JS -->
+    </ul>
+    <div class="toolbar">
+      <button onclick="loadFiles()">Refresh</button>
+      <button onclick="createFile()" style="background: #2196F3; color: white; border: none;">New</button>
+      <button onclick="saveCurrentFile()" style="background: #4caf50; color: white; border: none;">Save</button>
+    </div>
+  </div>
+  <div id="editor-container"></div>
+
+  <!-- Load Monaco Editor from local resources -->
+  <script src="/polarion/copilot/resources/lib/monaco-editor/min/vs/loader.js"></script>
+  <script>
+    let editor;
+    let currentFile = null;
+    const projectId = new URLSearchParams(window.location.search).get('projectId') || '';
+
+    require.config({ paths: { 'vs': '/polarion/copilot/resources/lib/monaco-editor/min/vs' } });
+
+    // Workaround for Monaco Worker Loading with CSP/Cross-Origin restrictions
+    window.MonacoEnvironment = {
+      getWorkerUrl: function (workerId, label) {
+        return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+          self.MonacoEnvironment = {
+            baseUrl: '/polarion/copilot/resources/lib/monaco-editor/min/'
+          };
+          importScripts('/polarion/copilot/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
+        )}`;
+      }
+    };
+
+    require(['vs/editor/editor.main'], function () {
+      editor = monaco.editor.create(document.getElementById('editor-container'), {
+        value: '// Select a file to edit...',
+        language: 'json',
+        theme: 'vs-dark',
+        automaticLayout: true
+      });
+
+      loadFiles();
+    });
+
+    function getApiUrl(endpoint) {
+      let url = 'api/config/' + endpoint;
+      if (projectId) {
+        url += (url.includes('?') ? '&' : '?') + 'projectId=' + encodeURIComponent(projectId);
+      }
+      return url;
+    }
+
+    function loadFiles() {
+      fetch(getApiUrl('list'))
+        .then(res => res.json())
+        .then(files => {
+          const list = document.getElementById('fileList');
+          list.innerHTML = '';
+          files.forEach(file => {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+
+            const span = document.createElement('span');
+            span.textContent = file.name;
+            li.onclick = () => loadFileContent(file.name, li);
+            li.appendChild(span);
+
+            // Delete Button
+            const delBtn = document.createElement('button');
+            delBtn.textContent = '❌';
+            delBtn.style.marginLeft = 'auto';
+            delBtn.style.padding = '2px 5px';
+            delBtn.onclick = (e) => {
+              e.stopPropagation();
+              deleteFile(file.name);
+            };
+            li.appendChild(delBtn);
+            // Flex for delete button
+            li.style.display = 'flex';
+            li.style.justifyContent = 'space-between';
+            li.style.alignItems = 'center';
+
+            list.appendChild(li);
+          });
+        })
+        .catch(err => alert('Error loading files: ' + err));
+    }
+
+    function loadFileContent(fileName, element) {
+      document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+      if (element) element.classList.add('active');
+
+      currentFile = fileName;
+      const ext = fileName.split('.').pop();
+      const lang = ext === 'xml' ? 'xml' : (ext === 'json' ? 'json' : 'plaintext');
+
+      fetch(getApiUrl('file/' + fileName))
+        .then(res => res.text())
+        .then(content => {
+          if (editor) {
+            const model = monaco.editor.createModel(content, lang);
+            editor.setModel(model);
+          }
+        })
+        .catch(err => alert('Error loading file content: ' + err));
+    }
+
+    function saveCurrentFile() {
+      if (!currentFile) return;
+      const content = editor.getValue();
+
+      fetch(getApiUrl('file/' + currentFile), {
+        method: 'PUT',
+        body: content
+      })
+        .then(res => {
+          if (res.ok) alert('Saved successfully!');
+          else alert('Error saving file');
+        })
+        .catch(err => alert('Error saving: ' + err));
+    }
+
+    function createFile() {
+      const fileName = prompt("Enter new file name (e.g., config.json):");
+      if (!fileName) return;
+
+      const content = "{}"; // Default content
+
+      fetch(getApiUrl('file/' + fileName), {
+        method: 'PUT',
+        body: content
+      })
+        .then(res => {
+          if (res.ok) {
+            alert('File created!');
+            loadFiles();
+          } else {
+            alert('Error creating file.');
+          }
+        })
+        .catch(err => alert('Error creating: ' + err));
+    }
+
+    function deleteFile(fileName) {
+      if (!confirm("Are you sure you want to delete " + fileName + "?")) return;
+
+      fetch(getApiUrl('file/' + fileName), {
+        method: 'DELETE'
+      })
+        .then(res => {
+          if (res.ok) {
+            loadFiles();
+            if (currentFile === fileName) {
+              editor.setValue('// File deleted');
+              currentFile = null;
+            }
+          } else {
+            res.json().then(data => alert('Error deleting: ' + (data.error || 'Unknown')));
+          }
+        })
+        .catch(err => alert('Error deleting: ' + err));
+    }
+  </script>
+</body>
+
+</html>

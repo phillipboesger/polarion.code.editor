@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polarion Copilot Administration</title>
+  <style>
+    :root {
+      --primary-color: #005fcc;
+      --bg-color: #f4f6f8;
+      --card-bg: #ffffff;
+      --text-color: #172b4d;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      max-width: 900px;
+      width: 100%;
+    }
+
+    header {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary-color);
+    }
+
+    p.subtitle {
+      color: #6b778c;
+      font-size: 1.1rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .card p {
+      color: #6b778c;
+      line-height: 1.5;
+      flex-grow: 1;
+    }
+
+    .icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .badge {
+      background: #e3f2fd;
+      color: #0d47a1;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>Polarion Copilot Administration</h1>
+      <p class="subtitle">Manage configuration, scripts, and test connections.</p>
+    </header>
+
+    <div class="grid">
+      <a href="editor.html" class="card">
+        <div class="icon">📝</div>
+        <h2>Script & Config Editor</h2>
+        <p>Edit JSON configurations and Velocity scripts directly in your browser using the Monaco Editor.</p>
+        <div class="badge">Monaco Editor</div>
+      </a>
+
+      <a href="swagger.html" class="card">
+        <div class="icon">🔌</div>
+        <h2>API Explorer</h2>
+        <p>Interact with the Copilot REST API endpoints using Swagger UI. Test LLM providers and file operations.</p>
+        <div class="badge">Swagger UI</div>
+      </a>
+
+      <div class="card" id="health-card">
+        <div class="icon">❤️</div>
+        <h2>System Health</h2>
+        <p>Checking system status...</p>
+        <span id="health-status" class="badge">Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple health check
+    fetch('api/health')
+      .then(response => {
+        const badge = document.getElementById('health-status');
+        if (response.ok) {
+          badge.style.background = '#e8f5e9';
+          badge.style.color = '#1b5e20';
+          badge.textContent = 'Online';
+          document.querySelector('#health-card p').textContent = 'Plugin is active and responsive.';
+        } else {
+          throw new Error('Health check failed');
+        }
+      })
+      .catch(err => {
+        const badge = document.getElementById('health-status');
+        badge.style.background = '#ffebee';
+        badge.style.color = '#b71c1c';
+        badge.textContent = 'Offline / Error';
+        document.querySelector('#health-card p').textContent = 'Could not reach the backend service.';
+      });
+  </script>
+</body>
+
+</html>

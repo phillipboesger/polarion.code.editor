@@ -114,7 +114,7 @@ The plugin exposes a REST API for managing configurations and resources. You can
 
 **Accessing Swagger UI:**
 Open the following URL in your browser (adjust host and port as needed):
-`http://<polarion-server>/polarion/ava-copilot/resources/html/copilot-swagger.html`
+`http://<polarion-server>/polarion/copilot/swagger.html`
 
 This UI allows you to see available endpoints, parameters, and response formats.
 

@@ -23,9 +23,9 @@
   // Base paths for loading Copilot configurations via REST.
   // The final URLs are constructed dynamically based on the current project.
   const AVA_COPILOT_CONFIG_LIST_BASE =
-    "/polarion/ava-copilot/api/projects/{projectId}/config/json";
+    "/polarion/copilot/api/projects/{projectId}/config/json";
   const AVA_COPILOT_CONFIG_FILE_BASE =
-    "/polarion/ava-copilot/api/projects/{projectId}/config/json/{fileName}";
+    "/polarion/copilot/api/projects/{projectId}/config/json/{fileName}";
 
   // Effective runtime configuration loaded from AVA_COPILOT_CONFIG_ENDPOINT.
   // There is intentionally no built-in default; if the configuration
@@ -264,7 +264,7 @@
     // determine the correct image content type based on
     // the file extension.
     return (
-      "/polarion/ava-copilot/api/projects/" +
+      "/polarion/copilot/api/projects/" +
       encodeURIComponent(projectId) +
       "/config/img/" +
       encodedPath
@@ -959,7 +959,7 @@
     }
 
     // Load dialog markup from external HTML resource served by the plugin.
-    fetch("/polarion/ava-copilot/resources/html/avaCopilot-about.html")
+    fetch("/polarion/copilot/resources/html/avaCopilot-about.html")
       .then(function (response) {
         if (!response.ok) {
           throw new Error("Failed to load avaCopilot about dialog");
