@@ -7,88 +7,454 @@
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com data:;">
   <style>
+    :root {
+      --bg-dark: #1e1e1e;
+      --bg-sidebar: #252526;
+      --bg-toolbar: #2d2d2d;
+      --bg-active: #37373d;
+      --accent: #007acc;
+      --text-main: #cccccc;
+      --text-light: #ffffff;
+      --border-color: #3e3e42;
+    }
+
     body {
       margin: 0;
       padding: 0;
       display: flex;
       height: 100vh;
-      font-family: sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
     }
 
-    #sidebar {
-      width: 250px;
-      background: #f0f0f0;
-      border-right: 1px solid #ccc;
+    /* Layout */
+    #app-container {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 350px;
+      background: var(--bg-sidebar);
       display: flex;
       flex-direction: column;
+      border-right: 1px solid var(--border-color);
+      transition: width 0.2s ease;
+      flex-shrink: 0;
     }
 
-    #editor-container {
-      flex-grow: 1;
+    .sidebar.collapsed {
+      width: 0;
+      border-right: none;
+      overflow: hidden;
     }
 
-    .file-list {
+    .sidebar-header {
+      height: 35px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      background: var(--bg-sidebar);
+      color: var(--text-light);
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .sidebar-content {
       flex-grow: 1;
       overflow-y: auto;
+    }
+
+    .section-title {
+      padding: 8px 15px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #bbbbbb;
+      text-transform: uppercase;
+      margin-top: 10px;
+    }
+
+    /* File List */
+    .file-list {
       list-style: none;
       padding: 0;
       margin: 0;
     }
 
     .file-item {
-      padding: 10px;
+      display: flex;
+      align-items: center;
+      padding: 5px 15px;
       cursor: pointer;
-      border-bottom: 1px solid #e0e0e0;
+      font-size: 13px;
+      color: var(--text-main);
+      transition: background 0.1s;
     }
 
     .file-item:hover {
-      background: #e0e0e0;
+      background: #2a2d2e;
+      color: var(--text-light);
+    }
+
+    .file-item:hover .action-group {
+        visibility: visible;
     }
 
     .file-item.active {
-      background: #007acc;
-      color: white;
+      background: var(--bg-active);
+      color: var(--text-light);
+      border-left: 2px solid var(--accent);
+      padding-left: 13px; /* Adjust for border */
+    }
+    
+    .file-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-grow: 1;
+        margin-right: 5px;
     }
 
-    .toolbar {
-      padding: 10px;
-      border-top: 1px solid #ccc;
-      background: #eee;
+    .file-icon {
+      margin-right: 6px;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    
+    .action-group {
+        display: flex;
+        gap: 2px;
+        margin-left: auto;
+        visibility: hidden;
+        flex-shrink: 0;
+    }
+
+    /* Main Content */
+    #main-content {
+      flex-grow: 1;
       display: flex;
+      flex-direction: column;
+      position: relative;
+      background: var(--bg-dark);
+      overflow: hidden; /* For editor container */
+    }
+
+    /* Toolbar */
+    .top-toolbar {
+      height: 40px;
+      background: var(--bg-toolbar);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      align-items: center;
       gap: 10px;
     }
 
-    button {
-      padding: 5px 10px;
+    .toolbar-title {
+      font-size: 13px;
+      color: var(--text-light);
+      font-weight: 500;
+      margin-left: 10px;
+    }
+
+    /* Buttons */
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
       cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .icon-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: var(--text-light);
+    }
+
+    .action-btn {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: opacity 0.2s;
+    }
+    .action-btn:hover:not(:disabled) {
+      background: #1177bb;
+    }
+    .action-btn:disabled {
+      background: #3a3d41;
+      color: #858585;
+      cursor: default;
+    }
+
+    /* Editor Area */
+    #editor-wrapper {
+      flex-grow: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #editor-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Empty State */
+    .empty-state-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-dark);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      pointer-events: none; /* Allow clicks naturally, handled by JS toggle */
+    }
+    .empty-state-content {
+      text-align: center;
+      color: var(--text-main);
+    }
+    .empty-state-content h3 {
+      font-weight: normal;
+      margin-bottom: 10px;
+      color: var(--text-light);
+    }
+
+    /* Helper for hidden elements */
+    .hidden {
+      display: none !important;
+    }
+    
+    /* Delete button style */
+    .list-btn {
+      background: transparent;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+    .list-btn:hover {
+        background: #444;
+        color: white;
+    }
+    .delete-btn:hover {
+      color: #ff5555;
+    }
+
+    /* Loading Indicator */
+    .loading-container {
+      display: none;
+      padding: 10px 15px;
+    }
+    .loading-bar {
+      height: 2px;
+      width: 100%;
+      background: #3e3e42;
+      position: relative;
+      overflow: hidden;
+      border-radius: 1px;
+    }
+    .loading-bar::after {
+      content: '';
+      position: absolute;
+      height: 100%;
+      width: 40%;
+      background: var(--accent);
+      animation: shimmer 1s infinite linear;
+    }
+    @keyframes shimmer {
+      0% { left: -40%; }
+      100% { left: 100%; }
+    }
+    .loading-text {
+      color: #888;
+      font-size: 11px;
+      margin-top: 5px;
+      display: block;
+      text-align: center;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: var(--bg-sidebar);
+      border: 1px solid var(--border-color);
+      width: 450px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      border-radius: 4px;
+    }
+    .modal-content h3 {
+      margin-top: 0;
+      color: var(--text-light);
+      font-size: 14px;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    .modal-field {
+      margin-bottom: 20px;
+    }
+    .modal-field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: #aaa;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    .path-container {
+      display: flex;
+      align-items: center;
+      background: #333; /* Input bg */
+      padding: 0 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 2px;
+      height: 30px;
+    } 
+    .path-prefix {
+        color: #888;
+        font-family: 'Consolas', monospace;
+        font-size: 13px;
+        white-space: pre;
+    }
+    .folder-select {
+        background: transparent;
+        color: var(--text-light);
+        border: none;
+        outline: none;
+        font-family: 'Consolas', monospace;
+        font-size: 13px;
+        cursor: pointer;
+        max-width: 150px;
+        -webkit-appearance: none; /* Hide default arrow somewhat if desired, or keep it */
+    }
+    .folder-select:hover {
+        color: white;
+        background: #444;
+    }
+    .folder-select option {
+        background: #333;
+    }
+    
+    .path-input {
+        flex-grow: 1;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--text-light);
+        font-family: 'Consolas', monospace;
+        font-size: 13px;
+        width: 100px; /* Min width */
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+    .action-btn.secondary {
+        background: transparent;
+        border: 1px solid var(--border-color);
+    }
+    .action-btn.secondary:hover {
+        background: rgba(255,255,255,0.05);
     }
   </style>
 </head>
 
 <body>
-  <div id="sidebar">
-    <div style="padding: 10px; font-weight: bold; background: #ddd;">Configuration Files</div>
-    <ul class="file-list" id="fileList">
-      <!-- Populated by JS -->
-    </ul>
-    <div class="toolbar">
-      <button onclick="loadFiles()">Refresh</button>
-      <button onclick="createFile()" style="background: #2196F3; color: white; border: none;">New</button>
-      <button onclick="saveCurrentFile()" style="background: #4caf50; color: white; border: none;">Save</button>
+  <div id="app-container">
+    <!-- Sidebar -->
+    <div id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <span>EXPLORER</span>
+        <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
+      </div>
+      <div class="sidebar-content">
+        <div class="section-title">CONFIGURATION FILES</div>
+        <div id="loadingIndicator" class="loading-container">
+            <div class="loading-bar"></div>
+            <span class="loading-text">Loading...</span>
+        </div>
+        <ul class="file-list" id="fileList">
+          <!-- Populated by JS -->
+        </ul>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content">
+      <div class="top-toolbar">
+        <div class="toolbar-left">
+          <button class="icon-btn" id="expandSidebar" style="display:none;" title="Show Explorer">☰</button>
+          <span class="toolbar-title" id="currentFileLabel">No File Selected</span>
+        </div>
+        <div class="toolbar-right">
+          <button id="newBtn" class="action-btn">New File</button>
+          <button id="saveBtn" class="action-btn" disabled>Save</button>
+          <button id="copyBtn" class="action-btn" disabled>Copy</button>
+        </div>
+      </div>
+
+      <div id="editor-wrapper">
+        <div id="editor-container"></div>
+        <div id="emptyState" class="empty-state-overlay">
+          <div class="empty-state-content">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            <h3>No File Selected</h3>
+            <p>Select a file from the explorer to start editing.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <div id="editor-container"></div>
 
-  <!-- Load Monaco Editor from local resources -->
+  <!-- Monaco Loader -->
   <script src="/polarion/copilot/resources/lib/monaco-editor/min/vs/loader.js"></script>
   <script>
     let editor;
     let currentFile = null;
+    let originalContent = "";
     const projectId = new URLSearchParams(window.location.search).get('projectId') || '';
 
     require.config({ paths: { 'vs': '/polarion/copilot/resources/lib/monaco-editor/min/vs' } });
 
-    // Workaround for Monaco Worker Loading with CSP/Cross-Origin restrictions
     window.MonacoEnvironment = {
       getWorkerUrl: function (workerId, label) {
         return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
@@ -102,13 +468,23 @@
 
     require(['vs/editor/editor.main'], function () {
       editor = monaco.editor.create(document.getElementById('editor-container'), {
-        value: '// Select a file to edit...',
+        value: '',
         language: 'json',
         theme: 'vs-dark',
-        automaticLayout: true
+        automaticLayout: true,
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        readOnly: true // Read only initially when empty
+      });
+      
+      // Track content changes
+      editor.onDidChangeModelContent(() => {
+        updateToolbarState();
       });
 
+      // Initialize UI
       loadFiles();
+      setupEventListeners();
     });
 
     function getApiUrl(endpoint) {
@@ -119,57 +495,182 @@
       return url;
     }
 
+    function setupEventListeners() {
+      // Sidebar Toggles
+      document.getElementById('collapseSidebar').onclick = () => {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('expandSidebar').style.display = 'flex';
+      };
+      
+      document.getElementById('expandSidebar').onclick = () => {
+        document.getElementById('sidebar').classList.remove('collapsed');
+        document.getElementById('expandSidebar').style.display = 'none';
+      };
+
+      // Actions
+      document.getElementById('newBtn').onclick = createFile;
+      document.getElementById('saveBtn').onclick = saveCurrentFile;
+      document.getElementById('copyBtn').onclick = copyContent;
+
+      // Unsaved Changes Warning
+      window.onbeforeunload = function(e) {
+        if (isDirty()) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+      };
+    }
+
+    /* --- Core Logic --- */
+
+    function isDirty() {
+      return currentFile && editor && editor.getValue() !== originalContent;
+    }
+
+    function updateToolbarState() {
+      const saveBtn = document.getElementById('saveBtn');
+      if (isDirty()) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save *';
+      } else {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Save';
+      }
+    }
+
+    function toggleEmptyState(visible) {
+      const emptyState = document.getElementById('emptyState');
+      const container = document.getElementById('editor-container');
+      
+      if (visible) {
+        emptyState.classList.remove('hidden');
+        editor.updateOptions({ readOnly: true });
+        // Optionally clear editor
+        if(editor) editor.setValue('');
+        document.getElementById('currentFileLabel').textContent = "No File Selected";
+        document.getElementById('copyBtn').disabled = true;
+        document.getElementById('saveBtn').disabled = true;
+      } else {
+        emptyState.classList.add('hidden');
+        editor.updateOptions({ readOnly: false });
+        document.getElementById('currentFileLabel').textContent = currentFile;
+        document.getElementById('copyBtn').disabled = false;
+        updateToolbarState();
+      }
+    }
+
     function loadFiles() {
+      const list = document.getElementById('fileList');
+      const loader = document.getElementById('loadingIndicator');
+      
+      // Show loader, clear list
+      loader.style.display = 'block';
+      list.innerHTML = '';
+
       fetch(getApiUrl('list'))
         .then(res => res.json())
         .then(files => {
-          const list = document.getElementById('fileList');
-          list.innerHTML = '';
+          loader.style.display = 'none';
+          
           files.forEach(file => {
             const li = document.createElement('li');
             li.className = 'file-item';
+            if (file.name === currentFile) li.classList.add('active');
 
+            // Icon
+            const icon = document.createElement('span');
+            icon.className = 'file-icon';
+            icon.textContent = file.name.endsWith('.json') ? '{}' : '📄';
+            li.appendChild(icon);
+
+            // Name
             const span = document.createElement('span');
+            span.className = 'file-name';
             span.textContent = file.name;
-            li.onclick = () => loadFileContent(file.name, li);
+            span.title = file.name; // Tooltip for full name
             li.appendChild(span);
+            
+            // Actions Group
+            const actions = document.createElement('div');
+            actions.className = 'action-group';
 
-            // Delete Button
+            // Rename Btn
+            const renBtn = document.createElement('button');
+            renBtn.className = 'list-btn';
+            renBtn.textContent = '✎';
+            renBtn.title = 'Rename File';
+            renBtn.onclick = (e) => {
+              e.stopPropagation();
+              renameFile(file.name);
+            };
+            actions.appendChild(renBtn);
+            
+            // Delete Btn
             const delBtn = document.createElement('button');
-            delBtn.textContent = '❌';
-            delBtn.style.marginLeft = 'auto';
-            delBtn.style.padding = '2px 5px';
+            delBtn.className = 'list-btn delete-btn';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Delete File';
             delBtn.onclick = (e) => {
               e.stopPropagation();
               deleteFile(file.name);
             };
-            li.appendChild(delBtn);
-            // Flex for delete button
-            li.style.display = 'flex';
-            li.style.justifyContent = 'space-between';
-            li.style.alignItems = 'center';
+            actions.appendChild(delBtn);
 
+            li.appendChild(actions);
+
+            li.onclick = () => onFileSelect(file.name);
+            li.ondblclick = () => {
+                onFileSelect(file.name);
+                document.getElementById('collapseSidebar').click();
+            };
             list.appendChild(li);
           });
         })
-        .catch(err => alert('Error loading files: ' + err));
+        .catch(err => {
+            console.error('Error loading files:', err);
+            loader.style.display = 'none';
+            list.innerHTML = '<li style="padding:10px; color:#ff6b6b; font-size:12px;">Error loading files</li>';
+        });
     }
 
-    function loadFileContent(fileName, element) {
-      document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
-      if (element) element.classList.add('active');
+    function onFileSelect(fileName) {
+      if (currentFile === fileName) return;
 
+      if (isDirty()) {
+         if (!confirm(`You have unsaved changes in ${currentFile}. Discard changes?`)) {
+             return;
+         }
+      }
+      loadFileContent(fileName);
+    }
+
+    function loadFileContent(fileName) {
       currentFile = fileName;
+      
+      // Update UI List Active State
+      document.querySelectorAll('.file-item').forEach(el => {
+        el.classList.toggle('active', el.querySelector('span:nth-child(2)').textContent === fileName);
+      });
+
       const ext = fileName.split('.').pop();
       const lang = ext === 'xml' ? 'xml' : (ext === 'json' ? 'json' : 'plaintext');
 
       fetch(getApiUrl('file/' + fileName))
         .then(res => res.text())
         .then(content => {
-          if (editor) {
-            const model = monaco.editor.createModel(content, lang);
-            editor.setModel(model);
-          }
+           originalContent = content;
+           
+           if (!editor) return;
+           
+           // Replace model to cleanly switch
+           // Sometimes keeping old model is better for undo history, but swapping is safer for clean state here
+           const oldModel = editor.getModel();
+           const newModel = monaco.editor.createModel(content, lang);
+           editor.setModel(newModel);
+           if (oldModel) oldModel.dispose();
+
+           toggleEmptyState(false);
+           updateToolbarState(); // Should affect disabled save state
         })
         .catch(err => alert('Error loading file content: ' + err));
     }
@@ -178,58 +679,211 @@
       if (!currentFile) return;
       const content = editor.getValue();
 
+      const btn = document.getElementById('saveBtn');
+      const prevText = btn.textContent;
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
       fetch(getApiUrl('file/' + currentFile), {
         method: 'PUT',
         body: content
       })
         .then(res => {
-          if (res.ok) alert('Saved successfully!');
-          else alert('Error saving file');
+          if (res.ok) {
+             originalContent = content; // Sync state
+             updateToolbarState(); // Will disable button since isDirty() is now false
+             
+             // Optional success feedback toast could go here
+             // For now we rely on the button state changing back to "Save" (disabled)
+          } else {
+             alert('Error saving file');
+             updateToolbarState(); // Re-enable
+          }
         })
-        .catch(err => alert('Error saving: ' + err));
+        .catch(err => {
+            alert('Error saving: ' + err);
+            updateToolbarState();
+        });
     }
 
     function createFile() {
-      const fileName = prompt("Enter new file name (e.g., config.json):");
-      if (!fileName) return;
+        openNewFileModal();
+    }
 
-      const content = "{}"; // Default content
+    function openNewFileModal() {
+        const select = document.getElementById('folderSelect');
+        select.innerHTML = '<option value="">(root)</option>';
+        
+        const dirs = new Set();
+        
+        // Scan existing files for directories
+        document.querySelectorAll('.file-name').forEach(span => {
+            let path = span.textContent.replace(/\\/g, '/');
+            const parts = path.split('/');
+            
+            if(parts.length > 1) {
+                parts.pop(); // remove filename
+                
+                // If path starts with .copilot, strip it for the UI dropdown
+                // because the UI already shows ".copilot/" prefix
+                if(parts[0] === '.copilot') {
+                     parts.shift();
+                }
+                
+                if(parts.length > 0) {
+                    dirs.add(parts.join('/'));
+                }
+            }
+        });
+        
+        Array.from(dirs).sort().forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = d;
+            select.appendChild(opt);
+        });
 
-      fetch(getApiUrl('file/' + fileName), {
-        method: 'PUT',
-        body: content
-      })
+        document.getElementById('newFileName').value = '';
+        document.getElementById('newFileModal').classList.remove('hidden');
+        document.getElementById('newFileName').focus();
+        
+        // Handle Enter key
+        document.getElementById('newFileName').onkeydown = (e) => {
+            if(e.key === 'Enter') confirmCreateFile();
+            if(e.key === 'Escape') closeNewFileModal();
+        };
+    }
+
+    function closeNewFileModal() {
+        document.getElementById('newFileModal').classList.add('hidden');
+    }
+
+    function confirmCreateFile() {
+        let nameInput = document.getElementById('newFileName').value.trim();
+        if (!nameInput) {
+            alert("Please enter a filename");
+            return;
+        }
+        
+        // Clean leading slash
+        if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
+        
+        const folder = document.getElementById('folderSelect').value;
+        
+        let fullPath = nameInput;
+        if(folder) {
+            const f = folder.endsWith('/') ? folder : folder + '/';
+            // Avoid double slashes if user typed path in name
+            fullPath = f + nameInput;
+        }
+        
+        // Note: Backend enforces .copilot/ prefix. We send the relative path inside .copilot/
+        // (or checks if we included it). 
+        // Sending "sub/foo.json" -> Result: ".copilot/sub/foo.json"
+        
+        closeNewFileModal();
+
+        const content = "{}"; 
+
+        fetch(getApiUrl('file/' + fullPath), {
+            method: 'PUT',
+            body: content
+        })
         .then(res => {
           if (res.ok) {
-            alert('File created!');
-            loadFiles();
+            loadFiles(); 
           } else {
-            alert('Error creating file.');
+            res.json().then(data => alert('Error creating file: ' + (data.error || 'Unknown')))
+               .catch(() => alert('Error creating file'));
           }
         })
         .catch(err => alert('Error creating: ' + err));
     }
 
+    function renameFile(oldName) {
+        if(oldName === currentFile && isDirty()) {
+            alert("Please save changes before renaming.");
+            return;
+        }
+
+        const newName = prompt("Rename " + oldName + " to:", oldName);
+        if (!newName || newName === oldName) return;
+
+        fetch('api/config/rename' + (projectId ? '?projectId=' + encodeURIComponent(projectId) : ''), {
+            method: 'POST',
+            body: JSON.stringify({ oldName: oldName, newName: newName })
+        })
+        .then(res => {
+            if (res.ok) {
+                if (currentFile === oldName) {
+                    currentFile = newName;
+                    document.getElementById('currentFileLabel').textContent = newName;
+                }
+                loadFiles();
+            } else {
+                res.json().then(data => alert('Error renaming: ' + (data.error || 'Unknown')));
+            }
+        })
+        .catch(err => alert('Error renaming: ' + err));
+    }
+
     function deleteFile(fileName) {
-      if (!confirm("Are you sure you want to delete " + fileName + "?")) return;
+      if (!confirm("Delete " + fileName + "? This cannot be undone.")) return;
 
       fetch(getApiUrl('file/' + fileName), {
         method: 'DELETE'
       })
         .then(res => {
           if (res.ok) {
-            loadFiles();
             if (currentFile === fileName) {
-              editor.setValue('// File deleted');
-              currentFile = null;
+                currentFile = null;
+                originalContent = "";
+                toggleEmptyState(true);
             }
+            loadFiles();
           } else {
             res.json().then(data => alert('Error deleting: ' + (data.error || 'Unknown')));
           }
         })
         .catch(err => alert('Error deleting: ' + err));
     }
+
+    function copyContent() {
+        if (!editor) return;
+        const val = editor.getValue();
+        navigator.clipboard.writeText(val).then(() => {
+            const btn = document.getElementById('copyBtn');
+            const originalText = btn.textContent;
+            btn.textContent = "Copied!";
+            setTimeout(() => btn.textContent = originalText, 1500);
+        });
+    }
+
   </script>
+  <!-- New File Modal -->
+  <div id="newFileModal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h3>Create New File</h3>
+        <div class="modal-field">
+            <label>Location (Inside .copilot)</label>
+            <div class="path-container">
+                <span class="path-prefix" title="All files are enforced to be in .copilot folder">.copilot/</span>
+                <select id="folderSelect" class="folder-select" title="Select existing folder">
+                    <option value="">(root)</option>
+                </select>
+                <span class="path-prefix">/</span>
+                <input type="text" id="newFileName" class="path-input" placeholder="filename.json" autocomplete="off">
+            </div>
+            <div style="font-size:11px; color:#666; margin-top:6px; line-height:1.4;">
+                Select a folder or type "subfolder/name.json" to create new directories.
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button onclick="closeNewFileModal()" class="action-btn secondary">Cancel</button>
+            <button onclick="confirmCreateFile()" class="action-btn">Create File</button>
+        </div>
+    </div>
+  </div>
 </body>
 
 </html>

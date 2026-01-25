@@ -25,8 +25,10 @@ import boesger.polarion.copilot.utils.PolarionUtils;
 
 public class FileEditorService {
 
+	private static final String SEARCH_PATH = ".copilot";
+
 	private String projectId = null;
-	private IRepositoryReadOnlyConnection repoConnection;
+	private final IRepositoryReadOnlyConnection repoConnection;
 
 	public FileEditorService(String projectId) {
 		this.projectId = Objects.nonNull(projectId) && !projectId.isBlank() ? projectId : null;
@@ -43,28 +45,19 @@ public class FileEditorService {
 
 	public RepoFile getFile(String fileName)
 			throws RepositoryConfigurationException, IllegalArgumentException, IOException {
-		return loadRepoFileForLocation(projectId, getFileRepoLocation(projectId, fileName), fileName);
+		return loadRepoFileForLocation(projectId, getFileRepoLocation(projectId, fileName), fileName, true);
 	}
 
 	public Boolean copyFile(String currentFileName, String newFileName) throws Exception {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
-		ILocation newFileLocation;
-		if(Objects.nonNull(projectId)) {
-			newFileLocation = PolarionUtils.getTrackerProject(projectId).getLocation().append(newFileName);
-		}
-		else {
-			newFileLocation = Location.getLocation(newFileName.startsWith("/") ? newFileName : "/" + newFileName);
-		}
+		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
+
 		return PolarionUtils.executeInTransactionWithResult(new CopyFileAction(currentFileLocation, newFileLocation));
 	}
 
 	public void renameFile(String currentFileName, String newFileName) throws Exception {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
-		ILocation newFileLocation;
-		if(Objects.nonNull(projectId))
-			newFileLocation = PolarionUtils.getTrackerProject(projectId).getLocation().append(newFileName);
-		else
-			newFileLocation = Location.getLocation(newFileName.startsWith("/") ? newFileName : "/" + newFileName);
+		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
 
 		if(repoConnection.exists(newFileLocation)) { throw new CopilotFileException(String.format("A file with the new name '%s' exists already!", newFileName)); }
 
@@ -72,12 +65,7 @@ public class FileEditorService {
 	}
 
 	public Boolean createFile(String fileName, String content) throws Exception {
-		ILocation newFileLocation;
-
-		if(Objects.nonNull(projectId))
-			newFileLocation = PolarionUtils.getTrackerProject(projectId).getLocation().append(fileName);
-		else
-			newFileLocation = Location.getLocation(fileName.startsWith("/") ? fileName : "/" + fileName);
+		ILocation newFileLocation = resolveTargetLocation(this.projectId, fileName);
 
 		if(repoConnection.exists(newFileLocation)) { throw new CopilotFileException(String.format("A file with the name '%s' exists already!", fileName)); }
 
@@ -173,11 +161,14 @@ public class FileEditorService {
 		// 1. Load project files (relative path)
 		if(hasProjectScope()) {
 			ILocation projLoc = PolarionUtils.getTrackerProject(projectId).getLocation();
-			files.addAll(loadFilesFromLocation(projLoc, extension, projectId));
+			ILocation searchLoc = projLoc.append(SEARCH_PATH);
+			files.addAll(loadFilesFromLocation(searchLoc, extension, projectId, projLoc));
 		}
 
 		// 2. Load global files (full path from root)
-		List<RepoFile> globalFiles = loadFilesFromLocation(Location.getLocation("/"), extension, null);
+		ILocation globalRoot = Location.getLocation("/");
+		ILocation globalSearchLoc = globalRoot.append(SEARCH_PATH);
+		List<RepoFile> globalFiles = loadFilesFromLocation(globalSearchLoc, extension, null, globalRoot);
 
 		// 3. Deduplicate: Remove files from Global list that are already covered by Project scope
 		if(hasProjectScope()) {
@@ -202,15 +193,15 @@ public class FileEditorService {
 				.collect(Collectors.toList());
 	}
 
-	private List<RepoFile> loadFilesFromLocation(ILocation folderLoc, String extension, String projectIdForScope) {
+	private List<RepoFile> loadFilesFromLocation(ILocation searchLoc, String extension, String projectIdForScope, ILocation relativeRoot) {
 		List<RepoFile> foundFiles = new ArrayList<>();
-		if(repoConnection.exists(folderLoc)) {
+		if(repoConnection.exists(searchLoc)) {
 			try {
-				for(Object location : repoConnection.getSubLocations(folderLoc, true)) {
+				for(Object location : repoConnection.getSubLocations(searchLoc, true)) {
 					if(Objects.equals(extension, ((ILocation) location).getLastComponentExtension())) {
-						// Pass the folderLoc as 'root' so getRelativePath calculates path relative to it.
-						String relativePath = getRelativePath((ILocation) location, folderLoc);
-						foundFiles.add(loadRepoFileForLocation(projectIdForScope, (ILocation) location, relativePath));
+						// Pass the relativeRoot so getRelativePath calculates path relative to the project/global root, not the search folder.
+						String relativePath = getRelativePath((ILocation) location, relativeRoot);
+						foundFiles.add(loadRepoFileForLocation(projectIdForScope, (ILocation) location, relativePath, false));
 					}
 				}
 			}
@@ -225,14 +216,43 @@ public class FileEditorService {
 		return !Objects.isNull(projectId);
 	}
 
-	private RepoFile loadRepoFileForLocation(String projectId, ILocation fileLocation, String fileName)
+	private RepoFile loadRepoFileForLocation(String projectId, ILocation fileLocation, String fileName, boolean loadContent)
 			throws IOException {
-		StringWriter writer = new StringWriter();
-		try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
-			IOUtils.copy(fileContent, writer, StandardCharsets.UTF_8);
+		String content = null;
+		if(loadContent) {
+			StringWriter writer = new StringWriter();
+			try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
+				IOUtils.copy(fileContent, writer, StandardCharsets.UTF_8);
+			}
+			content = writer.toString();
 		}
 		return new RepoFile(projectId, fileLocation, repoConnection.getRevisionMetaData(fileLocation, false),
-				writer.toString(), fileName);
+				content, fileName);
+	}
+
+	private ILocation resolveTargetLocation(String projectId, String fileName) throws RepositoryConfigurationException {
+		// Clean up input
+		String cleanName = fileName;
+		if(cleanName.startsWith("/")) {
+			cleanName = cleanName.substring(1);
+		}
+
+		// Enforce .copilot folder
+		// If the name is exactly ".copilot", we don't append (weird edge case, but assuming filenames)
+		// If it doesn't start with .copilot/, prepend it.
+		if(!cleanName.startsWith(SEARCH_PATH + "/")) {
+			cleanName = SEARCH_PATH + "/" + cleanName;
+		}
+
+		ILocation base;
+		if(Objects.nonNull(projectId)) {
+			base = PolarionUtils.getTrackerProject(projectId).getLocation();
+		}
+		else {
+			base = Location.getLocation("/");
+		}
+
+		return base.append(cleanName);
 	}
 
 	private String getRelativePath(ILocation location, ILocation rootLocation) {
