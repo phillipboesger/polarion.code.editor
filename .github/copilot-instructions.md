@@ -14,7 +14,7 @@ This is a **Polarion ALM Server-Side Plugin** that provides AI capabilities (Cop
 
 **DO NOT** attempt to manually copy JARs or restart services via shell commands unless necessary.
 
-1. **Build & Deploy:** Always use the VS Code Task: `Polarion: Full Redeploy`.
+1. **Build & Deploy:** Always use the VS User Task: `Polarion: Full Redeploy`.
    - This runs a custom script (`redeploy.sh`) to build the JAR and push it to the running Polarion container.
 2. **Monitoring:**
    - Run `Polarion: Live Logs (Docker)` to tail full logs.
@@ -24,7 +24,7 @@ This is a **Polarion ALM Server-Side Plugin** that provides AI capabilities (Cop
 
 - **Java Changes:** Require a full redeploy (Task) to take effect.
 - **Frontend Changes:** May require redeploy if packaged in the JAR.
-- **Configuration:** Runtime config is loaded from the `.avasis` folder in the Polarion Repository (not the code repo).
+- **Configuration:** Runtime config is loaded from the `.configuration` folder in the Polarion Repository (not the code repo).
 
 ## Architecture & Code Structure
 
