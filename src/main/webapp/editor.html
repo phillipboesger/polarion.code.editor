@@ -12,7 +12,7 @@
       --bg-sidebar: #252526;
       --bg-toolbar: #2d2d2d;
       --bg-active: #37373d;
-      --accent: #007acc;
+      --accent: #00b5e2;
       --text-main: #cccccc;
       --text-light: #ffffff;
       --border-color: #3e3e42;
@@ -43,8 +43,12 @@
       display: flex;
       flex-direction: column;
       border-right: 1px solid var(--border-color);
-      transition: width 0.2s ease;
+      /* transition: removed to avoid resize lag and reload flash */
       flex-shrink: 0;
+    }
+
+    .sidebar.animating {
+        transition: width 0.2s ease;
     }
 
     .sidebar.collapsed {
@@ -69,6 +73,20 @@
     .sidebar-content {
       flex-grow: 1;
       overflow-y: auto;
+    }
+
+    /* Resizer */
+    .resizer {
+      width: 4px;
+      cursor: col-resize;
+      background: var(--bg-dark);
+      border-right: 1px solid var(--border-color);
+      transition: background 0.2s;
+      flex-shrink: 0;
+      z-index: 2;
+    }
+    .resizer:hover, .resizer.resizing {
+      background: var(--accent);
     }
 
     .section-title {
@@ -266,10 +284,12 @@
       color: #ff5555;
     }
 
-    /* Loading Indicator */
+    /* Loading Indicator / Status Footer */
     .loading-container {
-      display: none;
-      padding: 10px 15px;
+      padding: 5px 15px;
+      border-top: 1px solid var(--border-color);
+      background: var(--bg-sidebar);
+      flex-shrink: 0;
     }
     .loading-bar {
       height: 2px;
@@ -278,6 +298,11 @@
       position: relative;
       overflow: hidden;
       border-radius: 1px;
+      margin-bottom: 6px;
+      display: none; /* Controlled by JS */
+    }
+    .loading-bar.visible {
+       display: block;
     }
     .loading-bar::after {
       content: '';
@@ -392,6 +417,51 @@
     .action-btn.secondary:hover {
         background: rgba(255,255,255,0.05);
     }
+    .validation-error {
+        color: #ff5555;
+        font-size: 11px;
+        margin-top: 5px;
+        height: 14px; /* Fixed height to prevent jumpiness, or auto */
+    }
+
+    /* Path Suggestions */
+    .path-container {
+        position: relative; 
+        display: flex; 
+        align-items: center; 
+        width: 100%;
+    }
+    .suggestions-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 55px; /* Offset by prefix width approx */
+        right: 0;
+        background: var(--bg-sidebar);
+        border: 1px solid var(--border-color);
+        max-height: 150px;
+        overflow-y: auto;
+        z-index: 200;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        display: none;
+    }
+    .suggestion-item {
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text-main);
+        display: flex;
+        align-items: center;
+    }
+    .suggestion-item:hover, .suggestion-item.active {
+        background: var(--bg-dark); /* darker highlight */
+        color: var(--accent);
+    }
+    .suggestion-item .icon {
+        margin-right: 6px;
+        width: 14px;
+        height: 14px;
+        opacity: 0.7;
+    }
   </style>
 </head>
 
@@ -399,21 +469,32 @@
   <div id="app-container">
     <!-- Sidebar -->
     <div id="sidebar" class="sidebar">
+      <script>
+        // Apply saved width immediately to avoid flash
+        (function() {
+            try {
+                var w = localStorage.getItem('sidebarWidth');
+                if(w) document.getElementById('sidebar').style.width = w + 'px';
+            } catch(e) {}
+        })();
+      </script>
       <div class="sidebar-header">
         <span>EXPLORER</span>
         <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
       </div>
       <div class="sidebar-content">
-        <div class="section-title">CONFIGURATION FILES</div>
-        <div id="loadingIndicator" class="loading-container">
-            <div class="loading-bar"></div>
-            <span class="loading-text">Loading...</span>
-        </div>
         <ul class="file-list" id="fileList">
           <!-- Populated by JS -->
         </ul>
       </div>
+       <div id="loadingIndicator" class="loading-container">
+            <div class="loading-bar"></div>
+            <span class="loading-text">Ready</span>
+        </div>
     </div>
+    
+    <!-- Resizer -->
+    <div id="resizer" class="resizer"></div>
 
     <!-- Main Content -->
     <div id="main-content">
@@ -485,7 +566,43 @@
       // Initialize UI
       loadFiles();
       setupEventListeners();
+      setupResizer();
     });
+
+    function setupResizer() {
+        const sidebar = document.getElementById('sidebar');
+        const resizer = document.getElementById('resizer');
+        let isResizing = false;
+
+        // Restore width (Redundant now due to early script, but harmless)
+        // Leaving it or removing? Better remove to avoid double execution if already set.
+        // Actually, let's keep it as fallback for monaco context if needed, but the early script handles the flash.
+        
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            resizer.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            // Sidebar width = mouse X position
+            // Add constraints
+            const w = Math.max(150, Math.min(e.clientX, 800));
+            sidebar.style.width = w + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if(isResizing) {
+                isResizing = false;
+                resizer.classList.remove('resizing');
+                document.body.style.cursor = 'default';
+                // Save width
+                localStorage.setItem('sidebarWidth', parseInt(sidebar.style.width));
+            }
+        });
+    }
 
     function getApiUrl(endpoint) {
       let url = 'api/config/' + endpoint;
@@ -498,19 +615,40 @@
     function setupEventListeners() {
       // Sidebar Toggles
       document.getElementById('collapseSidebar').onclick = () => {
-        document.getElementById('sidebar').classList.add('collapsed');
+        const s = document.getElementById('sidebar');
+        s.classList.add('animating');
+        s.classList.add('collapsed');
         document.getElementById('expandSidebar').style.display = 'flex';
+        // Remove class after animation to be clean (optional, keeping it is fine too if we toggle it)
       };
       
       document.getElementById('expandSidebar').onclick = () => {
-        document.getElementById('sidebar').classList.remove('collapsed');
+        const s = document.getElementById('sidebar');
+        s.classList.add('animating');
+        s.classList.remove('collapsed');
         document.getElementById('expandSidebar').style.display = 'none';
       };
+      
+      // Remove animation class after transition ends to not interfere with resizing if any
+      document.getElementById('sidebar').addEventListener('transitionend', () => {
+          document.getElementById('sidebar').classList.remove('animating');
+      });
 
       // Actions
       document.getElementById('newBtn').onclick = createFile;
       document.getElementById('saveBtn').onclick = saveCurrentFile;
       document.getElementById('copyBtn').onclick = copyContent;
+
+      // Keyboard Shortcuts
+      document.addEventListener('keydown', (e) => {
+          // Ctrl+S / Cmd+S
+          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+              e.preventDefault();
+              if (currentFile && !document.getElementById('saveBtn').disabled) {
+                  saveCurrentFile();
+              }
+          }
+      });
 
       // Unsaved Changes Warning
       window.onbeforeunload = function(e) {
@@ -559,77 +697,272 @@
       }
     }
 
+    let currentDirectory = ""; 
+    let cachedFiles = [];
+    let collapsedFolders = new Set(); // Stores collapsed folder paths (default is expanded)
+    // Let's store absolute paths for expanded folders.
+    // Actually, since we support drill down, it's better to store expanded paths relative to root.
+
     function loadFiles() {
-      const list = document.getElementById('fileList');
       const loader = document.getElementById('loadingIndicator');
-      
-      // Show loader, clear list
-      loader.style.display = 'block';
-      list.innerHTML = '';
+      const bar = loader.querySelector('.loading-bar');
+      const text = loader.querySelector('.loading-text');
+
+      bar.classList.add('visible');
+      text.textContent = "Loading...";
 
       fetch(getApiUrl('list'))
         .then(res => res.json())
         .then(files => {
-          loader.style.display = 'none';
+          bar.classList.remove('visible');
+          text.textContent = `Loaded ${files.length} files`;
           
-          files.forEach(file => {
-            const li = document.createElement('li');
-            li.className = 'file-item';
-            if (file.name === currentFile) li.classList.add('active');
-
-            // Icon
-            const icon = document.createElement('span');
-            icon.className = 'file-icon';
-            icon.textContent = file.name.endsWith('.json') ? '{}' : '📄';
-            li.appendChild(icon);
-
-            // Name
-            const span = document.createElement('span');
-            span.className = 'file-name';
-            span.textContent = file.name;
-            span.title = file.name; // Tooltip for full name
-            li.appendChild(span);
-            
-            // Actions Group
-            const actions = document.createElement('div');
-            actions.className = 'action-group';
-
-            // Rename Btn
-            const renBtn = document.createElement('button');
-            renBtn.className = 'list-btn';
-            renBtn.textContent = '✎';
-            renBtn.title = 'Rename File';
-            renBtn.onclick = (e) => {
-              e.stopPropagation();
-              renameFile(file.name);
-            };
-            actions.appendChild(renBtn);
-            
-            // Delete Btn
-            const delBtn = document.createElement('button');
-            delBtn.className = 'list-btn delete-btn';
-            delBtn.textContent = '✕';
-            delBtn.title = 'Delete File';
-            delBtn.onclick = (e) => {
-              e.stopPropagation();
-              deleteFile(file.name);
-            };
-            actions.appendChild(delBtn);
-
-            li.appendChild(actions);
-
-            li.onclick = () => onFileSelect(file.name);
-            li.ondblclick = () => {
-                onFileSelect(file.name);
-                document.getElementById('collapseSidebar').click();
-            };
-            list.appendChild(li);
-          });
+          cachedFiles = files.map(f => ({ ...f, name: f.name.replace(/\\/g, '/') }));
+          renderFileList();
         })
         .catch(err => {
             console.error('Error loading files:', err);
-            loader.style.display = 'none';
-            list.innerHTML = '<li style="padding:10px; color:#ff6b6b; font-size:12px;">Error loading files</li>';
+            bar.classList.remove('visible');
+            text.textContent = "Error loading files";
+            document.getElementById('fileList').innerHTML = '<li style="padding:10px; color:#ff6b6b">Error loading files</li>';
+        });
+    }
+
+    // Helper to get nested structure from flat list
+    function buildTree(files, rootPath) {
+        const tree = { files: [], folders: {} };
+        
+        files.forEach(file => {
+            if (!file.name.startsWith(rootPath)) return;
+            
+            const relPath = file.name.substring(rootPath.length);
+            const parts = relPath.split('/');
+            
+            if (parts.length > 1) {
+                // It's in a subfolder relative to rootPath
+                const folderName = parts[0];
+                if (!tree.folders[folderName]) {
+                    tree.folders[folderName] = { name: folderName, count: 0 };
+                }
+                tree.folders[folderName].count++;
+            } else {
+                // It's a file in rootPath
+                tree.files.push(file);
+            }
+        });
+        return tree;
+    }
+
+    const FOLDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+
+    function renderFileList() {
+        const list = document.getElementById('fileList');
+        list.innerHTML = '';
+        
+        // Header: Current Folder Name
+        if (currentDirectory) {
+            // e.g. .copilot/config/ -> split -> [ .copilot, config, "" ]
+            const p = currentDirectory.replace(/\/$/, '');
+            const parts = p.split('/');
+            const currentName = parts[parts.length - 1]; // "config"
+            
+            const header = document.createElement('li');
+            header.style.padding = '8px 15px';
+            header.style.fontSize = '12px';
+            header.style.fontWeight = 'bold';
+            header.style.color = 'var(--text-light)';
+            header.style.borderBottom = '1px solid var(--border-color)';
+            header.style.marginBottom = '4px';
+            // Show full relative path or just name? 
+            // "Show folder name" requested.
+            header.innerHTML = `<span style="opacity:0.6; font-weight:normal;">Folder:</span> ${currentName}`;
+            list.appendChild(header);
+
+            // Calc parent
+            parts.pop();
+            const parentPath = parts.length > 0 ? parts.join('/') + '/' : '';
+            // Determine parent label
+            let parentLabel = "Root";
+            if(parts.length > 0) parentLabel = parts[parts.length - 1];
+            
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            // li.style.borderBottom = '1px solid var(--border-color)'; // Optional separator
+            li.innerHTML = `<span class="file-icon" style="color:var(--accent)">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style="transform:rotate(90deg)"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            </span><span class="file-name" style="color: #888;">Back to ${parentLabel}</span>`;
+            
+            li.onclick = () => { // Changed from dblclick to click for easier nav? Or keep consistency? 
+                // ".." usually works on double click in many file managers, but web often single.
+                // Let's stick to simple click for "Back" button behavior.
+                currentDirectory = parentPath;
+                renderFileList();
+            };
+            list.appendChild(li);
+        } else {
+             const header = document.createElement('li');
+             header.style.padding = '8px 15px';
+             header.style.fontSize = '11px';
+             header.style.fontWeight = 'bold';
+             header.style.textTransform = 'uppercase';
+             header.style.color = '#555';
+             header.textContent = 'EXPLORER';
+             list.appendChild(header);
+        }
+
+        renderTreeLevel(list, currentDirectory, 0);
+    }
+
+    function renderTreeLevel(container, pathPrefix, level) {
+        const tree = buildTree(cachedFiles, pathPrefix);
+        
+        // Render Folders
+        Object.keys(tree.folders).sort().forEach(folderName => {
+             const fullFolderPath = pathPrefix + folderName + '/';
+             const isExpanded = !collapsedFolders.has(fullFolderPath);
+             
+             const li = document.createElement('li');
+             li.className = 'file-item';
+             li.style.paddingLeft = (15 + (level * 10)) + 'px';
+             
+             // Toggle Logic Helper
+             const toggleFolder = () => {
+                 if (isExpanded) collapsedFolders.add(fullFolderPath);
+                 else collapsedFolders.delete(fullFolderPath);
+                 renderFileList();
+             };
+
+             // Toggle Icon
+             const toggle = document.createElement('span');
+             toggle.style.marginRight = '5px';
+             toggle.style.fontSize = '10px';
+             toggle.style.cursor = 'pointer';
+             toggle.textContent = isExpanded ? '▼' : '▶'; // or 'v' / '>'
+             toggle.onclick = (e) => {
+                 e.stopPropagation();
+                 toggleFolder();
+             };
+             
+             const icon = document.createElement('span');
+             icon.className = 'file-icon';
+             // icon.textContent = '📁';
+             icon.innerHTML = FOLDER_SVG;
+             icon.style.color = 'var(--accent)';
+             
+             const nameSpan = document.createElement('span');
+             nameSpan.className = 'file-name';
+             nameSpan.textContent = folderName;
+             
+             li.appendChild(toggle);
+             li.appendChild(icon);
+             li.appendChild(nameSpan);
+             
+             // Actions for Folder
+             const actions = document.createElement('div');
+             actions.className = 'action-group';
+
+             const renBtn = document.createElement('button');
+             renBtn.className = 'list-btn';
+             renBtn.textContent = '✎';
+             renBtn.title = 'Rename Folder';
+             renBtn.onclick = (e) => {
+               e.stopPropagation();
+               renameFile(fullFolderPath); // Folder path ends with /
+             };
+             actions.appendChild(renBtn);
+             
+             li.appendChild(actions);
+             
+             // Click handling with Delay to prevent Double-Click conflict
+             let clickTimer = null;
+             
+             li.onclick = (e) => {
+                 e.stopPropagation();
+                 if (clickTimer) {
+                     // Double click sequence likely starting, ignore this click or wait?
+                     // Actually, browser fires click then dbclick.
+                     // On first click, we set timer.
+                     return;
+                 }
+                 clickTimer = setTimeout(() => {
+                     toggleFolder();
+                     clickTimer = null;
+                 }, 220); // 220ms delay to wait for potential double click
+             };
+             
+             li.ondblclick = (e) => {
+                 e.stopPropagation();
+                 if(clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                 }
+                 // Requirement 2: Jump into folder (drill down)
+                 currentDirectory = fullFolderPath;
+                 collapsedFolders.clear(); // Clear collapses = expand all in new view
+                 renderFileList();
+             };
+
+             container.appendChild(li);
+             
+             if (isExpanded) {
+                 // Recursion
+                 renderTreeLevel(container, fullFolderPath, level + 1);
+             }
+        });
+
+        // Render Files
+        tree.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+             const li = document.createElement('li');
+             li.className = 'file-item';
+             li.style.paddingLeft = (15 + (level * 10) + 15) + 'px'; // +15 for indentation alignment with folders (icon+arrow)
+             
+             if (file.name === currentFile) li.classList.add('active');
+
+             const displayName = file.name.substring(pathPrefix.length);
+             const isJson = file.name.endsWith('.json');
+             
+             const icon = document.createElement('span');
+             icon.className = 'file-icon';
+             icon.textContent = isJson ? '{}' : '📄';
+             li.appendChild(icon);
+
+             const span = document.createElement('span');
+             span.className = 'file-name';
+             span.textContent = displayName;
+             span.title = file.name;
+             li.appendChild(span);
+            
+             const actions = document.createElement('div');
+             actions.className = 'action-group';
+
+             const renBtn = document.createElement('button');
+             renBtn.className = 'list-btn';
+             renBtn.textContent = '✎';
+             renBtn.title = 'Rename File';
+             renBtn.onclick = (e) => {
+               e.stopPropagation();
+               renameFile(file.name);
+             };
+             actions.appendChild(renBtn);
+            
+             const delBtn = document.createElement('button');
+             delBtn.className = 'list-btn delete-btn';
+             delBtn.textContent = '✕';
+             delBtn.title = 'Delete File';
+             delBtn.onclick = (e) => {
+               e.stopPropagation();
+               deleteFile(file.name);
+             };
+             actions.appendChild(delBtn);
+
+             li.appendChild(actions);
+
+             li.onclick = (e) => {
+                 e.stopPropagation();
+                 onFileSelect(file.name);
+             };
+             // Double click on file? Just select.
+             container.appendChild(li);
         });
     }
 
@@ -647,10 +980,8 @@
     function loadFileContent(fileName) {
       currentFile = fileName;
       
-      // Update UI List Active State
-      document.querySelectorAll('.file-item').forEach(el => {
-        el.classList.toggle('active', el.querySelector('span:nth-child(2)').textContent === fileName);
-      });
+      // Update Active State
+      renderFileList(); // simpler re-render to update active class
 
       const ext = fileName.split('.').pop();
       const lang = ext === 'xml' ? 'xml' : (ext === 'json' ? 'json' : 'plaintext');
@@ -662,15 +993,13 @@
            
            if (!editor) return;
            
-           // Replace model to cleanly switch
-           // Sometimes keeping old model is better for undo history, but swapping is safer for clean state here
            const oldModel = editor.getModel();
            const newModel = monaco.editor.createModel(content, lang);
            editor.setModel(newModel);
            if (oldModel) oldModel.dispose();
 
            toggleEmptyState(false);
-           updateToolbarState(); // Should affect disabled save state
+           updateToolbarState(); 
         })
         .catch(err => alert('Error loading file content: ' + err));
     }
@@ -680,7 +1009,7 @@
       const content = editor.getValue();
 
       const btn = document.getElementById('saveBtn');
-      const prevText = btn.textContent;
+      // const prevText = btn.textContent; // unused
       btn.textContent = 'Saving...';
       btn.disabled = true;
 
@@ -690,14 +1019,11 @@
       })
         .then(res => {
           if (res.ok) {
-             originalContent = content; // Sync state
-             updateToolbarState(); // Will disable button since isDirty() is now false
-             
-             // Optional success feedback toast could go here
-             // For now we rely on the button state changing back to "Save" (disabled)
+             originalContent = content;
+             updateToolbarState();
           } else {
              alert('Error saving file');
-             updateToolbarState(); // Re-enable
+             updateToolbarState();
           }
         })
         .catch(err => {
@@ -710,79 +1036,275 @@
         openNewFileModal();
     }
 
-    function openNewFileModal() {
-        const select = document.getElementById('folderSelect');
-        select.innerHTML = '<option value="">(root)</option>';
-        
+    function populateFolderSelect(selectId) {
+        // Deprecated/Removed - logic moved to input suggestions
+    }
+
+    // Helper: Collect all existing directories relative to .copilot/
+    function getAllDirectories() {
         const dirs = new Set();
-        
-        // Scan existing files for directories
-        document.querySelectorAll('.file-name').forEach(span => {
-            let path = span.textContent.replace(/\\/g, '/');
-            const parts = path.split('/');
-            
+        cachedFiles.forEach(f => {
+            // f.name is e.g. .copilot/folder/file.json
+            const parts = f.name.split('/');
+            // Remove filename
             if(parts.length > 1) {
-                parts.pop(); // remove filename
+                parts.pop(); 
+                // Remove .copilot
+                if(parts[0] === '.copilot') parts.shift();
                 
-                // If path starts with .copilot, strip it for the UI dropdown
-                // because the UI already shows ".copilot/" prefix
-                if(parts[0] === '.copilot') {
-                     parts.shift();
-                }
-                
-                if(parts.length > 0) {
-                    dirs.add(parts.join('/'));
-                }
+                // Add all prefix combos
+                // e.g. if path is A/B/C, add A, A/B, A/B/C
+                let acc = "";
+                parts.forEach(p => {
+                    acc = acc ? acc + '/' + p : p;
+                    dirs.add(acc);
+                });
             }
         });
+        return Array.from(dirs).sort();
+    }
+
+    function setupPathInputLogic(inputId, suggestionsId, initialPath, onCommit) {
+        const input = document.getElementById(inputId);
+        const dropdown = document.getElementById(suggestionsId);
+        let activeIndex = -1;
         
-        Array.from(dirs).sort().forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.textContent = d;
-            select.appendChild(opt);
+        input.value = initialPath;
+        
+        const allDirs = getAllDirectories();
+        
+        const showSuggestions = () => {
+             const val = input.value;
+             const lastSlash = val.lastIndexOf('/');
+             // prefix is everything before last slash
+             const prefix = lastSlash === -1 ? "" : val.substring(0, lastSlash);
+             // current token is everything after last slash
+             // const token = val.substring(lastSlash + 1); // Not used for filtering folders strictly but could be
+             
+             // We want to suggest SUB-folders of the prefix.
+             // If prefix is "", show top level folders.
+             // If prefix is "foo", show folders inside "foo" (e.g. "foo/bar")
+             // But we display only the relative part (e.g. "bar")
+             
+             const matches = new Set(); // use Set to dedup names
+             
+             allDirs.forEach(d => {
+                 if (prefix === "") {
+                     // Top level: taking the first segment
+                     if (!d.includes('/')) matches.add(d);
+                     else matches.add(d.split('/')[0]);
+                 } else {
+                     if (d.startsWith(prefix + '/')) {
+                         const remainder = d.substring(prefix.length + 1);
+                         if(remainder) {
+                            const nextSeg = remainder.split('/')[0];
+                            matches.add(nextSeg);
+                         }
+                     }
+                 }
+             });
+             
+             const items = Array.from(matches).sort();
+             if (items.length === 0) {
+                 dropdown.innerHTML = '';
+                 dropdown.style.display = 'none';
+                 return;
+             }
+             
+             dropdown.innerHTML = '';
+             items.forEach((item, idx) => {
+                 const div = document.createElement('div');
+                 div.className = 'suggestion-item';
+                 div.innerHTML = `<span class="icon">${FOLDER_SVG}</span> ${item}`;
+                 div.onmousedown = (e) => { // mousedown prevents blur
+                     e.preventDefault();
+                     applySuggestion(item);
+                 };
+                 dropdown.appendChild(div);
+             });
+             dropdown.style.display = 'block';
+             activeIndex = -1;
+        };
+        
+        const applySuggestion = (folderName) => {
+            const val = input.value;
+            const lastSlash = val.lastIndexOf('/');
+            const prefix = lastSlash === -1 ? "" : val.substring(0, lastSlash + 1);
+            input.value = prefix + folderName + '/';
+            dropdown.style.display = 'none';
+            input.focus();
+            // Trigger input event to re-validate
+            input.dispatchEvent(new Event('input'));
+        };
+
+        const updateActiveItem = () => {
+            const items = dropdown.children;
+            for(let i=0; i<items.length; i++) items[i].classList.remove('active');
+            if(activeIndex >= 0 && activeIndex < items.length) {
+                items[activeIndex].classList.add('active');
+                items[activeIndex].scrollIntoView({block: 'nearest'});
+            }
+        };
+
+        input.onkeydown = (e) => {
+           if(e.key === 'ArrowDown') {
+               e.preventDefault();
+               if(dropdown.style.display !== 'block') showSuggestions();
+               const max = dropdown.children.length;
+               if(max > 0) {
+                   activeIndex = (activeIndex + 1) % max;
+                   updateActiveItem();
+               }
+           } else if (e.key === 'ArrowUp') {
+               e.preventDefault();
+               if(dropdown.style.display !== 'block') showSuggestions();
+               const max = dropdown.children.length;
+               if(max > 0) {
+                   activeIndex = (activeIndex - 1 + max) % max;
+                   updateActiveItem();
+               }
+           } else if (e.key === 'Enter') {
+               if(dropdown.style.display === 'block' && activeIndex >= 0) {
+                   e.preventDefault();
+                   // Select item text from active div (careful with icon span)
+                   const text = dropdown.children[activeIndex].textContent.trim();
+                   applySuggestion(text);
+               } else {
+                   // Commit form
+                   onCommit(); 
+               }
+           } else if (e.key === 'Escape') {
+               if(dropdown.style.display === 'block') {
+                   e.preventDefault(); // don't close modal yet
+                   dropdown.style.display = 'none';
+                   // Stop propagation to prevent modal closing immediately? 
+                   // The outer handler might catch it. 
+                   e.stopPropagation();
+               } else {
+                   // let modal close handle it in main function
+               }
+           } else if (e.key === '/' || e.key === ' ' || e.key.length === 1 || e.key === 'Backspace') {
+              // keydown for typing is fine, logic runs on input/keyup usually? 
+              // Actually showSuggestions logic depends on value. 
+              // Value isn't updated on keydown yet.
+              // We should call showSuggestions separately or use oninput for showing.
+           }
+        };
+
+        input.onkeyup = (e) => {
+            // Use keyup for showSuggestions trigger after value update
+             if (e.key === '/' || e.key === 'Backspace' || e.key.length === 1) {
+                  showSuggestions();
+             }
+        };
+        
+        input.onblur = () => {
+            // Delay hide to allow click
+             setTimeout(() => dropdown.style.display = 'none', 150);
+        };
+    }
+
+    function openNewFileModal() {
+        // Auto-select current directory from currentFile
+        let initialPath = "";
+        if (currentFile) {
+            let dir = currentFile;
+            // Remove filename
+            const lastSlash = dir.lastIndexOf('/');
+            if(lastSlash !== -1) dir = dir.substring(0, lastSlash);
+            else dir = ""; // root
+            
+            // Normalize .copilot
+            if(dir.startsWith('.copilot/')) dir = dir.substring(9);
+            else if(dir === '.copilot') dir = "";
+            
+            if(dir) initialPath = dir + "/";
+        }
+
+        const input = document.getElementById('newFileName');
+        const errorDiv = document.getElementById('newFileError');
+        const btn = document.getElementById('btnConfirmCreate');
+        
+        btn.disabled = true; 
+        errorDiv.textContent = "";
+
+        document.getElementById('newFileModal').classList.remove('hidden');
+        input.focus();
+        
+        // Setup Logic
+        setupPathInputLogic('newFileName', 'newFileSuggestions', initialPath, () => {
+             if(!btn.disabled) confirmCreateFile();
         });
 
-        document.getElementById('newFileName').value = '';
-        document.getElementById('newFileModal').classList.remove('hidden');
-        document.getElementById('newFileName').focus();
-        
-        // Handle Enter key
-        document.getElementById('newFileName').onkeydown = (e) => {
-            if(e.key === 'Enter') confirmCreateFile();
-            if(e.key === 'Escape') closeNewFileModal();
+        const handleInput = () => {
+             const val = input.value.trim();
+             const error = validatePathInput(val, false);
+             if (error) {
+                 errorDiv.textContent = error;
+                 btn.disabled = true;
+             } else {
+                 errorDiv.textContent = "";
+                 btn.disabled = false;
+             }
         };
+
+        input.addEventListener('input', handleInput);
+        
+        // Override global keydown on input for Escape closing modal if suggestions closed
+        input.addEventListener('keydown', (e) => {
+             if(e.key === 'Escape') {
+                 const dd = document.getElementById('newFileSuggestions');
+                 if(dd.style.display === 'none') closeNewFileModal();
+             }
+        });
+        
+        // Initial check
+        handleInput();
     }
 
     function closeNewFileModal() {
         document.getElementById('newFileModal').classList.add('hidden');
     }
 
+    function validatePathInput(path, isFolder) {
+        if (!path) return "Name cannot be empty";
+        if (path.endsWith('/')) return "Please enter a file name"; // Trailing slash means folder context
+        
+        // Allow: letters, numbers, dot, dash, underscore, slash
+        if (!/^[a-zA-Z0-9_\-\./]+$/.test(path)) {
+            return "Name contains invalid characters (allowed: a-z, 0-9, ., -, _, /)";
+        }
+        // If it is a file (not a folder), enforce config extension
+        if (!isFolder && !/\.(json|xml)$/i.test(path)) {
+            return "Configuration files must end with .json or .xml";
+        }
+        return null;
+    }
+
     function confirmCreateFile() {
         let nameInput = document.getElementById('newFileName').value.trim();
-        if (!nameInput) {
-            alert("Please enter a filename");
-            return;
-        }
+        const validationError = validatePathInput(nameInput, false);
+        if (validationError) return;
         
-        // Clean leading slash
         if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
         
-        const folder = document.getElementById('folderSelect').value;
+        // Prepend .copilot if needed. Since UI shows .copilot prefix static, 
+        // the input is "sub/file.json". So full path is ".copilot/sub/file.json"
         
         let fullPath = nameInput;
-        if(folder) {
-            const f = folder.endsWith('/') ? folder : folder + '/';
-            // Avoid double slashes if user typed path in name
-            fullPath = f + nameInput;
+        // Ensure no double .copilot if user typed it
+        if (!fullPath.startsWith('.copilot/')) {
+            // Actually our backend expects relative to storage root. 
+            // In editor.html logic we often see .copilot prefix being stripped/added.
+            // Let's look at `loadFiles`: it processes raw paths.
+            // If I save "foo.json", where does it go?
+            // "api/config/file/foo.json".
+            // If the server enforces .copilot root, we should likely send ".copilot/foo.json".
+            fullPath = '.copilot/' + fullPath;
         }
-        
-        // Note: Backend enforces .copilot/ prefix. We send the relative path inside .copilot/
-        // (or checks if we included it). 
-        // Sending "sub/foo.json" -> Result: ".copilot/sub/foo.json"
-        
-        closeNewFileModal();
 
+        closeNewFileModal();
+        
         const content = "{}"; 
 
         fetch(getApiUrl('file/' + fullPath), {
@@ -800,31 +1322,117 @@
         .catch(err => alert('Error creating: ' + err));
     }
 
+    let fileToRename = null;
+
     function renameFile(oldName) {
         if(oldName === currentFile && isDirty()) {
             alert("Please save changes before renaming.");
             return;
         }
+        fileToRename = oldName;
 
-        const newName = prompt("Rename " + oldName + " to:", oldName);
-        if (!newName || newName === oldName) return;
+        let displayPath = oldName;
+        // Normalize for display (remove .copilot prefix for user input if we treat it as root)
+        if(displayPath.startsWith('.copilot/')) displayPath = displayPath.substring(9);
+        else if (displayPath === 'copilot' || displayPath === '.copilot') displayPath = "";
+        
+        const input = document.getElementById('renameFileName');
+        const errorDiv = document.getElementById('renameFileError');
+        const btn = document.getElementById('btnConfirmRename');
 
-        fetch('api/config/rename' + (projectId ? '?projectId=' + encodeURIComponent(projectId) : ''), {
+        btn.disabled = false;
+        errorDiv.textContent = "";
+
+        document.getElementById('renameFileModal').classList.remove('hidden');
+        input.focus();
+
+        // Setup Logic
+        setupPathInputLogic('renameFileName', 'renameFileSuggestions', displayPath, () => {
+             if(!btn.disabled) confirmRenameFile();
+        });
+        
+        // Auto-select name part (excluding extension and path)
+        const lastSlash = displayPath.lastIndexOf('/');
+        const namePart = lastSlash === -1 ? displayPath : displayPath.substring(lastSlash + 1);
+        const nameStart = lastSlash === -1 ? 0 : lastSlash + 1;
+        const lastDot = displayPath.lastIndexOf('.');
+        
+        if (lastDot > nameStart) { 
+             input.setSelectionRange(nameStart, lastDot);
+        } else {
+             input.setSelectionRange(nameStart, displayPath.length);
+        }
+
+        const handleInput = () => {
+             const val = input.value.trim();
+             const _isFolder = oldName.endsWith('/');
+             const error = validatePathInput(val, _isFolder);
+             if (error) {
+                 errorDiv.textContent = error;
+                 btn.disabled = true;
+             } else {
+                 errorDiv.textContent = "";
+                 btn.disabled = false;
+             }
+        };
+
+        input.addEventListener('input', handleInput);
+         // Override global keydown on input for Escape closing modal if suggestions closed
+        input.addEventListener('keydown', (e) => {
+             if(e.key === 'Escape') {
+                 const dd = document.getElementById('renameFileSuggestions');
+                 if(dd.style.display === 'none') closeRenameModal();
+             }
+        });
+        
+        // Initial check
+        handleInput();
+    }
+
+    function closeRenameModal() {
+        document.getElementById('renameFileModal').classList.add('hidden');
+        fileToRename = null;
+    }
+
+    function confirmRenameFile() {
+        if (!fileToRename) return;
+        const oldName = fileToRename; 
+
+        let nameInput = document.getElementById('renameFileName').value.trim();
+        
+        const isFolder = oldName.endsWith('/');
+        
+        // Double check validity silently (UI handles feedback)
+        const validationError = validatePathInput(nameInput, isFolder);
+        if (validationError) return;
+
+        if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
+        
+        let newPath = nameInput;
+        // Re-add .copilot prefix if needed
+         if (!newPath.startsWith('.copilot/')) {
+            newPath = '.copilot/' + newPath;
+        }
+
+        closeRenameModal();
+
+        // If nothing changed
+        if (newPath === oldName) return;
+
+        fetch(getApiUrl('rename'), {
             method: 'POST',
-            body: JSON.stringify({ oldName: oldName, newName: newName })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oldName: oldName, newName: newPath })
         })
         .then(res => {
-            if (res.ok) {
-                if (currentFile === oldName) {
-                    currentFile = newName;
-                    document.getElementById('currentFileLabel').textContent = newName;
-                }
+            if(res.ok) {
+                if(currentFile === oldName) currentFile = newPath;
                 loadFiles();
             } else {
-                res.json().then(data => alert('Error renaming: ' + (data.error || 'Unknown')));
+                res.json().then(d => alert("Rename failed: " + d.error)).catch(() => alert("Rename failed"));
             }
         })
-        .catch(err => alert('Error renaming: ' + err));
+        .catch(err => alert("Rename error: " + err));
     }
 
     function deleteFile(fileName) {
@@ -866,21 +1474,44 @@
         <h3>Create New File</h3>
         <div class="modal-field">
             <label>Location (Inside .copilot)</label>
-            <div class="path-container">
-                <span class="path-prefix" title="All files are enforced to be in .copilot folder">.copilot/</span>
-                <select id="folderSelect" class="folder-select" title="Select existing folder">
-                    <option value="">(root)</option>
-                </select>
-                <span class="path-prefix">/</span>
-                <input type="text" id="newFileName" class="path-input" placeholder="filename.json" autocomplete="off">
+            <div class="path-container" style="position:relative;">
+                <span class="path-prefix" title="All files are enforced to be in .copilot folder" style="min-width:55px;">.copilot/</span>
+                <input type="text" id="newFileName" name="polarion_copilot_abs_path_field_xyz" class="path-input" 
+                       placeholder="folder/subfolder/filename.json" autocomplete="off" list="autocompleteOff"
+                       spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
+                
+                <div id="newFileSuggestions" class="suggestions-dropdown"></div>
             </div>
             <div style="font-size:11px; color:#666; margin-top:6px; line-height:1.4;">
-                Select a folder or type "subfolder/name.json" to create new directories.
+                Type a path. Use '/' to cascade folders. Select existing folders with arrows/enter.
             </div>
+            <div id="newFileError" class="validation-error"></div>
         </div>
         <div class="modal-actions">
             <button onclick="closeNewFileModal()" class="action-btn secondary">Cancel</button>
-            <button onclick="confirmCreateFile()" class="action-btn">Create File</button>
+            <button id="btnConfirmCreate" onclick="confirmCreateFile()" class="action-btn">Create File</button>
+        </div>
+    </div>
+  </div>
+  
+  <!-- Rename File Modal -->
+  <div id="renameFileModal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h3>Rename File</h3>
+        <div class="modal-field">
+            <label>Location (Inside .copilot)</label>
+            <div class="path-container" style="position:relative;">
+                <span class="path-prefix" title="All files are enforced to be in .copilot folder" style="min-width:55px;">.copilot/</span>
+                <input type="text" id="renameFileName" name="polarion_copilot_rename_field_xyz" class="path-input" 
+                       autocomplete="off" list="autocompleteOff" spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
+                
+                <div id="renameFileSuggestions" class="suggestions-dropdown"></div>
+            </div>
+            <div id="renameFileError" class="validation-error"></div>
+        </div>
+        <div class="modal-actions">
+            <button onclick="closeRenameModal()" class="action-btn secondary">Cancel</button>
+            <button id="btnConfirmRename" onclick="confirmRenameFile()" class="action-btn">Rename</button>
         </div>
     </div>
   </div>

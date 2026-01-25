@@ -54,6 +54,7 @@ public class FileEditorService {
 
 		return PolarionUtils.executeInTransactionWithResult(new CopyFileAction(currentFileLocation, newFileLocation));
 	}
+	
 
 	public void renameFile(String currentFileName, String newFileName) throws Exception {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
