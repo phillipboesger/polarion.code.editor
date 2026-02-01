@@ -5,12 +5,15 @@ import java.io.InputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 
+import com.google.gson.Gson;
 import com.polarion.platform.repository.config.RepositoryConfigurationException;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
@@ -21,10 +24,12 @@ import boesger.polarion.copilot.core.fileeditor.actions.CopyFileAction;
 import boesger.polarion.copilot.core.fileeditor.actions.DeleteFileAction;
 import boesger.polarion.copilot.core.fileeditor.actions.RenameFileAction;
 import boesger.polarion.copilot.core.fileeditor.actions.SaveFileAction;
+import boesger.polarion.copilot.core.logger.CopilotLogger;
 import boesger.polarion.copilot.utils.PolarionUtils;
 
 public class FileEditorService {
 
+	private static final CopilotLogger log = new CopilotLogger(FileEditorService.class);
 	private static final String SEARCH_PATH = ".copilot";
 
 	private String projectId = null;
@@ -54,7 +59,6 @@ public class FileEditorService {
 
 		return PolarionUtils.executeInTransactionWithResult(new CopyFileAction(currentFileLocation, newFileLocation));
 	}
-	
 
 	public void renameFile(String currentFileName, String newFileName) throws Exception {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
@@ -166,10 +170,32 @@ public class FileEditorService {
 			files.addAll(loadFilesFromLocation(searchLoc, extension, projectId, projLoc));
 		}
 
-		// 2. Load global files (full path from root)
-		ILocation globalRoot = Location.getLocation("/");
+		// 2. Load global files (full path from root) -> Use default repo explicitly
+		ILocation globalRoot = Location.getLocationWithRepository(IRepositoryService.DEFAULT, "/");
 		ILocation globalSearchLoc = globalRoot.append(SEARCH_PATH);
 		List<RepoFile> globalFiles = loadFilesFromLocation(globalSearchLoc, extension, null, globalRoot);
+
+		// 2.5 Load additional folders from configuration
+		List<String> additionalFolders = getAdditionalFolders();
+		for(String folder : additionalFolders) {
+			if(folder == null || folder.trim().isEmpty()) continue;
+
+			// Determine context (Project or Global)
+			ILocation root = hasProjectScope() ? PolarionUtils.getTrackerProject(projectId).getLocation() : globalRoot;
+			ILocation searchLoc = root.append(folder);
+
+			// We use the root as relative base to preserve folder structure in the path
+			List<RepoFile> addFiles = loadFilesFromLocation(searchLoc, extension, hasProjectScope() ? projectId : null, root);
+
+			// Identify if files are global or project for deduplication logic?
+			// For simplicity: add to files if project scope, else to globalFiles
+			if(hasProjectScope()) {
+				files.addAll(addFiles);
+			}
+			else {
+				globalFiles.addAll(addFiles);
+			}
+		}
 
 		// 3. Deduplicate: Remove files from Global list that are already covered by Project scope
 		if(hasProjectScope()) {
@@ -250,7 +276,8 @@ public class FileEditorService {
 			base = PolarionUtils.getTrackerProject(projectId).getLocation();
 		}
 		else {
-			base = Location.getLocation("/");
+			// Must provide repository name for absolute location (usually "default")
+			base = Location.getLocationWithRepository(IRepositoryService.DEFAULT, "/");
 		}
 
 		return base.append(cleanName);
@@ -266,6 +293,34 @@ public class FileEditorService {
 			return rel;
 		}
 		return location.getLastComponent();
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<String> getAdditionalFolders() {
+		try {
+			ILocation settingsLoc = resolveTargetLocation(this.projectId, "copilot-settings.json");
+			if(repoConnection.exists(settingsLoc)) {
+				String content = loadFileContent(settingsLoc);
+				log.info("Loaded settings from " + settingsLoc.getLocationPath() + ": " + content);
+				Gson gson = new Gson();
+				Map<String, Object> map = gson.fromJson(content, Map.class);
+				if(map != null && map.containsKey("additionalFolders")) {
+					Object obj = map.get("additionalFolders");
+					if(obj instanceof List) {
+						List<String> folders = (List<String>) obj;
+						log.info("Found additional folders: " + folders);
+						return folders;
+					}
+				}
+			}
+			else {
+				log.info("Settings file not found at " + settingsLoc.getLocationPath());
+			}
+		}
+		catch(Exception e) {
+			log.error("Error loading additional folders", e);
+		}
+		return Collections.emptyList();
 	}
 
 }

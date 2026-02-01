@@ -52,7 +52,7 @@
     }
 
     .sidebar.collapsed {
-      width: 0;
+      width: 0 !important;
       border-right: none;
       overflow: hidden;
     }
@@ -462,6 +462,28 @@
         height: 14px;
         opacity: 0.7;
     }
+    
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+        background: var(--bg-sidebar);
+        border: 1px solid var(--border-color);
+        width: 500px; max-width: 90%;
+        padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        color: var(--text-main);
+    }
+    .modal-header { font-size: 16px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+    .modal-body { margin-bottom: 20px; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; color: var(--text-light); font-size: 12px; }
+    .form-group textarea, .form-group input { width: 100%; background: var(--bg-dark); border: 1px solid #444; color: var(--text-main); padding: 8px; font-family: inherit; }
+    .form-group textarea { height: 100px; resize: vertical; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; }
   </style>
 </head>
 
@@ -480,7 +502,10 @@
       </script>
       <div class="sidebar-header">
         <span>EXPLORER</span>
-        <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
+        <div style="display:flex; gap: 5px;">
+           <button class="icon-btn" id="settingsBtn" title="Settings" style="font-size:14px;">⚙</button>
+           <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
+        </div>
       </div>
       <div class="sidebar-content">
         <ul class="file-list" id="fileList">
@@ -526,13 +551,50 @@
     </div>
   </div>
 
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay">
+      <div class="modal">
+          <div class="modal-header">Configuration</div>
+          <div class="modal-body">
+              <div class="form-group">
+                  <label>Additional Source Folders (one per line):</label>
+                  <textarea id="settingFolders" placeholder="e.g. Documents/Specifications"></textarea>
+                  <div style="font-size:11px; color:#888; margin-top:5px;">
+                      Folders to scan for files. Paths are relative to Project Root (if in Project) or Global Root.
+                  </div>
+              </div>
+          </div>
+          <div class="modal-footer">
+              <button class="list-btn" id="cancelSettingsBtn" style="padding: 6px 12px; border:1px solid #555;">Cancel</button>
+              <button class="action-btn" id="saveSettingsBtn">Save</button>
+          </div>
+      </div>
+  </div>
+
   <!-- Monaco Loader -->
   <script src="/polarion/copilot/resources/lib/monaco-editor/min/vs/loader.js"></script>
   <script>
     let editor;
     let currentFile = null;
     let originalContent = "";
-    const projectId = new URLSearchParams(window.location.search).get('projectId') || '';
+    
+    // Attempt to get projectId from query param OR window.top URL (if accessible)
+    let projectId = new URLSearchParams(window.location.search).get('projectId') || '';
+    
+    if (!projectId) {
+        try {
+            // Polarion URL: #/project/PROJECT_ID/administration/...
+            const topHash = window.top.location.hash; // e.g. #/project/avaWorkflowNew/administration/...
+            const match = topHash.match(/\/project\/([^\/]+)\//);
+            if (match && match[1]) {
+                projectId = match[1];
+                console.log("Detected projectId from Top URL:", projectId);
+            }
+        } catch (e) {
+            // Access denied to top frame (cross-origin) or other error
+            console.log("Could not detect projectId from top frame", e);
+        }
+    }
 
     require.config({ paths: { 'vs': '/polarion/copilot/resources/lib/monaco-editor/min/vs' } });
 
@@ -638,6 +700,8 @@
       document.getElementById('newBtn').onclick = createFile;
       document.getElementById('saveBtn').onclick = saveCurrentFile;
       document.getElementById('copyBtn').onclick = copyContent;
+      
+      setupSettings();
 
       // Keyboard Shortcuts
       document.addEventListener('keydown', (e) => {
@@ -799,15 +863,6 @@
                 renderFileList();
             };
             list.appendChild(li);
-        } else {
-             const header = document.createElement('li');
-             header.style.padding = '8px 15px';
-             header.style.fontSize = '11px';
-             header.style.fontWeight = 'bold';
-             header.style.textTransform = 'uppercase';
-             header.style.color = '#555';
-             header.textContent = 'EXPLORER';
-             list.appendChild(header);
         }
 
         renderTreeLevel(list, currentDirectory, 0);
@@ -873,34 +928,44 @@
              
              li.appendChild(actions);
              
-             // Click handling with Delay to prevent Double-Click conflict
+             // Click handling with Custom Double Click Logic
+             // Requirement: Faster double click to prevent accidental drill-down.
              let clickTimer = null;
-             
+             let lastClickTime = 0;
+             const DBL_CLICK_THRESHOLD = 180; // ms
+
              li.onclick = (e) => {
                  e.stopPropagation();
-                 if (clickTimer) {
-                     // Double click sequence likely starting, ignore this click or wait?
-                     // Actually, browser fires click then dbclick.
-                     // On first click, we set timer.
-                     return;
+                 const now = Date.now();
+                 
+                 if (now - lastClickTime < DBL_CLICK_THRESHOLD) {
+                     // DOUBLE CLICK DETECTED
+                     if (clickTimer) {
+                         clearTimeout(clickTimer);
+                         clickTimer = null;
+                     }
+                     
+                     // Drill down logic
+                     currentDirectory = fullFolderPath;
+                     collapsedFolders.clear(); // Clear collapses = expand all in new view
+                     renderFileList();
+                     
+                     lastClickTime = 0; // Reset
+                 } else {
+                     // POTENTIAL SINGLE CLICK
+                     lastClickTime = now;
+                     
+                     if (clickTimer) clearTimeout(clickTimer);
+                     
+                     clickTimer = setTimeout(() => {
+                         toggleFolder();
+                         clickTimer = null;
+                         lastClickTime = 0; 
+                     }, DBL_CLICK_THRESHOLD);
                  }
-                 clickTimer = setTimeout(() => {
-                     toggleFolder();
-                     clickTimer = null;
-                 }, 220); // 220ms delay to wait for potential double click
              };
              
-             li.ondblclick = (e) => {
-                 e.stopPropagation();
-                 if(clickTimer) {
-                    clearTimeout(clickTimer);
-                    clickTimer = null;
-                 }
-                 // Requirement 2: Jump into folder (drill down)
-                 currentDirectory = fullFolderPath;
-                 collapsedFolders.clear(); // Clear collapses = expand all in new view
-                 renderFileList();
-             };
+             // Removed native ondblclick to enforce strict timing
 
              container.appendChild(li);
              
@@ -1034,6 +1099,111 @@
 
     function createFile() {
         openNewFileModal();
+    }
+
+    function setupSettings() {
+        const modal = document.getElementById('settingsModal');
+        const btn = document.getElementById('settingsBtn');
+        const closeBtn = document.getElementById('cancelSettingsBtn');
+        const saveBtn = document.getElementById('saveSettingsBtn');
+        
+        if (btn) {
+            btn.onclick = () => {
+                modal.classList.add('visible');
+                loadSettings();
+            };
+        }
+        
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                modal.classList.remove('visible');
+            };
+        }
+        
+        if (saveBtn) {
+            saveBtn.onclick = () => {
+                saveSettings(); // Ensure this function is defined and calls saveSettings logic
+            };
+        }
+        
+        // Close on outside click
+        modal.onclick = (e) => {
+            if (e.target === modal) modal.classList.remove('visible');
+        };
+    }
+
+    function loadSettings() {
+        const textarea = document.getElementById('settingFolders');
+        if(!textarea) return;
+        
+        textarea.value = "Loading...";
+        textarea.disabled = true;
+        
+        const settingsPath = ".copilot/copilot-settings.json";
+        
+        fetch(getApiUrl('file/' + settingsPath))
+            .then(res => {
+                if (res.status === 404) {
+                    return "{}"; // Default empty
+                }
+                if (!res.ok) throw new Error("Status " + res.status);
+                return res.text();
+            })
+            .then(text => {
+                try {
+                    const json = JSON.parse(text);
+                    const folders = json.additionalFolders || [];
+                    textarea.value = folders.join('\n');
+                } catch (e) {
+                    console.error("Error parsing settings", e);
+                    textarea.value = ""; 
+                }
+            })
+            .catch(err => {
+                console.error("Error loading settings", err);
+                textarea.value = "";
+            })
+            .finally(() => {
+                textarea.disabled = false;
+            });
+    }
+
+    function saveSettings() {
+        const textarea = document.getElementById('settingFolders');
+        const saveBtn = document.getElementById('saveSettingsBtn');
+        const modal = document.getElementById('settingsModal');
+        
+        const content = textarea.value;
+        const folders = content.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+        
+        const json = {
+            additionalFolders: folders
+        };
+        
+        saveBtn.textContent = "Saving...";
+        saveBtn.disabled = true;
+        
+        const settingsPath = ".copilot/copilot-settings.json";
+        
+        fetch(getApiUrl('file/' + settingsPath), {
+            method: 'PUT',
+            body: JSON.stringify(json, null, 2)
+        })
+        .then(res => {
+            if (res.ok) {
+                modal.classList.remove('visible');
+                loadFiles(); // Reload file list to include new folders
+            } else {
+                res.json().then(d => alert("Error saving settings: " + (d.error || "Unknown")));
+            }
+        })
+        .catch(err => {
+            alert("Error saving settings: " + err);
+        })
+        .finally(() => {
+            saveBtn.textContent = "Save";
+            saveBtn.disabled = false;
+        });
     }
 
     function populateFolderSelect(selectId) {
