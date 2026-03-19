@@ -5,6 +5,6 @@
          point="com.polarion.portal.tomcat.webapps">
       <webapp
             contextRoot="src/main/webapp"
-            name="polarion/copilot"/>
+            name="polarion/file-editor"/>
    </extension>
 </plugin>

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Copilot Editor</title>
+  <title>File Editor</title>
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com data:;">
   <style>
@@ -572,7 +572,7 @@
   </div>
 
   <!-- Monaco Loader -->
-  <script src="/polarion/copilot/resources/lib/monaco-editor/min/vs/loader.js"></script>
+  <script src="/polarion/file-editor/resources/lib/monaco-editor/min/vs/loader.js"></script>
   <script>
     let editor;
     let currentFile = null;
@@ -596,15 +596,15 @@
         }
     }
 
-    require.config({ paths: { 'vs': '/polarion/copilot/resources/lib/monaco-editor/min/vs' } });
+    require.config({ paths: { 'vs': '/polarion/file-editor/resources/lib/monaco-editor/min/vs' } });
 
     window.MonacoEnvironment = {
       getWorkerUrl: function (workerId, label) {
         return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
           self.MonacoEnvironment = {
-            baseUrl: '/polarion/copilot/resources/lib/monaco-editor/min/'
+            baseUrl: '/polarion/file-editor/resources/lib/monaco-editor/min/'
           };
-          importScripts('/polarion/copilot/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
+          importScripts('/polarion/file-editor/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
         )}`;
       }
     };
@@ -825,7 +825,7 @@
         
         // Header: Current Folder Name
         if (currentDirectory) {
-            // e.g. .copilot/config/ -> split -> [ .copilot, config, "" ]
+            // e.g. .file-editor/config/ -> split -> [ .file-editor, config, "" ]
             const p = currentDirectory.replace(/\/$/, '');
             const parts = p.split('/');
             const currentName = parts[parts.length - 1]; // "config"
@@ -1139,7 +1139,7 @@
         textarea.value = "Loading...";
         textarea.disabled = true;
         
-        const settingsPath = ".copilot/copilot-settings.json";
+        const settingsPath = ".file-editor/file-editor-settings.json";
         
         fetch(getApiUrl('file/' + settingsPath))
             .then(res => {
@@ -1183,7 +1183,7 @@
         saveBtn.textContent = "Saving...";
         saveBtn.disabled = true;
         
-        const settingsPath = ".copilot/copilot-settings.json";
+        const settingsPath = ".file-editor/file-editor-settings.json";
         
         fetch(getApiUrl('file/' + settingsPath), {
             method: 'PUT',
@@ -1210,17 +1210,17 @@
         // Deprecated/Removed - logic moved to input suggestions
     }
 
-    // Helper: Collect all existing directories relative to .copilot/
+    // Helper: Collect all existing directories relative to .file-editor/
     function getAllDirectories() {
         const dirs = new Set();
         cachedFiles.forEach(f => {
-            // f.name is e.g. .copilot/folder/file.json
+            // f.name is e.g. .file-editor/folder/file.json
             const parts = f.name.split('/');
             // Remove filename
             if(parts.length > 1) {
                 parts.pop(); 
-                // Remove .copilot
-                if(parts[0] === '.copilot') parts.shift();
+                // Remove .file-editor
+                if(parts[0] === '.file-editor') parts.shift();
                 
                 // Add all prefix combos
                 // e.g. if path is A/B/C, add A, A/B, A/B/C
@@ -1384,9 +1384,9 @@
             if(lastSlash !== -1) dir = dir.substring(0, lastSlash);
             else dir = ""; // root
             
-            // Normalize .copilot
-            if(dir.startsWith('.copilot/')) dir = dir.substring(9);
-            else if(dir === '.copilot') dir = "";
+            // Normalize .file-editor
+            if(dir.startsWith('.file-editor/')) dir = dir.substring(13);
+            else if(dir === '.file-editor') dir = "";
             
             if(dir) initialPath = dir + "/";
         }
@@ -1458,19 +1458,19 @@
         
         if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
         
-        // Prepend .copilot if needed. Since UI shows .copilot prefix static, 
-        // the input is "sub/file.json". So full path is ".copilot/sub/file.json"
+        // Prepend .file-editor if needed. Since UI shows .file-editor prefix static, 
+        // the input is "sub/file.json". So full path is ".file-editor/sub/file.json"
         
         let fullPath = nameInput;
-        // Ensure no double .copilot if user typed it
-        if (!fullPath.startsWith('.copilot/')) {
+        // Ensure no double .file-editor if user typed it
+        if (!fullPath.startsWith('.file-editor/')) {
             // Actually our backend expects relative to storage root. 
-            // In editor.html logic we often see .copilot prefix being stripped/added.
+            // In editor.html logic we often see .file-editor prefix being stripped/added.
             // Let's look at `loadFiles`: it processes raw paths.
             // If I save "foo.json", where does it go?
             // "api/config/file/foo.json".
-            // If the server enforces .copilot root, we should likely send ".copilot/foo.json".
-            fullPath = '.copilot/' + fullPath;
+            // If the server enforces .file-editor root, we should likely send ".file-editor/foo.json".
+            fullPath = '.file-editor/' + fullPath;
         }
 
         closeNewFileModal();
@@ -1502,9 +1502,9 @@
         fileToRename = oldName;
 
         let displayPath = oldName;
-        // Normalize for display (remove .copilot prefix for user input if we treat it as root)
-        if(displayPath.startsWith('.copilot/')) displayPath = displayPath.substring(9);
-        else if (displayPath === 'copilot' || displayPath === '.copilot') displayPath = "";
+        // Normalize for display (remove .file-editor prefix for user input if we treat it as root)
+        if(displayPath.startsWith('.file-editor/')) displayPath = displayPath.substring(13);
+        else if (displayPath === 'file-editor' || displayPath === '.file-editor') displayPath = "";
         
         const input = document.getElementById('renameFileName');
         const errorDiv = document.getElementById('renameFileError');
@@ -1579,9 +1579,9 @@
         if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
         
         let newPath = nameInput;
-        // Re-add .copilot prefix if needed
-         if (!newPath.startsWith('.copilot/')) {
-            newPath = '.copilot/' + newPath;
+        // Re-add .file-editor prefix if needed
+         if (!newPath.startsWith('.file-editor/')) {
+            newPath = '.file-editor/' + newPath;
         }
 
         closeRenameModal();
@@ -1643,10 +1643,10 @@
     <div class="modal-content">
         <h3>Create New File</h3>
         <div class="modal-field">
-            <label>Location (Inside .copilot)</label>
+            <label>Location (Inside .file-editor)</label>
             <div class="path-container" style="position:relative;">
-                <span class="path-prefix" title="All files are enforced to be in .copilot folder" style="min-width:55px;">.copilot/</span>
-                <input type="text" id="newFileName" name="polarion_copilot_abs_path_field_xyz" class="path-input" 
+                <span class="path-prefix" title="All files are enforced to be in .file-editor folder" style="min-width:55px;">.file-editor/</span>
+                <input type="text" id="newFileName" name="polarion_file_editor_abs_path_field_xyz" class="path-input" 
                        placeholder="folder/subfolder/filename.json" autocomplete="off" list="autocompleteOff"
                        spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
                 
@@ -1669,10 +1669,10 @@
     <div class="modal-content">
         <h3>Rename File</h3>
         <div class="modal-field">
-            <label>Location (Inside .copilot)</label>
+            <label>Location (Inside .file-editor)</label>
             <div class="path-container" style="position:relative;">
-                <span class="path-prefix" title="All files are enforced to be in .copilot folder" style="min-width:55px;">.copilot/</span>
-                <input type="text" id="renameFileName" name="polarion_copilot_rename_field_xyz" class="path-input" 
+                <span class="path-prefix" title="All files are enforced to be in .file-editor folder" style="min-width:55px;">.file-editor/</span>
+                <input type="text" id="renameFileName" name="polarion_file_editor_rename_field_xyz" class="path-input" 
                        autocomplete="off" list="autocompleteOff" spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
                 
                 <div id="renameFileSuggestions" class="suggestions-dropdown"></div>

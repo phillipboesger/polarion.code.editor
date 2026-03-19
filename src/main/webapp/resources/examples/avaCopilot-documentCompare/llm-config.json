@@ -1,8 +1,0 @@
-{
-  "providerId": "openai",
-  "baseUrl": "https://api.openai.com/v1/chat/completions",
-  "model": "gpt-5-mini",
-  "apiKey": "gptKey",
-  "systemPrompt": "You are a helpful AI assistant for Polarion ALM.",
-  "userPrompt": "Here is the content to process:\n\n${currentContent}"
-}
