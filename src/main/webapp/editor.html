@@ -666,12 +666,139 @@
         });
     }
 
+    /**
+     * Builds a URL for the legacy /api/config/* endpoints (file list, file CRUD, rename).
+     */
     function getApiUrl(endpoint) {
       let url = 'api/config/' + endpoint;
       if (projectId) {
         url += (url.includes('?') ? '&' : '?') + 'projectId=' + encodeURIComponent(projectId);
       }
       return url;
+    }
+
+    /**
+     * Builds a URL for top-level /api/* endpoints (e.g. /api/files/tree).
+     * Unlike getApiUrl(), this does NOT prepend 'config/' to the path.
+     */
+    function buildRootApiUrl(endpoint) {
+      let url = 'api/' + endpoint;
+      if (projectId) {
+        url += (url.includes('?') ? '&' : '?') + 'projectId=' + encodeURIComponent(projectId);
+      }
+      return url;
+    }
+
+    /** Maps a file extension to a Monaco editor language identifier. */
+    function getMonacoLanguage(fileName) {
+      const ext = (fileName.split('.').pop() || '').toLowerCase();
+      const langMap = {
+        'json':       'json',
+        'xml':        'xml',
+        'xsd':        'xml',
+        'wsdl':       'xml',
+        'pom':        'xml',
+        'html':       'html',
+        'htm':        'html',
+        'xhtml':      'html',
+        'js':         'javascript',
+        'mjs':        'javascript',
+        'cjs':        'javascript',
+        'ts':         'typescript',
+        'tsx':        'typescript',
+        'css':        'css',
+        'scss':       'scss',
+        'less':       'less',
+        'yaml':       'yaml',
+        'yml':        'yaml',
+        'md':         'markdown',
+        'markdown':   'markdown',
+        'sh':         'shell',
+        'bash':       'shell',
+        'zsh':        'shell',
+        'bat':        'bat',
+        'cmd':        'bat',
+        'ps1':        'powershell',
+        'py':         'python',
+        'java':       'java',
+        'kt':         'kotlin',
+        'groovy':     'groovy',
+        'gradle':     'groovy',
+        'sql':        'sql',
+        'properties': 'ini',
+        'ini':        'ini',
+        'toml':       'ini',
+        'cfg':        'ini',
+        'conf':       'ini',
+        'vm':         'velocity',
+        'ftl':        'plaintext',
+        'txt':        'plaintext',
+        'log':        'plaintext',
+        'csv':        'plaintext',
+        'c':          'c',
+        'cpp':        'cpp',
+        'h':          'cpp',
+        'cs':         'csharp',
+        'go':         'go',
+        'rb':         'ruby',
+        'php':        'php',
+        'rs':         'rust',
+        'swift':      'swift',
+        'r':          'r',
+        'dockerfile': 'dockerfile',
+      };
+      return langMap[ext] || 'plaintext';
+    }
+
+    /** Returns an icon character for a given file name / extension. */
+    function getFileIcon(fileName) {
+      const ext = (fileName.split('.').pop() || '').toLowerCase();
+      const iconMap = {
+        'json':       '{}',
+        'xml':        '</>',
+        'xsd':        '</>',
+        'html':       '🌐',
+        'htm':        '🌐',
+        'xhtml':      '🌐',
+        'js':         '⚡',
+        'mjs':        '⚡',
+        'ts':         '📘',
+        'tsx':        '📘',
+        'css':        '🎨',
+        'scss':       '🎨',
+        'less':       '🎨',
+        'yaml':       '📋',
+        'yml':        '📋',
+        'md':         '📝',
+        'markdown':   '📝',
+        'sh':         '💻',
+        'bash':       '💻',
+        'bat':        '💻',
+        'ps1':        '💻',
+        'py':         '🐍',
+        'java':       '☕',
+        'kt':         '🅺',
+        'groovy':     '🎵',
+        'sql':        '🗃',
+        'vm':         '📄',
+        'properties': '⚙',
+        'ini':        '⚙',
+        'toml':       '⚙',
+        'conf':       '⚙',
+        'cfg':        '⚙',
+        'txt':        '📄',
+        'log':        '📋',
+        'csv':        '📊',
+        'dockerfile': '🐳',
+        'go':         '📦',
+        'rb':         '💎',
+        'php':        '🐘',
+        'rs':         '⚙',
+        'c':          '🔧',
+        'cpp':        '🔧',
+        'cs':         '🔷',
+      };
+      return iconMap[ext] || '📄';
     }
 
     function setupEventListeners() {
@@ -984,11 +1111,10 @@
              if (file.name === currentFile) li.classList.add('active');
 
              const displayName = file.name.substring(pathPrefix.length);
-             const isJson = file.name.endsWith('.json');
              
              const icon = document.createElement('span');
              icon.className = 'file-icon';
-             icon.textContent = isJson ? '{}' : '📄';
+             icon.textContent = getFileIcon(file.name);
              li.appendChild(icon);
 
              const span = document.createElement('span');
@@ -1048,8 +1174,7 @@
       // Update Active State
       renderFileList(); // simpler re-render to update active class
 
-      const ext = fileName.split('.').pop();
-      const lang = ext === 'xml' ? 'xml' : (ext === 'json' ? 'json' : 'plaintext');
+      const lang = getMonacoLanguage(fileName);
 
       fetch(getApiUrl('file/' + fileName))
         .then(res => res.text())
@@ -1444,9 +1569,10 @@
         if (!/^[a-zA-Z0-9_\-\./]+$/.test(path)) {
             return "Name contains invalid characters (allowed: a-z, 0-9, ., -, _, /)";
         }
-        // If it is a file (not a folder), enforce config extension
-        if (!isFolder && !/\.(json|xml)$/i.test(path)) {
-            return "Configuration files must end with .json or .xml";
+        // For files, ensure a filename is present (not just a path separator)
+        if (!isFolder) {
+            const filename = path.split('/').pop();
+            if (!filename) return "Please enter a file name";
         }
         return null;
     }
@@ -1475,7 +1601,9 @@
 
         closeNewFileModal();
         
-        const content = "{}"; 
+        // Use appropriate default content for common file types
+        const ext = fullPath.split('.').pop().toLowerCase();
+        const content = ext === 'json' ? '{}' : ''; 
 
         fetch(getApiUrl('file/' + fullPath), {
             method: 'PUT',
@@ -1647,13 +1775,13 @@
             <div class="path-container" style="position:relative;">
                 <span class="path-prefix" title="All files are enforced to be in .file-editor folder" style="min-width:55px;">.file-editor/</span>
                 <input type="text" id="newFileName" name="polarion_file_editor_abs_path_field_xyz" class="path-input" 
-                       placeholder="folder/subfolder/filename.json" autocomplete="off" list="autocompleteOff"
+                       placeholder="folder/subfolder/filename.yaml" autocomplete="off" list="autocompleteOff"
                        spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
                 
                 <div id="newFileSuggestions" class="suggestions-dropdown"></div>
             </div>
             <div style="font-size:11px; color:#666; margin-top:6px; line-height:1.4;">
-                Type a path. Use '/' to cascade folders. Select existing folders with arrows/enter.
+                Type a path. Use '/' to cascade folders. Any file extension is supported (e.g. .json, .xml, .yaml, .sh, .md, …).
             </div>
             <div id="newFileError" class="validation-error"></div>
         </div>
