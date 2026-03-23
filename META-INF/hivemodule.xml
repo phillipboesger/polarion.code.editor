@@ -9,4 +9,15 @@
             projectScope="true" projectGroupScope="true" repositoryScope="true" />
     </contribution>
 
+    <service-point id="fileEditorNavigationExtender"
+        interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
+        <invoke-factory>
+            <construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
+        </invoke-factory>
+    </service-point>
+
+    <contribution configuration-id="customNavigationExtenders">
+        <extenders extender="fileEditorNavigationExtender"/>
+    </contribution>
+
 </module>

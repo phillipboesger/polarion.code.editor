@@ -6,6 +6,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,6 +50,72 @@ public class FileEditorService {
 
 	public List<RepoFile> getAllConfigurations() {
 		return getFiles(".json");
+	}
+
+	/**
+	 * Returns all files in the configured directories regardless of file extension.
+	 */
+	public List<RepoFile> getAllFiles() {
+		return getFiles(null);
+	}
+
+	/**
+	 * Returns the direct children (files and sub-folders) of the given relative path.
+	 * <p>
+	 * <b>Folder detection heuristic:</b> an entry is classified as a folder when its
+	 * {@code getLastComponentExtension()} returns an empty or {@code null} value.
+	 * This covers the vast majority of real-world SVN structures. Files without an
+	 * extension (e.g. {@code Dockerfile}, {@code Makefile}, {@code LICENSE}) will be
+	 * mis-classified as folders by this heuristic. If the Polarion API version in use
+	 * exposes a reliable {@code isDirectory()} / {@code isContainer()} method on
+	 * {@code IRepositoryReadOnlyConnection}, prefer that over this approach.
+	 * </p>
+	 * The result is sorted: folders first, then files, each group alphabetically.
+	 * This method is intended for lazy / incremental tree loading.
+	 *
+	 * @param  path relative path within the configured root (e.g. ".file-editor/config/")
+	 * @return      list of entries, each with keys "name", "path", "type" ("file"|"folder")
+	 */
+	public List<Map<String, String>> getDirectoryEntries(String path) {
+		ILocation rootLoc;
+		if(hasProjectScope()) {
+			rootLoc = PolarionUtils.getTrackerProject(projectId).getLocation();
+		}
+		else {
+			rootLoc = Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
+		}
+
+		String cleanPath = (path == null || path.isBlank()) ? SEARCH_PATH
+				: path.replaceAll("^/+|/+$", "");
+		ILocation searchLoc = rootLoc.append(cleanPath);
+
+		if(!repoConnection.exists(searchLoc)) { return Collections.emptyList(); }
+
+		List<Map<String, String>> entries = new ArrayList<>();
+		for(Object obj : repoConnection.getSubLocations(searchLoc, false)) {
+			ILocation childLoc = (ILocation) obj;
+			String childName = childLoc.getLastComponent();
+			String childRelPath = getRelativePath(childLoc, rootLoc);
+			String ext = childLoc.getLastComponentExtension();
+			// Heuristic: treat entries without a file extension as folders (see method javadoc for limitations)
+			boolean isDir = (ext == null || ext.isEmpty());
+
+			Map<String, String> entry = new HashMap<>();
+			entry.put("name", childName);
+			entry.put("path", isDir ? childRelPath + PATH_SEP : childRelPath);
+			entry.put("type", isDir ? "folder" : "file");
+			entries.add(entry);
+		}
+
+		// Sort: folders first, then files; each group alphabetically
+		entries.sort((a, b) -> {
+			boolean aFolder = "folder".equals(a.get("type"));
+			boolean bFolder = "folder".equals(b.get("type"));
+			if(aFolder != bFolder) return aFolder ? -1 : 1;
+			return a.get("name").compareToIgnoreCase(b.get("name"));
+		});
+
+		return entries;
 	}
 
 	public RepoFile getFile(String fileName)
@@ -218,9 +285,11 @@ public class FileEditorService {
 		if(repoConnection.exists(searchLoc)) {
 			try {
 				for(Object location : repoConnection.getSubLocations(searchLoc, true)) {
-					if(Objects.equals(extension, ((ILocation) location).getLastComponentExtension())) {
-						String relativePath = getRelativePath((ILocation) location, relativeRoot);
-						foundFiles.add(loadRepoFileForLocation(projectIdForScope, (ILocation) location, relativePath, false));
+					ILocation loc = (ILocation) location;
+					// When extension is null, include every file; otherwise filter by extension
+					if(extension == null || Objects.equals(extension, loc.getLastComponentExtension())) {
+						String relativePath = getRelativePath(loc, relativeRoot);
+						foundFiles.add(loadRepoFileForLocation(projectIdForScope, loc, relativePath, false));
 					}
 				}
 			}
