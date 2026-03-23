@@ -2,6 +2,7 @@ package boesger.polarion.fileeditor.api;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +20,10 @@ import com.google.gson.GsonBuilder;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.security.ISecurityService;
 
-import boesger.polarion.fileeditor.core.fileeditor.FileEditorService;
-import boesger.polarion.fileeditor.core.fileeditor.RepoFile;
-import boesger.polarion.fileeditor.core.logger.PluginLogger;
+import boesger.polarion.fileeditor.exception.FileEditorException;
+import boesger.polarion.fileeditor.logger.PluginLogger;
+import boesger.polarion.fileeditor.model.RepoFile;
+import boesger.polarion.fileeditor.service.FileEditorService;
 
 /**
  * Generic Servlet for Polarion File Editor.
@@ -34,7 +36,7 @@ public class FileEditorServlet extends HttpServlet {
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 	private static final String PARAM_PROJECT_ID = "projectId";
-	private static final String PATH_CONFIG_FILE = "/config/file/";
+	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
 
 	private ISecurityService securityService;
@@ -54,7 +56,7 @@ public class FileEditorServlet extends HttpServlet {
 		log.info("GET Request: " + pathInfo + MSG_PROJECT_ID + projectId);
 
 		if(securityService.getCurrentUser() == null) {
-			resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
+			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
 			return;
 		}
 
@@ -70,18 +72,13 @@ public class FileEditorServlet extends HttpServlet {
 				handleGetFile(projectId, fileName, resp);
 			}
 			else {
-				resp.sendError(HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
+				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
 			}
 		}
-		catch(Exception e) {
+		catch(IOException e) {
 			log.error("Error in GET " + pathInfo, e);
 			resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-			try {
-				sendJson(resp, "{\"error\": \"" + e.getMessage() + "\"}");
-			}
-			catch(IOException ioException) {
-				log.error("Error sending JSON error response", ioException);
-			}
+			sendJsonSafely(resp, "{\"error\": \"" + e.getMessage() + "\"}");
 		}
 	}
 
@@ -93,23 +90,23 @@ public class FileEditorServlet extends HttpServlet {
 		log.info("PUT Request: " + pathInfo + MSG_PROJECT_ID + projectId);
 
 		if(securityService.getCurrentUser() == null) {
-			resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
-				String content = IOUtils.toString(req.getInputStream(), "UTF-8");
+				String content = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
 				handleUpdateFile(projectId, fileName, content, resp);
 			}
 			else {
-				resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(Exception e) {
+		catch(FileEditorException | IOException e) {
 			log.error("Error in PUT " + pathInfo, e);
-			resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
+			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
 
@@ -121,7 +118,7 @@ public class FileEditorServlet extends HttpServlet {
 		log.info("DELETE Request: " + pathInfo + MSG_PROJECT_ID + projectId);
 
 		if(securityService.getCurrentUser() == null) {
-			resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
 
@@ -131,12 +128,12 @@ public class FileEditorServlet extends HttpServlet {
 				handleDeleteFile(projectId, fileName, resp);
 			}
 			else {
-				resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(Exception e) {
+		catch(FileEditorException | IOException e) {
 			log.error("Error in DELETE " + pathInfo, e);
-			resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
+			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
 
@@ -146,30 +143,35 @@ public class FileEditorServlet extends HttpServlet {
 		String projectId = req.getParameter(PARAM_PROJECT_ID);
 
 		if(securityService.getCurrentUser() == null) {
-			resp.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
 
 		try {
 			if("/config/rename".equals(pathInfo)) {
-				String body = IOUtils.toString(req.getInputStream(), "UTF-8");
-				RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
-
-				if(renameReq == null || renameReq.oldName == null || renameReq.newName == null) {
-					resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing oldName or newName");
-					return;
-				}
-
-				handleRenameFile(projectId, renameReq.oldName, renameReq.newName, resp);
+				handlePostRename(req, projectId, resp);
 			}
 			else {
-				resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(Exception e) {
+		catch(FileEditorException | IOException e) {
 			log.error("Error in POST " + pathInfo, e);
-			resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
+			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
+	}
+
+	private void handlePostRename(HttpServletRequest req, String projectId, HttpServletResponse resp)
+			throws IOException, FileEditorException {
+		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
+
+		if(renameReq == null || renameReq.oldName == null || renameReq.newName == null) {
+			sendErrorSafely(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing oldName or newName");
+			return;
+		}
+
+		handleRenameFile(projectId, renameReq.oldName, renameReq.newName, resp);
 	}
 
 	private void handleListConfigs(String projectId, HttpServletResponse resp) throws IOException {
@@ -183,22 +185,22 @@ public class FileEditorServlet extends HttpServlet {
 		sendJson(resp, gson.toJson(result));
 	}
 
-	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws Exception {
+	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws IOException {
 		FileEditorService editor = new FileEditorService(projectId);
 		RepoFile file = editor.getFile(fileName);
 		resp.setContentType("text/plain");
-		resp.setCharacterEncoding("UTF-8");
+		resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		resp.getWriter().write(file.getContent());
 	}
 
 	private void handleUpdateFile(String projectId, String fileName, String content, HttpServletResponse resp)
-			throws Exception {
+			throws IOException, FileEditorException {
 		FileEditorService editor = new FileEditorService(projectId);
 		editor.updateFile(fileName, content);
 		sendResponse(resp, "File updated", 200);
 	}
 
-	private void handleDeleteFile(String projectId, String fileName, HttpServletResponse resp) throws Exception {
+	private void handleDeleteFile(String projectId, String fileName, HttpServletResponse resp) throws IOException, FileEditorException {
 		FileEditorService editor = new FileEditorService(projectId);
 		boolean deleted = editor.deleteFile(fileName);
 		if(deleted) {
@@ -210,22 +212,42 @@ public class FileEditorServlet extends HttpServlet {
 		}
 	}
 
-	private void handleRenameFile(String projectId, String oldName, String newName, HttpServletResponse resp) throws Exception {
+	private void handleRenameFile(String projectId, String oldName, String newName, HttpServletResponse resp) throws IOException, FileEditorException {
 		FileEditorService editor = new FileEditorService(projectId);
+		editor.renameFile(oldName, newName);
+		sendResponse(resp, "{\"status\": \"renamed\"}", 200);
+	}
+
+	private void sendErrorSafely(HttpServletResponse resp, int code) {
 		try {
-			editor.renameFile(oldName, newName);
-			sendResponse(resp, "{\"status\": \"renamed\"}", 200);
+			resp.sendError(code);
 		}
-		catch(Exception e) {
-			log.error("Rename failed", e);
-			resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-			sendJson(resp, "{\"error\": \"" + e.getMessage() + "\"}");
+		catch(IOException ioEx) {
+			log.error("Failed to send error response: " + code, ioEx);
+		}
+	}
+
+	private void sendErrorSafely(HttpServletResponse resp, int code, String message) {
+		try {
+			resp.sendError(code, message);
+		}
+		catch(IOException ioEx) {
+			log.error("Failed to send error response: " + code, ioEx);
+		}
+	}
+
+	private void sendJsonSafely(HttpServletResponse resp, String json) {
+		try {
+			sendJson(resp, json);
+		}
+		catch(IOException ioEx) {
+			log.error("Error sending JSON error response", ioEx);
 		}
 	}
 
 	private void sendJson(HttpServletResponse resp, String json) throws IOException {
 		resp.setContentType("application/json");
-		resp.setCharacterEncoding("UTF-8");
+		resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		PrintWriter out = resp.getWriter();
 		out.print(json);
 		out.flush();

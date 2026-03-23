@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.core.fileeditor;
+package boesger.polarion.fileeditor.service;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,17 +20,20 @@ import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 import com.polarion.subterra.base.location.Location;
 
-import boesger.polarion.fileeditor.core.fileeditor.actions.CopyFileAction;
-import boesger.polarion.fileeditor.core.fileeditor.actions.DeleteFileAction;
-import boesger.polarion.fileeditor.core.fileeditor.actions.RenameFileAction;
-import boesger.polarion.fileeditor.core.fileeditor.actions.SaveFileAction;
-import boesger.polarion.fileeditor.core.logger.PluginLogger;
-import boesger.polarion.fileeditor.utils.PolarionUtils;
+import boesger.polarion.fileeditor.exception.FileEditorException;
+import boesger.polarion.fileeditor.logger.PluginLogger;
+import boesger.polarion.fileeditor.model.RepoFile;
+import boesger.polarion.fileeditor.service.action.CopyFileAction;
+import boesger.polarion.fileeditor.service.action.DeleteFileAction;
+import boesger.polarion.fileeditor.service.action.RenameFileAction;
+import boesger.polarion.fileeditor.service.action.SaveFileAction;
+import boesger.polarion.fileeditor.util.PolarionUtils;
 
 public class FileEditorService {
 
 	private static final PluginLogger log = new PluginLogger(FileEditorService.class);
 	private static final String SEARCH_PATH = ".file-editor";
+	private static final String PATH_SEP = "/";
 
 	private String projectId = null;
 	private final IRepositoryReadOnlyConnection repoConnection;
@@ -53,14 +56,14 @@ public class FileEditorService {
 		return loadRepoFileForLocation(projectId, getFileRepoLocation(projectId, fileName), fileName, true);
 	}
 
-	public Boolean copyFile(String currentFileName, String newFileName) throws Exception {
+	public Boolean copyFile(String currentFileName, String newFileName) throws FileEditorException {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
 
 		return PolarionUtils.executeInTransactionWithResult(new CopyFileAction(currentFileLocation, newFileLocation));
 	}
 
-	public void renameFile(String currentFileName, String newFileName) throws Exception {
+	public void renameFile(String currentFileName, String newFileName) throws FileEditorException {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
 
@@ -69,7 +72,7 @@ public class FileEditorService {
 		PolarionUtils.executeInTransaction(new RenameFileAction(currentFileLocation, newFileLocation));
 	}
 
-	public Boolean createFile(String fileName, String content) throws Exception {
+	public Boolean createFile(String fileName, String content) throws FileEditorException {
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, fileName);
 
 		if(repoConnection.exists(newFileLocation)) { throw new FileEditorException(String.format("A file with the name '%s' exists already!", fileName)); }
@@ -77,17 +80,17 @@ public class FileEditorService {
 		return PolarionUtils.executeInTransactionWithResult(new SaveFileAction(newFileLocation, content));
 	}
 
-	public Boolean saveFile(String fileName, String content) throws Exception {
+	public Boolean saveFile(String fileName, String content) throws FileEditorException {
 		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
 		return PolarionUtils.executeInTransactionWithResult(new SaveFileAction(fileLocation, content));
 	}
 
-	public boolean deleteFile(String fileName) throws Exception {
+	public boolean deleteFile(String fileName) throws FileEditorException {
 		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
 		return PolarionUtils.executeInTransactionWithResult(new DeleteFileAction(fileLocation));
 	}
 
-	public void updateFile(String fileName, String content) throws Exception {
+	public void updateFile(String fileName, String content) throws IOException, FileEditorException {
 		try {
 			createFile(fileName, content);
 		}
@@ -131,7 +134,7 @@ public class FileEditorService {
 	public String loadFileContent(String projectId, String fileName, String revision)
 			throws IllegalArgumentException, IOException {
 		ILocation fileLocation = getFileRepoLocation(projectId, fileName);
-		if(Objects.nonNull(revision) && !revision.isBlank()) {
+		if(fileLocation != null && Objects.nonNull(revision) && !revision.isBlank()) {
 			fileLocation = fileLocation.setRevision(revision);
 		}
 		return loadFileContent(fileLocation);
@@ -142,7 +145,8 @@ public class FileEditorService {
 			ILocation loc = getFileRepoLocation(projectId, fileName);
 			return repoConnection.exists(loc);
 		}
-		catch(Exception e) {
+		catch(RepositoryConfigurationException | IllegalArgumentException e) {
+			log.debug("File existence check failed for '" + fileName + "': " + e.getMessage());
 			return false;
 		}
 	}
@@ -158,56 +162,55 @@ public class FileEditorService {
 	private List<RepoFile> getFiles(String extension) {
 		List<RepoFile> files = new ArrayList<>();
 
-		// 1. Load project files (relative path)
 		if(hasProjectScope()) {
 			ILocation projLoc = PolarionUtils.getTrackerProject(projectId).getLocation();
-			ILocation searchLoc = projLoc.append(SEARCH_PATH);
-			files.addAll(loadFilesFromLocation(searchLoc, extension, projectId, projLoc));
+			files.addAll(loadFilesFromLocation(projLoc.append(SEARCH_PATH), extension, projectId, projLoc));
 		}
 
-		// 2. Load global files (full path from root)
-		ILocation globalRoot = Location.getLocationWithRepository(IRepositoryService.DEFAULT, "/");
-		ILocation globalSearchLoc = globalRoot.append(SEARCH_PATH);
-		List<RepoFile> globalFiles = loadFilesFromLocation(globalSearchLoc, extension, null, globalRoot);
+		ILocation globalRoot = Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
+		List<RepoFile> globalFiles = loadFilesFromLocation(globalRoot.append(SEARCH_PATH), extension, null, globalRoot);
 
-		// 2.5 Load additional folders from configuration
-		List<String> additionalFolders = getAdditionalFolders();
+		loadAdditionalFolderFiles(getAdditionalFolders(), globalRoot, extension, files, globalFiles);
+
+		if(hasProjectScope()) {
+			removeDuplicateGlobalFiles(globalFiles);
+		}
+
+		files.addAll(globalFiles);
+		return files.stream()
+				.sorted((p1, p2) -> p1.getFileName().compareTo(p2.getFileName()))
+				.collect(Collectors.toList());
+	}
+
+	private void loadAdditionalFolderFiles(List<String> additionalFolders, ILocation globalRoot,
+			String extension, List<RepoFile> projectFiles, List<RepoFile> globalFiles) {
 		for(String folder : additionalFolders) {
 			if(folder == null || folder.trim().isEmpty()) continue;
 
 			ILocation root = hasProjectScope() ? PolarionUtils.getTrackerProject(projectId).getLocation() : globalRoot;
-			ILocation searchLoc = root.append(folder);
-
-			List<RepoFile> addFiles = loadFilesFromLocation(searchLoc, extension, hasProjectScope() ? projectId : null, root);
+			List<RepoFile> addFiles = loadFilesFromLocation(root.append(folder), extension,
+					hasProjectScope() ? projectId : null, root);
 
 			if(hasProjectScope()) {
-				files.addAll(addFiles);
+				projectFiles.addAll(addFiles);
 			}
 			else {
 				globalFiles.addAll(addFiles);
 			}
 		}
+	}
 
-		// 3. Deduplicate: Remove files from Global list that are already covered by Project scope
-		if(hasProjectScope()) {
-			String projectPathPrefix = PolarionUtils.getTrackerProject(projectId).getLocation().getLocationPath();
-			if(!projectPathPrefix.startsWith("/")) {
-				projectPathPrefix = "/" + projectPathPrefix;
-			}
-
-			String prefix = projectPathPrefix;
-			globalFiles.removeIf(f -> {
-				String path = f.getLocation().getLocationPath();
-				if(!path.startsWith("/")) path = "/" + path;
-				return path.startsWith(prefix + "/");
-			});
+	private void removeDuplicateGlobalFiles(List<RepoFile> globalFiles) {
+		String projectPathPrefix = PolarionUtils.getTrackerProject(projectId).getLocation().getLocationPath();
+		if(!projectPathPrefix.startsWith(PATH_SEP)) {
+			projectPathPrefix = PATH_SEP + projectPathPrefix;
 		}
-
-		files.addAll(globalFiles);
-
-		return files.stream()
-				.sorted((p1, p2) -> p1.getFileName().compareTo(p2.getFileName()))
-				.collect(Collectors.toList());
+		String prefix = projectPathPrefix;
+		globalFiles.removeIf(f -> {
+			String path = f.getLocation().getLocationPath();
+			if(!path.startsWith(PATH_SEP)) path = PATH_SEP + path;
+			return path.startsWith(prefix + PATH_SEP);
+		});
 	}
 
 	private List<RepoFile> loadFilesFromLocation(ILocation searchLoc, String extension, String projectIdForScope, ILocation relativeRoot) {
@@ -221,8 +224,8 @@ public class FileEditorService {
 					}
 				}
 			}
-			catch(Exception e) {
-				e.printStackTrace();
+			catch(IOException e) {
+				log.error("Error loading files from location: " + searchLoc, e);
 			}
 		}
 		return foundFiles;
@@ -301,7 +304,7 @@ public class FileEditorService {
 				log.info("Settings file not found at " + settingsLoc.getLocationPath());
 			}
 		}
-		catch(Exception e) {
+		catch(IOException | RepositoryConfigurationException e) {
 			log.error("Error loading additional folders", e);
 		}
 		return Collections.emptyList();
