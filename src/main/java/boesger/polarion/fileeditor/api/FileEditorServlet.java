@@ -37,6 +37,7 @@ public class FileEditorServlet extends HttpServlet {
 
 	private static final String PARAM_PROJECT_ID = "projectId";
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
+	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
 
 	private ISecurityService securityService;
@@ -70,6 +71,10 @@ public class FileEditorServlet extends HttpServlet {
 			else if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
 				handleGetFile(projectId, fileName, resp);
+			}
+			else if(PATH_FILES_TREE.equals(pathInfo)) {
+				String path = req.getParameter("path");
+				handleFilesTree(projectId, path, resp);
 			}
 			else {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
@@ -176,13 +181,19 @@ public class FileEditorServlet extends HttpServlet {
 
 	private void handleListConfigs(String projectId, HttpServletResponse resp) throws IOException {
 		FileEditorService editor = new FileEditorService(projectId);
-		List<RepoFile> files = editor.getAllConfigurations();
+		List<RepoFile> files = editor.getAllFiles();
 		List<Map<String, String>> result = files.stream().map(f -> {
 			Map<String, String> m = new HashMap<>();
 			m.put("name", f.getFileName());
 			return m;
 		}).collect(Collectors.toList());
 		sendJson(resp, gson.toJson(result));
+	}
+
+	private void handleFilesTree(String projectId, String path, HttpServletResponse resp) throws IOException {
+		FileEditorService editor = new FileEditorService(projectId);
+		List<Map<String, String>> entries = editor.getDirectoryEntries(path);
+		sendJson(resp, gson.toJson(entries));
 	}
 
 	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws IOException {
