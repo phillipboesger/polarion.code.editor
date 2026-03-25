@@ -993,6 +993,14 @@
         }
 
         renderTreeLevel(list, currentDirectory, 0);
+
+        // Show empty-state hint when there are no files at root level
+        if (!currentDirectory && cachedFiles.length === 0) {
+            const empty = document.createElement('li');
+            empty.style.cssText = 'padding: 20px 15px; color: #666; font-size: 12px; line-height: 1.6; text-align: center;';
+            empty.innerHTML = 'No files found.<br>Click <strong style="color:var(--accent)">New File</strong> in the toolbar to create your first file.';
+            list.appendChild(empty);
+        }
     }
 
     function renderTreeLevel(container, pathPrefix, level) {
@@ -1523,7 +1531,7 @@
         btn.disabled = true; 
         errorDiv.textContent = "";
 
-        document.getElementById('newFileModal').classList.remove('hidden');
+        document.getElementById('newFileModal').classList.add('visible');
         input.focus();
         
         // Setup Logic
@@ -1558,7 +1566,7 @@
     }
 
     function closeNewFileModal() {
-        document.getElementById('newFileModal').classList.add('hidden');
+        document.getElementById('newFileModal').classList.remove('visible');
     }
 
     function validatePathInput(path, isFolder) {
@@ -1641,7 +1649,7 @@
         btn.disabled = false;
         errorDiv.textContent = "";
 
-        document.getElementById('renameFileModal').classList.remove('hidden');
+        document.getElementById('renameFileModal').classList.add('visible');
         input.focus();
 
         // Setup Logic
@@ -1688,7 +1696,7 @@
     }
 
     function closeRenameModal() {
-        document.getElementById('renameFileModal').classList.add('hidden');
+        document.getElementById('renameFileModal').classList.remove('visible');
         fileToRename = null;
     }
 
@@ -1767,7 +1775,7 @@
 
   </script>
   <!-- New File Modal -->
-  <div id="newFileModal" class="modal-overlay hidden">
+  <div id="newFileModal" class="modal-overlay">
     <div class="modal-content">
         <h3>Create New File</h3>
         <div class="modal-field">
@@ -1793,7 +1801,7 @@
   </div>
   
   <!-- Rename File Modal -->
-  <div id="renameFileModal" class="modal-overlay hidden">
+  <div id="renameFileModal" class="modal-overlay">
     <div class="modal-content">
         <h3>Rename File</h3>
         <div class="modal-field">

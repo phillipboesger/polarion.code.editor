@@ -64,17 +64,17 @@ public class FileEditorService {
 	 * <p>
 	 * <b>Folder detection heuristic:</b> an entry is classified as a folder when its
 	 * {@code getLastComponentExtension()} returns an empty or {@code null} value.
-	 * This covers the vast majority of real-world SVN structures.  Files without an
+	 * This covers the vast majority of real-world SVN structures. Files without an
 	 * extension (e.g. {@code Dockerfile}, {@code Makefile}, {@code LICENSE}) will be
-	 * mis-classified as folders by this heuristic.  If the Polarion API version in use
+	 * mis-classified as folders by this heuristic. If the Polarion API version in use
 	 * exposes a reliable {@code isDirectory()} / {@code isContainer()} method on
 	 * {@code IRepositoryReadOnlyConnection}, prefer that over this approach.
 	 * </p>
 	 * The result is sorted: folders first, then files, each group alphabetically.
 	 * This method is intended for lazy / incremental tree loading.
 	 *
-	 * @param path relative path within the configured root (e.g. ".file-editor/config/")
-	 * @return list of entries, each with keys "name", "path", "type" ("file"|"folder")
+	 * @param  path relative path within the configured root (e.g. ".file-editor/config/")
+	 * @return      list of entries, each with keys "name", "path", "type" ("file"|"folder")
 	 */
 	public List<Map<String, String>> getDirectoryEntries(String path) {
 		ILocation rootLoc;
@@ -89,29 +89,22 @@ public class FileEditorService {
 				: path.replaceAll("^/+|/+$", "");
 		ILocation searchLoc = rootLoc.append(cleanPath);
 
-		if(!repoConnection.exists(searchLoc)) {
-			return Collections.emptyList();
-		}
+		if(!repoConnection.exists(searchLoc)) { return Collections.emptyList(); }
 
 		List<Map<String, String>> entries = new ArrayList<>();
-		try {
-			for(Object obj : repoConnection.getSubLocations(searchLoc, false)) {
-				ILocation childLoc = (ILocation) obj;
-				String childName = childLoc.getLastComponent();
-				String childRelPath = getRelativePath(childLoc, rootLoc);
-				String ext = childLoc.getLastComponentExtension();
-				// Heuristic: treat entries without a file extension as folders (see method javadoc for limitations)
-				boolean isDir = (ext == null || ext.isEmpty());
+		for(Object obj : repoConnection.getSubLocations(searchLoc, false)) {
+			ILocation childLoc = (ILocation) obj;
+			String childName = childLoc.getLastComponent();
+			String childRelPath = getRelativePath(childLoc, rootLoc);
+			String ext = childLoc.getLastComponentExtension();
+			// Heuristic: treat entries without a file extension as folders (see method javadoc for limitations)
+			boolean isDir = (ext == null || ext.isEmpty());
 
-				Map<String, String> entry = new HashMap<>();
-				entry.put("name", childName);
-				entry.put("path", isDir ? childRelPath + PATH_SEP : childRelPath);
-				entry.put("type", isDir ? "folder" : "file");
-				entries.add(entry);
-			}
-		}
-		catch(IOException e) {
-			log.error("Error getting directory entries for path: " + path, e);
+			Map<String, String> entry = new HashMap<>();
+			entry.put("name", childName);
+			entry.put("path", isDir ? childRelPath + PATH_SEP : childRelPath);
+			entry.put("type", isDir ? "folder" : "file");
+			entries.add(entry);
 		}
 
 		// Sort: folders first, then files; each group alphabetically

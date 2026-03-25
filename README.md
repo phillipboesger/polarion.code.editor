@@ -123,8 +123,8 @@ The editor automatically detects the current scope (global, project, or project 
 ### Creating a New File
 
 1. Click the **New File** button in the toolbar.
-2. Enter a path relative to the repository root (e.g., `.file-editor/myconfig.json`).
-3. File names must end with `.json` or `.xml`.
+2. Enter a path relative to `.file-editor/` (e.g., `config/myconfig.yaml`).
+3. Any file extension is supported (e.g. `.json`, `.yaml`, `.xml`, `.vm`, `.sh`, `.md`, …).
 4. Click **Create**.
 
 ### Renaming a File
