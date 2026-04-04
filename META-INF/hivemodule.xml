@@ -1,28 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module id="boesger.polarion.fileeditor" version="1.0.0">
 
-    <contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
-        <extender name="File Editor" parentNodeName="File Editor"
-            parentNodeIconUrl="/polarion/icons/default/topicIcons/Tools_157-wrench.png"
-            iconUrl="/polarion/icons/default/topicIconsSmall/Tools_158-wrench-2.png"
-            pageUrl="/polarion/file-editor/editor.html"
-            projectScope="true" projectGroupScope="true" repositoryScope="true" />
-    </contribution>
+	<contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
+		<extender name="Code Editor" iconUrl="/polarion/ria/images/topicIcons/integrations.svg" pageUrl="/polarion/file-editor/editor.html" projectScope="true" projectGroupScope="true" repositoryScope="true" />
+	</contribution>
 
-    <!--
-        TODO: Enable once FileEditorNavigationExtender properly implements
-        com.polarion.alm.ui.server.navigation.NavigationExtender.
+	<service-point id="file-editor-navigation-extender" interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
+		<invoke-factory>
+			<construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
+		</invoke-factory>
+	</service-point>
 
-    <service-point id="file-editor-navigation-extender"
-        interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
-        <invoke-factory>
-            <construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
-        </invoke-factory>
-    </service-point>
-
-    <contribution configuration-id="customNavigationExtenders">
-        <extenders extender="file-editor-navigation-extender"/>
-    </contribution>
-    -->
+	<contribution configuration-id="customNavigationExtenders">
+		<extenders extender="file-editor-navigation-extender"/>
+	</contribution>
 
 </module>

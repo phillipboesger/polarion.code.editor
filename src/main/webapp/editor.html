@@ -176,26 +176,26 @@
 
     /* Toolbar */
     .top-toolbar {
-      height: 32px;
+      height: 30px;
       background: var(--bg-toolbar);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 8px;
+      padding: 0 6px;
       border-bottom: 1px solid var(--border-color);
     }
 
     .toolbar-left, .toolbar-right {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
 
     .toolbar-title {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--text-light);
       font-weight: 500;
-      margin-left: 6px;
+      margin-left: 4px;
     }
 
     /* Buttons */
@@ -204,12 +204,12 @@
       border: none;
       color: var(--text-main);
       cursor: pointer;
-      padding: 2px 4px;
+      padding: 1px 3px;
       border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 13px;
     }
     .icon-btn:hover {
       background: rgba(255,255,255,0.1);
@@ -218,15 +218,15 @@
 
     .editor-toolbar-divider {
       width: 1px;
-      height: 16px;
+      height: 14px;
       background: var(--border-color);
       margin: 0 2px;
     }
 
     .font-size-indicator {
-      min-width: 38px;
+      min-width: 34px;
       text-align: center;
-      font-size: 11px;
+      font-size: 10px;
       color: #c7c7c7;
       user-select: none;
     }
@@ -235,8 +235,8 @@
       background: #0e639c;
       color: white;
       border: none;
-      padding: 4px 10px;
-      font-size: 11px;
+      padding: 3px 8px;
+      font-size: 10px;
       cursor: pointer;
       border-radius: 2px;
       transition: opacity 0.2s;
@@ -251,7 +251,7 @@
     }
 
     .editor-tabs {
-      height: 30px;
+      height: 28px;
       background: #252526;
       border-bottom: 1px solid var(--border-color);
       display: flex;
@@ -274,6 +274,13 @@
       cursor: pointer;
       font-size: 12px;
       user-select: none;
+      flex-shrink: 0;
+    }
+
+    .tab-file-icon {
+      font-size: 12px;
+      line-height: 1;
+      opacity: 0.9;
       flex-shrink: 0;
     }
 
@@ -661,6 +668,8 @@
   <script>
     const EDITOR_SETTINGS_STORAGE_KEY = 'editorUserSettings';
     const EDITOR_LAST_OPEN_FILE_KEY = 'editorLastOpenFile';
+    const EDITOR_OPEN_TABS_STORAGE_KEY = 'editorOpenTabsSession';
+    const EDITOR_TREE_STATE_STORAGE_KEY = 'editorTreeState';
     const EDITOR_FONT_SIZE_DEFAULT = 14;
     const EDITOR_FONT_SIZE_MIN = 10;
     const EDITOR_FONT_SIZE_MAX = 28;
@@ -673,7 +682,7 @@
     let activeTabId = null;
     let previewTabId = null;
     let tabIdCounter = 0;
-    let initialLastFileRestoreDone = false;
+    let initialTabRestoreDone = false;
     let editorUserSettings = loadEditorUserSettings();
     
     // Attempt to get projectId from query param OR window.top URL (if accessible)
@@ -707,7 +716,31 @@
       }
     };
 
+    function registerVelocityLanguage() {
+      const existing = monaco.languages.getLanguages().some(lang => lang.id === 'velocity');
+      if (existing) return;
+
+      monaco.languages.register({ id: 'velocity' });
+      monaco.languages.setMonarchTokensProvider('velocity', {
+        defaultToken: '',
+        tokenPostfix: '.velocity',
+        tokenizer: {
+          root: [
+            [/#\*.*?\*#/, 'comment.block'],
+            [/##.*$/, 'comment'],
+            [/#(?:if|elseif|else|end|set|foreach|macro|parse|include|define|evaluate|break|stop|try|catch)\b/, 'keyword'],
+            [/\$!?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*/, 'variable'],
+            [/("(?:[^"\\]|\\.)*")/, 'string'],
+            [/('(?:[^'\\]|\\.)*')/, 'string'],
+            [/<\/?[a-zA-Z][\w-]*(?:\s+[^<>]*?)?>/, 'tag'],
+            [/[{}()\[\]]/, '@brackets']
+          ]
+        }
+      });
+    }
+
     require(['vs/editor/editor.main'], function () {
+      registerVelocityLanguage();
       editor = monaco.editor.create(document.getElementById('editor-container'), {
         value: '',
         language: 'json',
@@ -815,6 +848,57 @@
 
     function getLastOpenedFile() {
       return localStorage.getItem(EDITOR_LAST_OPEN_FILE_KEY) || '';
+    }
+
+    function saveOpenTabsSession() {
+      if (!openTabs.length) {
+        localStorage.removeItem(EDITOR_OPEN_TABS_STORAGE_KEY);
+        return;
+      }
+
+      const uniquePaths = [...new Set(openTabs.map(tab => tab.path).filter(Boolean))];
+      const payload = {
+        paths: uniquePaths,
+        activePath: currentFile || uniquePaths[0] || ''
+      };
+      localStorage.setItem(EDITOR_OPEN_TABS_STORAGE_KEY, JSON.stringify(payload));
+    }
+
+    function getOpenTabsSession() {
+      try {
+        const raw = localStorage.getItem(EDITOR_OPEN_TABS_STORAGE_KEY);
+        if (!raw) return { paths: [], activePath: '' };
+        const parsed = JSON.parse(raw) || {};
+        const paths = Array.isArray(parsed.paths) ? parsed.paths.filter(p => typeof p === 'string' && p) : [];
+        const activePath = typeof parsed.activePath === 'string' ? parsed.activePath : '';
+        return { paths: [...new Set(paths)], activePath };
+      } catch (e) {
+        return { paths: [], activePath: '' };
+      }
+    }
+
+    function restoreOpenTabsSession() {
+      const session = getOpenTabsSession();
+      if (!session.paths.length) {
+        const lastOpenedFile = getLastOpenedFile();
+        if (!lastOpenedFile) {
+          return Promise.resolve();
+        }
+        return openFileInTab(lastOpenedFile, { persistent: true, silentOnError: true });
+      }
+
+      let chain = Promise.resolve();
+      session.paths.forEach(path => {
+        chain = chain.then(() => openFileInTab(path, { persistent: true, silentOnError: true }));
+      });
+
+      return chain.then(() => {
+        if (!session.activePath) return;
+        const activeTab = openTabs.find(tab => tab.path === session.activePath);
+        if (activeTab) {
+          activateTab(activeTab.id);
+        }
+      });
     }
 
     function setupResizer() {
@@ -926,7 +1010,9 @@
         'toml':       'ini',
         'cfg':        'ini',
         'conf':       'ini',
-        'vm':         'html',
+        'vm':         'velocity',
+        'vtl':        'velocity',
+        'fhtml':      'velocity',
         'ftl':        'html',
         'txt':        'plaintext',
         'log':        'plaintext',
@@ -946,6 +1032,101 @@
       const resolvedLanguage = langMap[ext] || 'plaintext';
       const monacoLanguages = monaco.languages.getLanguages().map(lang => lang.id);
       return monacoLanguages.includes(resolvedLanguage) ? resolvedLanguage : 'plaintext';
+    }
+
+    function isVelocityLikeFile(filePath) {
+      if (!filePath) return false;
+      const lowerPath = filePath.toLowerCase();
+      return lowerPath.endsWith('.vm') || lowerPath.endsWith('.vtl') || lowerPath.endsWith('.fhtml');
+    }
+
+    function formatVelocityLike(content) {
+      if (!content) return content;
+
+      const normalized = content.replace(/\r\n/g, '\n');
+      const hasTrailingNewline = normalized.endsWith('\n');
+      const lines = normalized.split('\n');
+      const indentUnit = '  ';
+      let indentLevel = 0;
+      let inBlockComment = false;
+      const out = [];
+
+      function startsDirective(line, name) {
+        return new RegExp(`^#${name}(?:\\b|\\s*\\()`, 'i').test(line);
+      }
+
+      for (const rawLine of lines) {
+        const rightTrimmed = rawLine.replace(/\s+$/g, '');
+        const trimmed = rightTrimmed.trim();
+
+        if (trimmed.length === 0) {
+          out.push('');
+          continue;
+        }
+
+        if (trimmed.includes('#*')) inBlockComment = true;
+        const leaveBlockComment = trimmed.includes('*#');
+        const isLineComment = trimmed.startsWith('##');
+        const isDirectiveOnly = trimmed.startsWith('#') && !trimmed.startsWith('##');
+
+        let preDecrease = false;
+        if (isDirectiveOnly) {
+          preDecrease =
+            startsDirective(trimmed, 'end') ||
+            startsDirective(trimmed, 'else') ||
+            startsDirective(trimmed, 'elseif');
+        }
+
+        if (preDecrease) indentLevel = Math.max(0, indentLevel - 1);
+        const currentIndent = indentUnit.repeat(Math.max(0, indentLevel));
+
+        if (inBlockComment || isLineComment) {
+          out.push(currentIndent + trimmed);
+        } else if (isDirectiveOnly) {
+          out.push(currentIndent + trimmed);
+        } else {
+          out.push(currentIndent + trimmed);
+        }
+
+        if (isDirectiveOnly) {
+          const increasesIndent =
+            startsDirective(trimmed, 'if') ||
+            startsDirective(trimmed, 'foreach') ||
+            startsDirective(trimmed, 'macro') ||
+            startsDirective(trimmed, 'define') ||
+            startsDirective(trimmed, 'try') ||
+            startsDirective(trimmed, 'else') ||
+            startsDirective(trimmed, 'elseif');
+
+          if (increasesIndent) indentLevel += 1;
+        }
+
+        if (leaveBlockComment) inBlockComment = false;
+      }
+
+      const joined = out.join('\n');
+      return hasTrailingNewline ? joined + '\n' : joined;
+    }
+
+    async function formatCurrentDocument() {
+      const activeTab = getActiveTab();
+      if (!activeTab || !activeTab.model) return;
+
+      if (isVelocityLikeFile(activeTab.path)) {
+        const source = activeTab.model.getValue();
+        const formatted = formatVelocityLike(source);
+        if (formatted !== source) {
+          activeTab.model.setValue(formatted);
+        }
+        return;
+      }
+
+      if (editor) {
+        const action = editor.getAction('editor.action.formatDocument');
+        if (action && typeof action.run === 'function') {
+          await action.run();
+        }
+      }
     }
 
     /** Returns an icon character for a given file name / extension. */
@@ -978,7 +1159,9 @@
         'kt':         '🅺',
         'groovy':     '🎵',
         'sql':        '🗃',
-        'vm':         '📄',
+        'vm':         '.vm',
+        'vtl':        '.vm',
+        'fhtml':      '.vm',
         'properties': '⚙',
         'ini':        '⚙',
         'toml':       '⚙',
@@ -1063,6 +1246,12 @@
               if (currentFile && !document.getElementById('saveBtn').disabled) {
                   saveCurrentFile();
               }
+          }
+          if (isModifierPressed && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+              e.preventDefault();
+              formatCurrentDocument().catch(err => {
+                  alert('Error formatting file: ' + err);
+              });
           }
       });
 
@@ -1152,6 +1341,11 @@
         if (tab.isPreview) tabEl.classList.add('preview');
         if (isTabDirty(tab)) tabEl.classList.add('dirty');
 
+        const icon = document.createElement('span');
+        icon.className = 'tab-file-icon';
+        icon.textContent = getFileIcon(tab.path);
+        icon.title = `Type: ${tab.path.split('.').pop() || 'file'}`;
+
         const title = document.createElement('span');
         title.className = 'tab-title';
         title.textContent = getDisplayName(tab.path);
@@ -1168,6 +1362,7 @@
 
         tabEl.onclick = () => activateTab(tab.id);
 
+        tabEl.appendChild(icon);
         tabEl.appendChild(title);
         tabEl.appendChild(close);
         tabsContainer.appendChild(tabEl);
@@ -1188,6 +1383,7 @@
       currentFile = tab.path;
       originalContent = tab.originalContent;
       saveLastOpenedFile(currentFile);
+      saveOpenTabsSession();
 
       if (editor) {
         editor.setModel(tab.model);
@@ -1228,6 +1424,7 @@
         currentFile = null;
         originalContent = '';
         saveLastOpenedFile('');
+        saveOpenTabsSession();
         if (editor) {
           const oldModel = editor.getModel();
           const emptyModel = monaco.editor.createModel('', 'plaintext');
@@ -1243,6 +1440,7 @@
       activeTabId = nextActiveId;
       activateTab(activeTabId);
       renderFileList();
+      saveOpenTabsSession();
     }
 
     function openFileInTab(filePath, options = {}) {
@@ -1255,7 +1453,7 @@
           if (previewTabId === existing.id) previewTabId = null;
         }
         activateTab(existing.id);
-        return;
+        return Promise.resolve(existing.id);
       }
 
       const currentPreview = previewTabId ? getTabById(previewTabId) : null;
@@ -1293,6 +1491,7 @@
           activateTab(newTab.id);
           renderFileList();
           renderTabs();
+          return newTab.id;
         })
         .catch(err => {
           if (silentOnError) {
@@ -1306,8 +1505,35 @@
 
 
     let treeCache = {};           // path -> [{name, path, type}] from /api/files/tree
-    let expandedFolders = new Set(); // paths of currently expanded folders
-    let currentTreeRoot = "";       // current root path for tree display (empty = repo root)
+    const initialTreeState = loadTreeState();
+    let expandedFolders = new Set(initialTreeState.expandedFolders); // paths of currently expanded folders
+    let currentTreeRoot = initialTreeState.currentTreeRoot;       // current root path for tree display (empty = repo root)
+
+    function saveTreeState() {
+      const payload = {
+        currentTreeRoot,
+        expandedFolders: [...expandedFolders]
+      };
+      localStorage.setItem(EDITOR_TREE_STATE_STORAGE_KEY, JSON.stringify(payload));
+    }
+
+    function loadTreeState() {
+      try {
+        const raw = localStorage.getItem(EDITOR_TREE_STATE_STORAGE_KEY);
+        if (!raw) return { currentTreeRoot: '', expandedFolders: [] };
+        const parsed = JSON.parse(raw) || {};
+        const currentTreeRoot = typeof parsed.currentTreeRoot === 'string' ? parsed.currentTreeRoot : '';
+        const expandedFolders = Array.isArray(parsed.expandedFolders)
+          ? parsed.expandedFolders.filter(path => typeof path === 'string' && path)
+          : [];
+        return {
+          currentTreeRoot,
+          expandedFolders: [...new Set(expandedFolders)]
+        };
+      } catch (e) {
+        return { currentTreeRoot: '', expandedFolders: [] };
+      }
+    }
 
     function loadFiles() {
       const loader = document.getElementById('loadingIndicator');
@@ -1336,16 +1562,16 @@
           return Promise.all(promises);
         })
         .then(() => {
+          saveTreeState();
           bar.classList.remove('visible');
           const rootEntries = treeCache[currentTreeRoot] || [];
           text.textContent = `Loaded ${rootEntries.length} entries`;
           renderFileList();
 
-          if (!initialLastFileRestoreDone) {
-            initialLastFileRestoreDone = true;
-            const lastOpenedFile = getLastOpenedFile();
-            if (lastOpenedFile && openTabs.length === 0) {
-              openFileInTab(lastOpenedFile, { persistent: true, silentOnError: true });
+          if (!initialTabRestoreDone) {
+            initialTabRestoreDone = true;
+            if (openTabs.length === 0) {
+              restoreOpenTabsSession();
             }
           }
         })
@@ -1371,9 +1597,11 @@
     function toggleTreeFolder(folderPath) {
       if (expandedFolders.has(folderPath)) {
         expandedFolders.delete(folderPath);
+        saveTreeState();
         renderFileList();
       } else {
         expandedFolders.add(folderPath);
+        saveTreeState();
         if (treeCache[folderPath]) {
           renderFileList();
         } else {
@@ -1386,6 +1614,7 @@
             .catch(err => {
               console.error('Error loading folder:', err);
               expandedFolders.delete(folderPath);
+              saveTreeState();
               renderFileList();
             });
         }
@@ -1397,6 +1626,7 @@
     function navigateToFolder(folderPath) {
         currentTreeRoot = folderPath;
         expandedFolders.clear();
+        saveTreeState();
         treeCache = {};
         loadFiles();
     }
@@ -1409,6 +1639,7 @@
         const lastSlash = parent.lastIndexOf('/');
         currentTreeRoot = lastSlash === -1 ? "" : parent.substring(0, lastSlash + 1);
         expandedFolders.clear();
+        saveTreeState();
         treeCache = {};
         loadFiles();
     }
@@ -1632,14 +1863,23 @@
     }
 
 
-    function saveCurrentFile() {
+    async function saveCurrentFile() {
       const activeTab = getActiveTab();
       if (!activeTab) return;
-      const content = activeTab.model.getValue();
 
       const btn = document.getElementById('saveBtn');
       btn.textContent = 'Saving...';
       btn.disabled = true;
+
+      try {
+        await formatCurrentDocument();
+      } catch (err) {
+        alert('Error formatting before save: ' + err);
+        updateToolbarState();
+        return;
+      }
+
+      const content = activeTab.model.getValue();
 
       fetch(buildFileApiUrl(activeTab.path), {
         method: 'PUT',
@@ -2070,6 +2310,7 @@
                     currentFile = activeTab.path;
                     saveLastOpenedFile(currentFile);
                 }
+                saveOpenTabsSession();
                 renderTabs();
                 loadFiles();
             } else {
@@ -2115,6 +2356,7 @@
               currentFile = null;
               originalContent = '';
               saveLastOpenedFile('');
+              saveOpenTabsSession();
               toggleEmptyState(true);
               renderTabs();
             }

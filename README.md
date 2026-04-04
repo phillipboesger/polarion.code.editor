@@ -278,19 +278,22 @@ FileEditorService  (business logic)
 
 ### Polarion Integration
 
-The plugin registers itself as a Polarion Administration page extender via `META-INF/hivemodule.xml`:
+The plugin registers a custom main-navigation topic via `META-INF/hivemodule.xml`:
 
 ```xml
-<contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
-    <extender name="File Editor"
-              pageUrl="/polarion/file-editor/editor.html"
-              projectScope="true"
-              projectGroupScope="true"
-              repositoryScope="true" />
+<service-point id="file-editor-navigation-extender"
+    interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
+    <invoke-factory>
+        <construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
+    </invoke-factory>
+</service-point>
+
+<contribution configuration-id="customNavigationExtenders">
+    <extenders extender="file-editor-navigation-extender"/>
 </contribution>
 ```
 
-This places the **File Editor** entry in the Polarion Administration sidebar, available at global, project-group, and project level.
+This places **Code Editor** as its own block in the normal Polarion sidebar and as an entry in the Administration sidebar.
 
 ### Frontend Stack
 
