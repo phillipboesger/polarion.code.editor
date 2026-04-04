@@ -337,7 +337,8 @@
     .modal-content {
       background: var(--bg-sidebar);
       border: 1px solid var(--border-color);
-      width: 450px;
+      width: 600px;
+      max-width: 90vw;
       padding: 20px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       border-radius: 4px;
@@ -888,11 +889,9 @@
       }
     }
 
-    let currentDirectory = ""; 
-    let cachedFiles = [];
-    let collapsedFolders = new Set(); // Stores collapsed folder paths (default is expanded)
-    // Let's store absolute paths for expanded folders.
-    // Actually, since we support drill down, it's better to store expanded paths relative to root.
+    let treeCache = {};           // path -> [{name, path, type}] from /api/files/tree
+    let expandedFolders = new Set(); // paths of currently expanded folders
+    let currentTreeRoot = "";       // current root path for tree display (empty = repo root)
 
     function loadFiles() {
       const loader = document.getElementById('loadingIndicator');
@@ -902,100 +901,121 @@
       bar.classList.add('visible');
       text.textContent = "Loading...";
 
-      fetch(getApiUrl('list'))
-        .then(res => res.json())
-        .then(files => {
+      // Save expanded state so it survives reload (e.g. after create/delete)
+      const previouslyExpanded = new Set(expandedFolders);
+      treeCache = {};
+
+      fetchTreeEntries(currentTreeRoot)
+        .then(entries => {
+          treeCache[currentTreeRoot] = entries;
+          // Re-fetch all previously expanded folders in parallel
+          const promises = [];
+          previouslyExpanded.forEach(path => {
+            promises.push(
+              fetchTreeEntries(path)
+                .then(e => { treeCache[path] = e; })
+                .catch(() => { expandedFolders.delete(path); })
+            );
+          });
+          return Promise.all(promises);
+        })
+        .then(() => {
           bar.classList.remove('visible');
-          text.textContent = `Loaded ${files.length} files`;
-          
-          cachedFiles = files.map(f => ({ ...f, name: f.name.replace(/\\/g, '/') }));
+          const rootEntries = treeCache[currentTreeRoot] || [];
+          text.textContent = `Loaded ${rootEntries.length} entries`;
           renderFileList();
         })
         .catch(err => {
-            console.error('Error loading files:', err);
+            console.error('Error loading tree:', err);
             bar.classList.remove('visible');
             text.textContent = "Error loading files";
             document.getElementById('fileList').innerHTML = '<li style="padding:10px; color:#ff6b6b">Error loading files</li>';
         });
     }
 
-    // Helper to get nested structure from flat list
-    function buildTree(files, rootPath) {
-        const tree = { files: [], folders: {} };
-        
-        files.forEach(file => {
-            if (!file.name.startsWith(rootPath)) return;
-            
-            const relPath = file.name.substring(rootPath.length);
-            const parts = relPath.split('/');
-            
-            if (parts.length > 1) {
-                // It's in a subfolder relative to rootPath
-                const folderName = parts[0];
-                if (!tree.folders[folderName]) {
-                    tree.folders[folderName] = { name: folderName, count: 0 };
-                }
-                tree.folders[folderName].count++;
-            } else {
-                // It's a file in rootPath
-                tree.files.push(file);
-            }
-        });
-        return tree;
+    function fetchTreeEntries(path) {
+      let url = buildRootApiUrl('files/tree');
+      if (path) {
+        url += (url.includes('?') ? '&' : '?') + 'path=' + encodeURIComponent(path);
+      }
+      return fetch(url).then(res => {
+        if (!res.ok) throw new Error('Status ' + res.status);
+        return res.json();
+      });
+    }
+
+    function toggleTreeFolder(folderPath) {
+      if (expandedFolders.has(folderPath)) {
+        expandedFolders.delete(folderPath);
+        renderFileList();
+      } else {
+        expandedFolders.add(folderPath);
+        if (treeCache[folderPath]) {
+          renderFileList();
+        } else {
+          renderFileList(); // show loading placeholder
+          fetchTreeEntries(folderPath)
+            .then(entries => {
+              treeCache[folderPath] = entries;
+              renderFileList();
+            })
+            .catch(err => {
+              console.error('Error loading folder:', err);
+              expandedFolders.delete(folderPath);
+              renderFileList();
+            });
+        }
+      }
     }
 
     const FOLDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
 
+    function navigateToFolder(folderPath) {
+        currentTreeRoot = folderPath;
+        expandedFolders.clear();
+        treeCache = {};
+        loadFiles();
+    }
+
+    function navigateUp() {
+        if (!currentTreeRoot) return;
+        // Go one level up
+        let parent = currentTreeRoot;
+        if (parent.endsWith('/')) parent = parent.slice(0, -1);
+        const lastSlash = parent.lastIndexOf('/');
+        currentTreeRoot = lastSlash === -1 ? "" : parent.substring(0, lastSlash + 1);
+        expandedFolders.clear();
+        treeCache = {};
+        loadFiles();
+    }
+
     function renderFileList() {
         const list = document.getElementById('fileList');
         list.innerHTML = '';
-        
-        // Header: Current Folder Name
-        if (currentDirectory) {
-            // e.g. .file-editor/config/ -> split -> [ .file-editor, config, "" ]
-            const p = currentDirectory.replace(/\/$/, '');
-            const parts = p.split('/');
-            const currentName = parts[parts.length - 1]; // "config"
-            
-            const header = document.createElement('li');
-            header.style.padding = '8px 15px';
-            header.style.fontSize = '12px';
-            header.style.fontWeight = 'bold';
-            header.style.color = 'var(--text-light)';
-            header.style.borderBottom = '1px solid var(--border-color)';
-            header.style.marginBottom = '4px';
-            // Show full relative path or just name? 
-            // "Show folder name" requested.
-            header.innerHTML = `<span style="opacity:0.6; font-weight:normal;">Folder:</span> ${currentName}`;
-            list.appendChild(header);
 
-            // Calc parent
-            parts.pop();
-            const parentPath = parts.length > 0 ? parts.join('/') + '/' : '';
-            // Determine parent label
-            let parentLabel = "Root";
-            if(parts.length > 0) parentLabel = parts[parts.length - 1];
-            
-            const li = document.createElement('li');
-            li.className = 'file-item';
-            // li.style.borderBottom = '1px solid var(--border-color)'; // Optional separator
-            li.innerHTML = `<span class="file-icon" style="color:var(--accent)">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style="transform:rotate(90deg)"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-            </span><span class="file-name" style="color: #888;">Back to ${parentLabel}</span>`;
-            
-            li.onclick = () => { // Changed from dblclick to click for easier nav? Or keep consistency? 
-                // ".." usually works on double click in many file managers, but web often single.
-                // Let's stick to simple click for "Back" button behavior.
-                currentDirectory = parentPath;
-                renderFileList();
-            };
-            list.appendChild(li);
+        // Breadcrumb / back navigation when inside a subfolder
+        if (currentTreeRoot) {
+            const breadcrumb = document.createElement('li');
+            breadcrumb.className = 'file-item';
+            breadcrumb.style.cssText = 'padding: 6px 10px; cursor: pointer; color: var(--accent); font-size: 12px; border-bottom: 1px solid var(--border);';
+
+            const parts = currentTreeRoot.replace(/\/$/, '').split('/');
+            let html = '<span style="margin-right:6px;">←</span>';
+            parts.forEach((part, i) => {
+                if (i > 0) html += ' <span style="opacity:0.5">/</span> ';
+                html += '<span>' + part + '</span>';
+            });
+            breadcrumb.innerHTML = html;
+            breadcrumb.title = 'Go up one level';
+            breadcrumb.onclick = () => navigateUp();
+            list.appendChild(breadcrumb);
         }
 
-        renderTreeLevel(list, currentDirectory, 0);
+        renderTreeLevel(list, currentTreeRoot, 0);
 
-        // Show empty-state hint when there are no files at root level
-        if (!currentDirectory && cachedFiles.length === 0) {
+        // Show empty-state hint when root is empty
+        const rootEntries = treeCache[currentTreeRoot] || [];
+        if (rootEntries.length === 0) {
             const empty = document.createElement('li');
             empty.style.cssText = 'padding: 20px 15px; color: #666; font-size: 12px; line-height: 1.6; text-align: center;';
             empty.innerHTML = 'No files found.<br>Click <strong style="color:var(--accent)">New File</strong> in the toolbar to create your first file.';
@@ -1003,50 +1023,46 @@
         }
     }
 
-    function renderTreeLevel(container, pathPrefix, level) {
-        const tree = buildTree(cachedFiles, pathPrefix);
-        
+    function renderTreeLevel(container, parentPath, level) {
+        const entries = treeCache[parentPath];
+        if (!entries) return;
+
+        const folders = entries.filter(e => e.type === 'folder');
+        const files = entries.filter(e => e.type === 'file');
+
         // Render Folders
-        Object.keys(tree.folders).sort().forEach(folderName => {
-             const fullFolderPath = pathPrefix + folderName + '/';
-             const isExpanded = !collapsedFolders.has(fullFolderPath);
-             
+        folders.forEach(entry => {
+             const folderPath = entry.path;
+             const isExpanded = expandedFolders.has(folderPath);
+
              const li = document.createElement('li');
              li.className = 'file-item';
              li.style.paddingLeft = (15 + (level * 10)) + 'px';
-             
-             // Toggle Logic Helper
-             const toggleFolder = () => {
-                 if (isExpanded) collapsedFolders.add(fullFolderPath);
-                 else collapsedFolders.delete(fullFolderPath);
-                 renderFileList();
-             };
 
              // Toggle Icon
              const toggle = document.createElement('span');
              toggle.style.marginRight = '5px';
              toggle.style.fontSize = '10px';
              toggle.style.cursor = 'pointer';
-             toggle.textContent = isExpanded ? '▼' : '▶'; // or 'v' / '>'
+             toggle.textContent = isExpanded ? '▼' : '▶';
              toggle.onclick = (e) => {
                  e.stopPropagation();
-                 toggleFolder();
+                 toggleTreeFolder(folderPath);
              };
-             
+
              const icon = document.createElement('span');
              icon.className = 'file-icon';
-             // icon.textContent = '📁';
              icon.innerHTML = FOLDER_SVG;
              icon.style.color = 'var(--accent)';
-             
+
              const nameSpan = document.createElement('span');
              nameSpan.className = 'file-name';
-             nameSpan.textContent = folderName;
-             
+             nameSpan.textContent = entry.name;
+
              li.appendChild(toggle);
              li.appendChild(icon);
              li.appendChild(nameSpan);
-             
+
              // Actions for Folder
              const actions = document.createElement('div');
              actions.className = 'action-group';
@@ -1057,80 +1073,71 @@
              renBtn.title = 'Rename Folder';
              renBtn.onclick = (e) => {
                e.stopPropagation();
-               renameFile(fullFolderPath); // Folder path ends with /
+               renameFile(folderPath);
              };
              actions.appendChild(renBtn);
-             
-             li.appendChild(actions);
-             
-             // Click handling with Custom Double Click Logic
-             // Requirement: Faster double click to prevent accidental drill-down.
-             let clickTimer = null;
-             let lastClickTime = 0;
-             const DBL_CLICK_THRESHOLD = 180; // ms
 
+             const delBtn = document.createElement('button');
+             delBtn.className = 'list-btn delete-btn';
+             delBtn.textContent = '✕';
+             delBtn.title = 'Delete Folder';
+             delBtn.onclick = (e) => {
+               e.stopPropagation();
+               deleteFile(folderPath);
+             };
+             actions.appendChild(delBtn);
+
+             li.appendChild(actions);
+
+             // Single click on folder row → toggle expand/collapse
              li.onclick = (e) => {
                  e.stopPropagation();
-                 const now = Date.now();
-                 
-                 if (now - lastClickTime < DBL_CLICK_THRESHOLD) {
-                     // DOUBLE CLICK DETECTED
-                     if (clickTimer) {
-                         clearTimeout(clickTimer);
-                         clickTimer = null;
-                     }
-                     
-                     // Drill down logic
-                     currentDirectory = fullFolderPath;
-                     collapsedFolders.clear(); // Clear collapses = expand all in new view
-                     renderFileList();
-                     
-                     lastClickTime = 0; // Reset
-                 } else {
-                     // POTENTIAL SINGLE CLICK
-                     lastClickTime = now;
-                     
-                     if (clickTimer) clearTimeout(clickTimer);
-                     
-                     clickTimer = setTimeout(() => {
-                         toggleFolder();
-                         clickTimer = null;
-                         lastClickTime = 0; 
-                     }, DBL_CLICK_THRESHOLD);
-                 }
+                 toggleTreeFolder(folderPath);
              };
-             
-             // Removed native ondblclick to enforce strict timing
+
+             // Double click on folder row → navigate into folder context
+             li.ondblclick = (e) => {
+                 e.stopPropagation();
+                 navigateToFolder(folderPath);
+             };
 
              container.appendChild(li);
-             
+
              if (isExpanded) {
-                 // Recursion
-                 renderTreeLevel(container, fullFolderPath, level + 1);
+                 if (treeCache[folderPath]) {
+                     renderTreeLevel(container, folderPath, level + 1);
+                 } else {
+                     // Loading placeholder
+                     const loadingLi = document.createElement('li');
+                     loadingLi.className = 'file-item';
+                     loadingLi.style.paddingLeft = (15 + ((level + 1) * 10)) + 'px';
+                     loadingLi.style.color = '#666';
+                     loadingLi.style.fontStyle = 'italic';
+                     loadingLi.textContent = 'Loading...';
+                     container.appendChild(loadingLi);
+                 }
              }
         });
 
         // Render Files
-        tree.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+        files.forEach(entry => {
              const li = document.createElement('li');
              li.className = 'file-item';
-             li.style.paddingLeft = (15 + (level * 10) + 15) + 'px'; // +15 for indentation alignment with folders (icon+arrow)
-             
-             if (file.name === currentFile) li.classList.add('active');
+             li.style.paddingLeft = (15 + (level * 10)) + 'px';
 
-             const displayName = file.name.substring(pathPrefix.length);
-             
+             if (entry.path === currentFile) li.classList.add('active');
+
              const icon = document.createElement('span');
              icon.className = 'file-icon';
-             icon.textContent = getFileIcon(file.name);
+             icon.textContent = getFileIcon(entry.name);
              li.appendChild(icon);
 
              const span = document.createElement('span');
              span.className = 'file-name';
-             span.textContent = displayName;
-             span.title = file.name;
+             span.textContent = entry.name;
+             span.title = entry.path;
              li.appendChild(span);
-            
+
              const actions = document.createElement('div');
              actions.className = 'action-group';
 
@@ -1140,27 +1147,35 @@
              renBtn.title = 'Rename File';
              renBtn.onclick = (e) => {
                e.stopPropagation();
-               renameFile(file.name);
+               renameFile(entry.path);
              };
              actions.appendChild(renBtn);
-            
+
              const delBtn = document.createElement('button');
              delBtn.className = 'list-btn delete-btn';
              delBtn.textContent = '✕';
              delBtn.title = 'Delete File';
              delBtn.onclick = (e) => {
                e.stopPropagation();
-               deleteFile(file.name);
+               deleteFile(entry.path);
              };
              actions.appendChild(delBtn);
 
              li.appendChild(actions);
 
+             // Single click: highlight only
              li.onclick = (e) => {
                  e.stopPropagation();
-                 onFileSelect(file.name);
+                 document.querySelectorAll('#fileList .file-item.active').forEach(el => el.classList.remove('active'));
+                 li.classList.add('active');
              };
-             // Double click on file? Just select.
+
+             // Double click: load file content
+             li.ondblclick = (e) => {
+                 e.stopPropagation();
+                 onFileSelect(entry.path);
+             };
+
              container.appendChild(li);
         });
     }
@@ -1343,26 +1358,19 @@
         // Deprecated/Removed - logic moved to input suggestions
     }
 
-    // Helper: Collect all existing directories relative to .file-editor/
+    // Helper: Collect all existing directories from the tree cache
     function getAllDirectories() {
         const dirs = new Set();
-        cachedFiles.forEach(f => {
-            // f.name is e.g. .file-editor/folder/file.json
-            const parts = f.name.split('/');
-            // Remove filename
-            if(parts.length > 1) {
-                parts.pop(); 
-                // Remove .file-editor
-                if(parts[0] === '.file-editor') parts.shift();
-                
-                // Add all prefix combos
-                // e.g. if path is A/B/C, add A, A/B, A/B/C
-                let acc = "";
-                parts.forEach(p => {
-                    acc = acc ? acc + '/' + p : p;
-                    dirs.add(acc);
-                });
-            }
+        Object.keys(treeCache).forEach(parentPath => {
+            const entries = treeCache[parentPath] || [];
+            entries.forEach(e => {
+                if (e.type === 'folder') {
+                    let dirPath = e.path;
+                    // Remove trailing slash
+                    if (dirPath.endsWith('/')) dirPath = dirPath.slice(0, -1);
+                    if (dirPath) dirs.add(dirPath);
+                }
+            });
         });
         return Array.from(dirs).sort();
     }
@@ -1629,6 +1637,7 @@
     }
 
     let fileToRename = null;
+    let isRenamingFolder = false;
 
     function renameFile(oldName) {
         if(oldName === currentFile && isDirty()) {
@@ -1638,35 +1647,46 @@
         fileToRename = oldName;
 
         let displayPath = oldName;
-        // Normalize for display (remove .file-editor prefix for user input if we treat it as root)
+        // Remove trailing slash for folders
+        if(displayPath.endsWith('/')) displayPath = displayPath.slice(0, -1);
+        // Normalize for display (remove .file-editor prefix)
         if(displayPath.startsWith('.file-editor/')) displayPath = displayPath.substring(13);
         else if (displayPath === 'file-editor' || displayPath === '.file-editor') displayPath = "";
+
+        // Split into parent path and item name
+        const lastSlashIdx = displayPath.lastIndexOf('/');
+        const parentPath = lastSlashIdx === -1 ? '' : displayPath.substring(0, lastSlashIdx + 1);
+        const namePart = lastSlashIdx === -1 ? displayPath : displayPath.substring(lastSlashIdx + 1);
+
+        const isFolder = oldName.endsWith('/');
+        isRenamingFolder = isFolder;
         
         const input = document.getElementById('renameFileName');
         const errorDiv = document.getElementById('renameFileError');
         const btn = document.getElementById('btnConfirmRename');
+        const modalTitle = document.getElementById('renameModalTitle');
+
+        // Update prefix dynamically to show parent directory
+        document.getElementById('renamePrefixSpan').textContent = '.file-editor/' + parentPath;
 
         btn.disabled = false;
         errorDiv.textContent = "";
+        modalTitle.textContent = isFolder ? 'Rename Folder' : 'Rename File';
 
         document.getElementById('renameFileModal').classList.add('visible');
         input.focus();
 
-        // Setup Logic
-        setupPathInputLogic('renameFileName', 'renameFileSuggestions', displayPath, () => {
+        // Setup Logic – input only contains the item name, not the full path
+        setupPathInputLogic('renameFileName', 'renameFileSuggestions', namePart, () => {
              if(!btn.disabled) confirmRenameFile();
         });
         
-        // Auto-select name part (excluding extension and path)
-        const lastSlash = displayPath.lastIndexOf('/');
-        const namePart = lastSlash === -1 ? displayPath : displayPath.substring(lastSlash + 1);
-        const nameStart = lastSlash === -1 ? 0 : lastSlash + 1;
-        const lastDot = displayPath.lastIndexOf('.');
-        
-        if (lastDot > nameStart) { 
-             input.setSelectionRange(nameStart, lastDot);
+        // Auto-select name (excluding extension for files)
+        const lastDot = namePart.lastIndexOf('.');
+        if (!isFolder && lastDot > 0) { 
+             input.setSelectionRange(0, lastDot);
         } else {
-             input.setSelectionRange(nameStart, displayPath.length);
+             input.setSelectionRange(0, namePart.length);
         }
 
         const handleInput = () => {
@@ -1706,7 +1726,7 @@
 
         let nameInput = document.getElementById('renameFileName').value.trim();
         
-        const isFolder = oldName.endsWith('/');
+        const isFolder = isRenamingFolder;
         
         // Double check validity silently (UI handles feedback)
         const validationError = validatePathInput(nameInput, isFolder);
@@ -1714,16 +1734,16 @@
 
         if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
         
-        let newPath = nameInput;
-        // Re-add .file-editor prefix if needed
-         if (!newPath.startsWith('.file-editor/')) {
-            newPath = '.file-editor/' + newPath;
-        }
+        // Combine dynamic prefix + new name
+        const prefixText = document.getElementById('renamePrefixSpan').textContent;
+        let newPath = prefixText + nameInput;
+        if(isFolder && !newPath.endsWith('/')) newPath += '/';
 
         closeRenameModal();
 
-        // If nothing changed
-        if (newPath === oldName) return;
+        // Normalize oldName for comparison (strip trailing slash)
+        const normalizedOld = oldName.endsWith('/') ? oldName.slice(0, -1) : oldName;
+        if (newPath === oldName || newPath === normalizedOld || newPath === normalizedOld + '/') return;
 
         fetch(getApiUrl('rename'), {
             method: 'POST',
@@ -1803,11 +1823,11 @@
   <!-- Rename File Modal -->
   <div id="renameFileModal" class="modal-overlay">
     <div class="modal-content">
-        <h3>Rename File</h3>
+        <h3 id="renameModalTitle">Rename</h3>
         <div class="modal-field">
-            <label>Location (Inside .file-editor)</label>
+            <label>New name</label>
             <div class="path-container" style="position:relative;">
-                <span class="path-prefix" title="All files are enforced to be in .file-editor folder" style="min-width:55px;">.file-editor/</span>
+                <span id="renamePrefixSpan" class="path-prefix">.file-editor/</span>
                 <input type="text" id="renameFileName" name="polarion_file_editor_rename_field_xyz" class="path-input" 
                        autocomplete="off" list="autocompleteOff" spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
                 

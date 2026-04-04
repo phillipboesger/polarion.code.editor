@@ -1,11 +1,15 @@
 package boesger.polarion.fileeditor.service.action;
 
+import java.io.InputStream;
+
 import com.polarion.platform.service.repository.IRepositoryConnection;
+import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
+import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 
 import boesger.polarion.fileeditor.util.PolarionUtils;
 
-public class RenameFileAction implements Runnable {
+public class RenameFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 
 	private final ILocation currentFileLocation;
 	private final ILocation newFileLocation;
@@ -16,8 +20,17 @@ public class RenameFileAction implements Runnable {
 	}
 
 	@Override
-	public void run() {
+	public Boolean run() throws Exception {
+		IRepositoryReadOnlyConnection readConnection = PolarionUtils.getRepositoryService()
+				.getReadOnlyConnection(IRepositoryService.DEFAULT);
 		IRepositoryConnection writeConnection = PolarionUtils.getRepositoryWriteConnection();
-		writeConnection.move(currentFileLocation, newFileLocation, false);
+
+		try(InputStream content = readConnection.getContent(currentFileLocation)) {
+			writeConnection.create(newFileLocation, content);
+		}
+
+		writeConnection.delete(currentFileLocation);
+
+		return Boolean.TRUE;
 	}
 }

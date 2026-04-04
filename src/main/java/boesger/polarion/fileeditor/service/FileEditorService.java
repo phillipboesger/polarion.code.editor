@@ -85,9 +85,9 @@ public class FileEditorService {
 			rootLoc = Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
 		}
 
-		String cleanPath = (path == null || path.isBlank()) ? SEARCH_PATH
+		String cleanPath = (path == null || path.isBlank()) ? ""
 				: path.replaceAll("^/+|/+$", "");
-		ILocation searchLoc = rootLoc.append(cleanPath);
+		ILocation searchLoc = cleanPath.isEmpty() ? rootLoc : rootLoc.append(cleanPath);
 
 		if(!repoConnection.exists(searchLoc)) { return Collections.emptyList(); }
 
@@ -97,8 +97,17 @@ public class FileEditorService {
 			String childName = childLoc.getLastComponent();
 			String childRelPath = getRelativePath(childLoc, rootLoc);
 			String ext = childLoc.getLastComponentExtension();
-			// Heuristic: treat entries without a file extension as folders (see method javadoc for limitations)
+			// Primary heuristic: entries without a file extension are folders.
+			// For entries WITH an extension (e.g. .polarion, .avasis) verify by checking for children.
 			boolean isDir = (ext == null || ext.isEmpty());
+			if(!isDir) {
+				try {
+					isDir = !repoConnection.getSubLocations(childLoc, false).isEmpty();
+				}
+				catch(Exception e) {
+					isDir = false;
+				}
+			}
 
 			Map<String, String> entry = new HashMap<>();
 			entry.put("name", childName);
@@ -136,7 +145,7 @@ public class FileEditorService {
 
 		if(repoConnection.exists(newFileLocation)) { throw new FileEditorException(String.format("A file with the new name '%s' exists already!", newFileName)); }
 
-		PolarionUtils.executeInTransaction(new RenameFileAction(currentFileLocation, newFileLocation));
+		PolarionUtils.executeInTransactionWithResult(new RenameFileAction(currentFileLocation, newFileLocation));
 	}
 
 	public Boolean createFile(String fileName, String content) throws FileEditorException {
