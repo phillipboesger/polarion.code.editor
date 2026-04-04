@@ -11,7 +11,7 @@
 		</invoke-factory>
 	</service-point>
 
-	<contribution configuration-id="customNavigationExtenders">
+	<contribution configuration-id="com.polarion.xray.webui.customNavigationExtenders">
 		<extenders extender="file-editor-navigation-extender"/>
 	</contribution>
 

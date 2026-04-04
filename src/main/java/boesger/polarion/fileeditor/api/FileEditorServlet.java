@@ -18,11 +18,15 @@ import org.apache.commons.io.IOUtils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.polarion.platform.core.PlatformContext;
+import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
+import com.polarion.subterra.base.data.identification.ContextId;
+import com.polarion.subterra.base.data.identification.IContextId;
 
 import boesger.polarion.fileeditor.exception.FileEditorException;
 import boesger.polarion.fileeditor.logger.PluginLogger;
 import boesger.polarion.fileeditor.model.RepoFile;
+import boesger.polarion.fileeditor.security.FileEditorPermission;
 import boesger.polarion.fileeditor.service.FileEditorService;
 
 /**
@@ -39,13 +43,19 @@ public class FileEditorServlet extends HttpServlet {
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
+	private static final String PERMISSION_DENIED_READ = "Missing permission: " + FileEditorPermission.PERMISSION_READ;
+	private static final String PERMISSION_DENIED_WRITE = "Missing permission: " + FileEditorPermission.PERMISSION_WRITE;
 
 	private ISecurityService securityService;
+	private IPermission readPermission;
+	private IPermission writePermission;
 
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
+		readPermission = securityService.constructPermission(FileEditorPermission.PERMISSION_READ);
+		writePermission = securityService.constructPermission(FileEditorPermission.PERMISSION_WRITE);
 		log.info("FileEditorServlet initialized.");
 	}
 
@@ -58,6 +68,10 @@ public class FileEditorServlet extends HttpServlet {
 
 		if(securityService.getCurrentUser() == null) {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
+			return;
+		}
+		if(!hasPermission(readPermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_READ);
 			return;
 		}
 
@@ -98,6 +112,10 @@ public class FileEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
+			return;
+		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -126,6 +144,10 @@ public class FileEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
+			return;
+		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -149,6 +171,10 @@ public class FileEditorServlet extends HttpServlet {
 
 		if(securityService.getCurrentUser() == null) {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
+			return;
+		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
 			return;
 		}
 
@@ -267,6 +293,17 @@ public class FileEditorServlet extends HttpServlet {
 	private void sendResponse(HttpServletResponse resp, String message, int status) throws IOException {
 		resp.setStatus(status);
 		resp.getWriter().write(message);
+	}
+
+	private boolean hasPermission(IPermission permission, String projectId) {
+		return securityService.hasPermission(permission, resolveContextId(projectId));
+	}
+
+	private IContextId resolveContextId(String projectId) {
+		if(projectId != null && !projectId.trim().isEmpty()) {
+			return ContextId.getContextIdFromContext(projectId.trim());
+		}
+		return ContextId.getGlobalContextId();
 	}
 
 	private static class RenameRequest {

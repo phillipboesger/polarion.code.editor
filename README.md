@@ -145,6 +145,18 @@ Files are read and written directly in the Polarion SVN-based repository.
 - In global scope, global repository files are shown.
 - No plugin-specific settings file is used.
 
+## Permissions
+
+The editor is protected by Polarion permissions and checked server-side on every API call.
+
+- `boesger.fileeditor.read`
+  - Required for all read operations (for example `GET /api/config/list`, `GET /api/config/file/...`, `GET /api/config/health`).
+  - Also controls whether the Code Editor navigation entry is visible.
+- `boesger.fileeditor.write`
+  - Required for all write operations (`PUT`, `POST`, `DELETE`).
+
+The permissions are declared in `META-INF/permissions.xml` and can be assigned in Polarion like other standard permissions.
+
 ---
 
 ## REST API Reference

@@ -131,10 +131,6 @@
       color: var(--text-light);
     }
 
-    .file-item:hover .action-group {
-        visibility: visible;
-    }
-
     .file-item.active {
       background: var(--bg-active);
       color: var(--text-light);
@@ -147,6 +143,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         flex-grow: 1;
+        min-width: 0;
         margin-right: 5px;
     }
 
@@ -157,11 +154,15 @@
     }
     
     .action-group {
-        display: flex;
+        display: none;
         gap: 2px;
         margin-left: auto;
-        visibility: hidden;
         flex-shrink: 0;
+    }
+
+    .file-item:hover .action-group,
+    .file-item.active .action-group {
+        display: flex;
     }
 
     /* Main Content */
@@ -735,6 +736,19 @@
             [/<\/?[a-zA-Z][\w-]*(?:\s+[^<>]*?)?>/, 'tag'],
             [/[{}()\[\]]/, '@brackets']
           ]
+        }
+      });
+
+      monaco.languages.registerDocumentFormattingEditProvider('velocity', {
+        provideDocumentFormattingEdits(model) {
+          const source = model.getValue();
+          const formatted = formatVelocityLike(source);
+          if (formatted === source) return [];
+
+          return [{
+            range: model.getFullModelRange(),
+            text: formatted
+          }];
         }
       });
     }
@@ -1460,7 +1474,7 @@
       if (currentPreview && !persistent) {
         if (isTabDirty(currentPreview)) {
           if (!confirm(`You have unsaved changes in ${currentPreview.path}. Discard changes?`)) {
-            return;
+            return Promise.resolve(null);
           }
         }
         if (currentPreview.model) currentPreview.model.dispose();
@@ -1468,7 +1482,7 @@
         previewTabId = null;
       }
 
-      fetch(buildFileApiUrl(filePath))
+      return fetch(buildFileApiUrl(filePath))
         .then(res => {
           if (!res.ok) throw new Error('Status ' + res.status);
           return res.text();
@@ -1497,9 +1511,10 @@
           if (silentOnError) {
             console.warn('Could not restore last opened file:', filePath, err);
             saveLastOpenedFile('');
-            return;
+            return null;
           }
           alert('Error loading file content: ' + err);
+          return null;
         });
     }
 

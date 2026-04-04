@@ -16,6 +16,7 @@
         <directory>META-INF</directory>
         <includes>
           <include>**/hivemodule.xml</include>
+          <include>**/permissions.xml</include>
         </includes>
         <targetPath>META-INF</targetPath>
       </resource>
