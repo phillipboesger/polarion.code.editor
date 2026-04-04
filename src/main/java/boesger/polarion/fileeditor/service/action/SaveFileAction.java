@@ -23,6 +23,10 @@ public class SaveFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 			writeConnection.setContent(fileLocation, PolarionUtils.toInputStream(content));
 		}
 		else {
+			ILocation parentLocation = fileLocation.getParentLocation();
+			if(parentLocation != null && !writeConnection.exists(parentLocation)) {
+				writeConnection.makeFolders(parentLocation);
+			}
 			writeConnection.create(fileLocation, PolarionUtils.toInputStream(content));
 		}
 

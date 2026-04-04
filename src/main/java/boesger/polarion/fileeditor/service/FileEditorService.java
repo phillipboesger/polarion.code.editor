@@ -166,13 +166,14 @@ public class FileEditorService {
 	}
 
 	public void updateFile(String fileName, String content) throws IOException, FileEditorException {
-		try {
+		boolean fileExists = existsFileInRepo(this.projectId, fileName);
+		if(!fileExists) {
 			createFile(fileName, content);
+			return;
 		}
-		catch(FileEditorException e) {
-			if(!Objects.equals(getFile(fileName).getContent(), content)) {
-				saveFile(fileName, content);
-			}
+
+		if(!Objects.equals(getFile(fileName).getContent(), content)) {
+			saveFile(fileName, content);
 		}
 	}
 
