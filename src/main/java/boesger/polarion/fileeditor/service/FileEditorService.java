@@ -14,7 +14,6 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 
-import com.google.gson.Gson;
 import com.polarion.platform.repository.config.RepositoryConfigurationException;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
@@ -33,7 +32,7 @@ import boesger.polarion.fileeditor.util.PolarionUtils;
 public class FileEditorService {
 
 	private static final PluginLogger log = new PluginLogger(FileEditorService.class);
-	private static final String SEARCH_PATH = ".file-editor";
+	private static final String SEARCH_PATH = "";
 	private static final String PATH_SEP = "/";
 
 	private String projectId = null;
@@ -53,7 +52,7 @@ public class FileEditorService {
 	}
 
 	/**
-	 * Returns all files in the configured directories regardless of file extension.
+	 * Returns all files regardless of file extension.
 	 */
 	public List<RepoFile> getAllFiles() {
 		return getFiles(null);
@@ -73,7 +72,7 @@ public class FileEditorService {
 	 * The result is sorted: folders first, then files, each group alphabetically.
 	 * This method is intended for lazy / incremental tree loading.
 	 *
-	 * @param  path relative path within the configured root (e.g. ".file-editor/config/")
+	 * @param  path relative path within the root (e.g. "config/")
 	 * @return      list of entries, each with keys "name", "path", "type" ("file"|"folder")
 	 */
 	public List<Map<String, String>> getDirectoryEntries(String path) {
@@ -240,13 +239,11 @@ public class FileEditorService {
 
 		if(hasProjectScope()) {
 			ILocation projLoc = PolarionUtils.getTrackerProject(projectId).getLocation();
-			files.addAll(loadFilesFromLocation(projLoc.append(SEARCH_PATH), extension, projectId, projLoc));
+			files.addAll(loadFilesFromLocation(resolveSearchLocation(projLoc), extension, projectId, projLoc));
 		}
 
 		ILocation globalRoot = Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
-		List<RepoFile> globalFiles = loadFilesFromLocation(globalRoot.append(SEARCH_PATH), extension, null, globalRoot);
-
-		loadAdditionalFolderFiles(getAdditionalFolders(), globalRoot, extension, files, globalFiles);
+		List<RepoFile> globalFiles = loadFilesFromLocation(resolveSearchLocation(globalRoot), extension, null, globalRoot);
 
 		if(hasProjectScope()) {
 			removeDuplicateGlobalFiles(globalFiles);
@@ -256,24 +253,6 @@ public class FileEditorService {
 		return files.stream()
 				.sorted((p1, p2) -> p1.getFileName().compareTo(p2.getFileName()))
 				.collect(Collectors.toList());
-	}
-
-	private void loadAdditionalFolderFiles(List<String> additionalFolders, ILocation globalRoot,
-			String extension, List<RepoFile> projectFiles, List<RepoFile> globalFiles) {
-		for(String folder : additionalFolders) {
-			if(folder == null || folder.trim().isEmpty()) continue;
-
-			ILocation root = hasProjectScope() ? PolarionUtils.getTrackerProject(projectId).getLocation() : globalRoot;
-			List<RepoFile> addFiles = loadFilesFromLocation(root.append(folder), extension,
-					hasProjectScope() ? projectId : null, root);
-
-			if(hasProjectScope()) {
-				projectFiles.addAll(addFiles);
-			}
-			else {
-				globalFiles.addAll(addFiles);
-			}
-		}
 	}
 
 	private void removeDuplicateGlobalFiles(List<RepoFile> globalFiles) {
@@ -309,6 +288,14 @@ public class FileEditorService {
 		return foundFiles;
 	}
 
+
+	private ILocation resolveSearchLocation(ILocation rootLocation) {
+		if(SEARCH_PATH == null || SEARCH_PATH.isBlank()) {
+			return rootLocation;
+		}
+		return rootLocation.append(SEARCH_PATH);
+	}
+
 	private boolean hasProjectScope() {
 		return !Objects.isNull(projectId);
 	}
@@ -333,7 +320,7 @@ public class FileEditorService {
 			cleanName = cleanName.substring(1);
 		}
 
-		if(!cleanName.startsWith(SEARCH_PATH + "/")) {
+		if(!SEARCH_PATH.isBlank() && !cleanName.startsWith(SEARCH_PATH + "/")) {
 			cleanName = SEARCH_PATH + "/" + cleanName;
 		}
 
@@ -358,34 +345,6 @@ public class FileEditorService {
 			return rel;
 		}
 		return location.getLastComponent();
-	}
-
-	@SuppressWarnings("unchecked")
-	private List<String> getAdditionalFolders() {
-		try {
-			ILocation settingsLoc = resolveTargetLocation(this.projectId, "file-editor-settings.json");
-			if(repoConnection.exists(settingsLoc)) {
-				String content = loadFileContent(settingsLoc);
-				log.info("Loaded settings from " + settingsLoc.getLocationPath() + ": " + content);
-				Gson gson = new Gson();
-				Map<String, Object> map = gson.fromJson(content, Map.class);
-				if(map != null && map.containsKey("additionalFolders")) {
-					Object obj = map.get("additionalFolders");
-					if(obj instanceof List) {
-						List<String> folders = (List<String>) obj;
-						log.info("Found additional folders: " + folders);
-						return folders;
-					}
-				}
-			}
-			else {
-				log.info("Settings file not found at " + settingsLoc.getLocationPath());
-			}
-		}
-		catch(IOException | RepositoryConfigurationException e) {
-			log.error("Error loading additional folders", e);
-		}
-		return Collections.emptyList();
 	}
 
 }

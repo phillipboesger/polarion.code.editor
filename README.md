@@ -11,7 +11,6 @@ A **VS Code-like file editor** for Polarion ALM, available directly inside the P
 - [Prerequisites](#prerequisites)
 - [Build & Installation](#build--installation)
 - [Usage](#usage)
-- [Configuration & File Storage](#configuration--file-storage)
 - [REST API Reference](#rest-api-reference)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
@@ -25,7 +24,6 @@ A **VS Code-like file editor** for Polarion ALM, available directly inside the P
 - **File Explorer sidebar** — hierarchical tree view of all editable files in the Polarion repository.
 - **Full CRUD operations** — create, read, update, delete, and rename files directly in the Polarion repository.
 - **Project-aware scoping** — automatically detects the current Polarion project from the URL and shows project-specific files alongside global ones.
-- **Configurable additional folders** — extend the editor to show files from any repository path, not just `.file-editor/`.
 - **Transaction-safe writes** — all file writes are wrapped in Polarion repository transactions, ensuring consistency.
 - **Keyboard shortcut support** — save files with `Ctrl+S` / `Cmd+S`.
 - **Resizable & collapsible sidebar** — drag to resize or collapse the explorer; width is persisted between sessions.
@@ -40,9 +38,9 @@ The editor is embedded directly in the Polarion Administration panel:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  EXPLORER              «   │  .file-editor/config.json   [Save] │
+│  EXPLORER              «   │  config.json               [Save] │
 │  ─────────────────────     │ ──────────────────────────────────  │
-│  ▼ .file-editor/           │  1  {                              │
+│  ▼ project/               │  1  {                              │
 │      config.json       ✎ ✕ │  2    "key": "value"              │
 │      settings.json     ✎ ✕ │  3  }                              │
 │  ▼ macros/                 │                                    │
@@ -123,7 +121,7 @@ The editor automatically detects the current scope (global, project, or project 
 ### Creating a New File
 
 1. Click the **New File** button in the toolbar.
-2. Enter a path relative to `.file-editor/` (e.g., `config/myconfig.yaml`).
+2. Enter a repository-relative path (e.g., `config/myconfig.yaml`).
 3. Any file extension is supported (e.g. `.json`, `.yaml`, `.xml`, `.vm`, `.sh`, `.md`, …).
 4. Click **Create**.
 
@@ -139,40 +137,13 @@ The editor automatically detects the current scope (global, project, or project 
 2. Click the **✕** icon.
 3. Confirm the deletion.
 
-### Configuring Additional Folders
+## File Scope
 
-By default, the editor shows files under `.file-editor/`. To add more folders:
+Files are read and written directly in the Polarion SVN-based repository.
 
-1. Click the **⚙** (settings) icon in the sidebar header.
-2. Enter additional folder paths (one per line), relative to the project or global repository root.
-3. Click **Save Settings**.
-
-The settings are persisted in `.file-editor/file-editor-settings.json` within the repository.
-
----
-
-## Configuration & File Storage
-
-Files are stored directly in the Polarion SVN-based repository:
-
-| Scope | Path |
-|---|---|
-| **Global** | `/.file-editor/` |
-| **Project-specific** | `/<PROJECT_ID>/.file-editor/` |
-| **Custom folders** | Configurable via `file-editor-settings.json` |
-
-### Settings File Format
-
-`.file-editor/file-editor-settings.json`:
-
-```json
-{
-  "additionalFolders": [
-    "macros",
-    "scripts/velocity"
-  ]
-}
-```
+- In project scope, project files are shown first and can override global files with the same path.
+- In global scope, global repository files are shown.
+- No plugin-specific settings file is used.
 
 ---
 
@@ -206,7 +177,7 @@ GET /api/config/list?projectId=<id>
 [
   {
     "name": "config.json",
-    "path": ".file-editor/config.json",
+    "path": "file-editor/config.json",
     "projectId": "MyProject"
   }
 ]
@@ -256,8 +227,8 @@ POST /api/config/rename?projectId=<id>
 
 ```json
 {
-  "oldName": ".file-editor/old-name.json",
-  "newName": ".file-editor/new-name.json"
+  "oldName": "file-editor/old-name.json",
+  "newName": "file-editor/new-name.json"
 }
 ```
 

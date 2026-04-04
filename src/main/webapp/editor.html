@@ -224,6 +224,79 @@
       cursor: default;
     }
 
+    .editor-tabs {
+      height: 35px;
+      background: #252526;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: stretch;
+      overflow-x: auto;
+      overflow-y: hidden;
+      white-space: nowrap;
+    }
+
+    .editor-tab {
+      min-width: 120px;
+      max-width: 260px;
+      padding: 0 10px;
+      border-right: 1px solid var(--border-color);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #bbbbbb;
+      background: #2d2d2d;
+      cursor: pointer;
+      font-size: 12px;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .editor-tab:hover {
+      background: #313131;
+      color: #ffffff;
+    }
+
+    .editor-tab.active {
+      background: #1e1e1e;
+      color: #ffffff;
+      border-top: 1px solid var(--accent);
+      margin-top: -1px;
+    }
+
+    .editor-tab.preview .tab-title {
+      font-style: italic;
+    }
+
+    .editor-tab.dirty .tab-title::after {
+      content: ' *';
+      color: #ffcc66;
+      font-style: normal;
+    }
+
+    .tab-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    .tab-close {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .tab-close:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
     /* Editor Area */
     #editor-wrapper {
       flex-grow: 1;
@@ -503,10 +576,9 @@
       </script>
       <div class="sidebar-header">
         <span>EXPLORER</span>
-        <div style="display:flex; gap: 5px;">
-           <button class="icon-btn" id="settingsBtn" title="Settings" style="font-size:14px;">⚙</button>
+         <div style="display:flex; gap: 5px;">
            <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
-        </div>
+         </div>
       </div>
       <div class="sidebar-content">
         <ul class="file-list" id="fileList">
@@ -536,6 +608,8 @@
         </div>
       </div>
 
+      <div id="editorTabs" class="editor-tabs"></div>
+
       <div id="editor-wrapper">
         <div id="editor-container"></div>
         <div id="emptyState" class="empty-state-overlay">
@@ -552,32 +626,17 @@
     </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div id="settingsModal" class="modal-overlay">
-      <div class="modal">
-          <div class="modal-header">Configuration</div>
-          <div class="modal-body">
-              <div class="form-group">
-                  <label>Additional Source Folders (one per line):</label>
-                  <textarea id="settingFolders" placeholder="e.g. Documents/Specifications"></textarea>
-                  <div style="font-size:11px; color:#888; margin-top:5px;">
-                      Folders to scan for files. Paths are relative to Project Root (if in Project) or Global Root.
-                  </div>
-              </div>
-          </div>
-          <div class="modal-footer">
-              <button class="list-btn" id="cancelSettingsBtn" style="padding: 6px 12px; border:1px solid #555;">Cancel</button>
-              <button class="action-btn" id="saveSettingsBtn">Save</button>
-          </div>
-      </div>
-  </div>
-
   <!-- Monaco Loader -->
   <script src="/polarion/file-editor/resources/lib/monaco-editor/min/vs/loader.js"></script>
   <script>
     let editor;
     let currentFile = null;
     let originalContent = "";
+
+    let openTabs = [];
+    let activeTabId = null;
+    let previewTabId = null;
+    let tabIdCounter = 0;
     
     // Attempt to get projectId from query param OR window.top URL (if accessible)
     let projectId = new URLSearchParams(window.location.search).get('projectId') || '';
@@ -829,8 +888,6 @@
       document.getElementById('saveBtn').onclick = saveCurrentFile;
       document.getElementById('copyBtn').onclick = copyContent;
       
-      setupSettings();
-
       // Keyboard Shortcuts
       document.addEventListener('keydown', (e) => {
           // Ctrl+S / Cmd+S
@@ -844,7 +901,7 @@
 
       // Unsaved Changes Warning
       window.onbeforeunload = function(e) {
-        if (isDirty()) {
+        if (hasAnyDirtyTabs()) {
             e.preventDefault();
             e.returnValue = '';
         }
@@ -853,41 +910,226 @@
 
     /* --- Core Logic --- */
 
+    function getTabById(tabId) {
+      return openTabs.find(t => t.id === tabId) || null;
+    }
+
+    function getActiveTab() {
+      return getTabById(activeTabId);
+    }
+
+    function getDisplayName(path) {
+      if (!path) return 'No File Selected';
+      const parts = path.split('/');
+      return parts[parts.length - 1] || path;
+    }
+
+    function isTabDirty(tab) {
+      if (!tab || !tab.model) return false;
+      return tab.model.getValue() !== tab.originalContent;
+    }
+
     function isDirty() {
-      return currentFile && editor && editor.getValue() !== originalContent;
+      const tab = getActiveTab();
+      return isTabDirty(tab);
+    }
+
+    function hasAnyDirtyTabs() {
+      return openTabs.some(tab => isTabDirty(tab));
     }
 
     function updateToolbarState() {
       const saveBtn = document.getElementById('saveBtn');
-      if (isDirty()) {
+      const tab = getActiveTab();
+      if (tab && isTabDirty(tab)) {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save *';
       } else {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Save';
       }
+      renderTabs();
     }
 
     function toggleEmptyState(visible) {
       const emptyState = document.getElementById('emptyState');
-      const container = document.getElementById('editor-container');
-      
+
       if (visible) {
         emptyState.classList.remove('hidden');
-        editor.updateOptions({ readOnly: true });
-        // Optionally clear editor
-        if(editor) editor.setValue('');
-        document.getElementById('currentFileLabel').textContent = "No File Selected";
+        if (editor) {
+          editor.updateOptions({ readOnly: true });
+        }
+        document.getElementById('currentFileLabel').textContent = 'No File Selected';
         document.getElementById('copyBtn').disabled = true;
         document.getElementById('saveBtn').disabled = true;
       } else {
         emptyState.classList.add('hidden');
-        editor.updateOptions({ readOnly: false });
-        document.getElementById('currentFileLabel').textContent = currentFile;
+        if (editor) {
+          editor.updateOptions({ readOnly: false });
+        }
+        const tab = getActiveTab();
+        document.getElementById('currentFileLabel').textContent = tab ? tab.path : 'No File Selected';
         document.getElementById('copyBtn').disabled = false;
         updateToolbarState();
       }
     }
+
+    function renderTabs() {
+      const tabsContainer = document.getElementById('editorTabs');
+      if (!tabsContainer) return;
+
+      tabsContainer.innerHTML = '';
+
+      openTabs.forEach(tab => {
+        const tabEl = document.createElement('div');
+        tabEl.className = 'editor-tab';
+        if (tab.id === activeTabId) tabEl.classList.add('active');
+        if (tab.isPreview) tabEl.classList.add('preview');
+        if (isTabDirty(tab)) tabEl.classList.add('dirty');
+
+        const title = document.createElement('span');
+        title.className = 'tab-title';
+        title.textContent = getDisplayName(tab.path);
+        title.title = tab.path + (tab.isPreview ? ' (Preview)' : '');
+
+        const close = document.createElement('span');
+        close.className = 'tab-close';
+        close.textContent = '✕';
+        close.title = 'Close';
+        close.onclick = (e) => {
+          e.stopPropagation();
+          closeTab(tab.id);
+        };
+
+        tabEl.onclick = () => activateTab(tab.id);
+
+        tabEl.appendChild(title);
+        tabEl.appendChild(close);
+        tabsContainer.appendChild(tabEl);
+      });
+    }
+
+    function setActiveFileInTree(filePath) {
+      document.querySelectorAll('#fileList .file-item.active').forEach(el => el.classList.remove('active'));
+      const row = document.querySelector(`#fileList .file-item[data-path="${CSS.escape(filePath)}"]`);
+      if (row) row.classList.add('active');
+    }
+
+    function activateTab(tabId) {
+      const tab = getTabById(tabId);
+      if (!tab) return;
+
+      activeTabId = tab.id;
+      currentFile = tab.path;
+      originalContent = tab.originalContent;
+
+      if (editor) {
+        editor.setModel(tab.model);
+      }
+
+      setActiveFileInTree(tab.path);
+      toggleEmptyState(false);
+      renderTabs();
+      updateToolbarState();
+    }
+
+    function closeTab(tabId) {
+      const idx = openTabs.findIndex(t => t.id === tabId);
+      if (idx === -1) return;
+      const tab = openTabs[idx];
+
+      if (isTabDirty(tab)) {
+        if (!confirm(`You have unsaved changes in ${tab.path}. Discard changes?`)) {
+          return;
+        }
+      }
+
+      const wasActive = tab.id === activeTabId;
+      const nextActiveId = wasActive
+        ? (openTabs[idx + 1]?.id || openTabs[idx - 1]?.id || null)
+        : activeTabId;
+
+      openTabs.splice(idx, 1);
+
+      if (tab.model) {
+        tab.model.dispose();
+      }
+
+      if (previewTabId === tab.id) previewTabId = null;
+
+      if (openTabs.length === 0) {
+        activeTabId = null;
+        currentFile = null;
+        originalContent = '';
+        if (editor) {
+          const oldModel = editor.getModel();
+          const emptyModel = monaco.editor.createModel('', 'plaintext');
+          editor.setModel(emptyModel);
+          if (oldModel) oldModel.dispose();
+        }
+        toggleEmptyState(true);
+        renderTabs();
+        renderFileList();
+        return;
+      }
+
+      activeTabId = nextActiveId;
+      activateTab(activeTabId);
+      renderFileList();
+    }
+
+    function openFileInTab(filePath, options = {}) {
+      const { persistent = false } = options;
+
+      const existing = openTabs.find(t => t.path === filePath);
+      if (existing) {
+        if (persistent && existing.isPreview) {
+          existing.isPreview = false;
+          if (previewTabId === existing.id) previewTabId = null;
+        }
+        activateTab(existing.id);
+        return;
+      }
+
+      const currentPreview = previewTabId ? getTabById(previewTabId) : null;
+      if (currentPreview && !persistent) {
+        if (isTabDirty(currentPreview)) {
+          if (!confirm(`You have unsaved changes in ${currentPreview.path}. Discard changes?`)) {
+            return;
+          }
+        }
+        if (currentPreview.model) currentPreview.model.dispose();
+        openTabs = openTabs.filter(t => t.id !== currentPreview.id);
+        previewTabId = null;
+      }
+
+      fetch(getApiUrl('file/' + filePath))
+        .then(res => {
+          if (!res.ok) throw new Error('Status ' + res.status);
+          return res.text();
+        })
+        .then(content => {
+          const lang = getMonacoLanguage(filePath);
+          const model = monaco.editor.createModel(content, lang);
+
+          const newTab = {
+            id: `tab-${++tabIdCounter}`,
+            path: filePath,
+            model,
+            originalContent: content,
+            isPreview: !persistent
+          };
+
+          openTabs.push(newTab);
+          if (!persistent) previewTabId = newTab.id;
+
+          activateTab(newTab.id);
+          renderFileList();
+          renderTabs();
+        })
+        .catch(err => alert('Error loading file content: ' + err));
+    }
+
 
     let treeCache = {};           // path -> [{name, path, type}] from /api/files/tree
     let expandedFolders = new Set(); // paths of currently expanded folders
@@ -1123,6 +1365,7 @@
         files.forEach(entry => {
              const li = document.createElement('li');
              li.className = 'file-item';
+             li.dataset.path = entry.path;
              li.style.paddingLeft = (15 + (level * 10)) + 'px';
 
              if (entry.path === currentFile) li.classList.add('active');
@@ -1163,75 +1406,59 @@
 
              li.appendChild(actions);
 
-             // Single click: highlight only
+             // Single click: open/update preview tab
              li.onclick = (e) => {
                  e.stopPropagation();
-                 document.querySelectorAll('#fileList .file-item.active').forEach(el => el.classList.remove('active'));
-                 li.classList.add('active');
+                 onFileSelect(entry.path, false);
              };
 
-             // Double click: load file content
+             // Double click: open persistent tab
              li.ondblclick = (e) => {
                  e.stopPropagation();
-                 onFileSelect(entry.path);
+                 onFileSelect(entry.path, true);
              };
 
              container.appendChild(li);
         });
     }
 
-    function onFileSelect(fileName) {
-      if (currentFile === fileName) return;
+    function onFileSelect(fileName, persistent) {
+      const activeTab = getActiveTab();
+      if (activeTab && activeTab.path === fileName) {
+        if (persistent && activeTab.isPreview) {
+          activeTab.isPreview = false;
+          if (previewTabId === activeTab.id) previewTabId = null;
+          renderTabs();
+        }
+        return;
+      }
 
       if (isDirty()) {
          if (!confirm(`You have unsaved changes in ${currentFile}. Discard changes?`)) {
              return;
          }
       }
-      loadFileContent(fileName);
+
+      openFileInTab(fileName, { persistent: !!persistent });
     }
 
-    function loadFileContent(fileName) {
-      currentFile = fileName;
-      
-      // Update Active State
-      renderFileList(); // simpler re-render to update active class
-
-      const lang = getMonacoLanguage(fileName);
-
-      fetch(getApiUrl('file/' + fileName))
-        .then(res => res.text())
-        .then(content => {
-           originalContent = content;
-           
-           if (!editor) return;
-           
-           const oldModel = editor.getModel();
-           const newModel = monaco.editor.createModel(content, lang);
-           editor.setModel(newModel);
-           if (oldModel) oldModel.dispose();
-
-           toggleEmptyState(false);
-           updateToolbarState(); 
-        })
-        .catch(err => alert('Error loading file content: ' + err));
-    }
 
     function saveCurrentFile() {
-      if (!currentFile) return;
-      const content = editor.getValue();
+      const activeTab = getActiveTab();
+      if (!activeTab) return;
+      const content = activeTab.model.getValue();
 
       const btn = document.getElementById('saveBtn');
-      // const prevText = btn.textContent; // unused
       btn.textContent = 'Saving...';
       btn.disabled = true;
 
-      fetch(getApiUrl('file/' + currentFile), {
+      fetch(getApiUrl('file/' + activeTab.path), {
         method: 'PUT',
         body: content
       })
         .then(res => {
           if (res.ok) {
+             activeTab.originalContent = content;
              originalContent = content;
              updateToolbarState();
           } else {
@@ -1245,113 +1472,9 @@
         });
     }
 
+
     function createFile() {
         openNewFileModal();
-    }
-
-    function setupSettings() {
-        const modal = document.getElementById('settingsModal');
-        const btn = document.getElementById('settingsBtn');
-        const closeBtn = document.getElementById('cancelSettingsBtn');
-        const saveBtn = document.getElementById('saveSettingsBtn');
-        
-        if (btn) {
-            btn.onclick = () => {
-                modal.classList.add('visible');
-                loadSettings();
-            };
-        }
-        
-        if (closeBtn) {
-            closeBtn.onclick = () => {
-                modal.classList.remove('visible');
-            };
-        }
-        
-        if (saveBtn) {
-            saveBtn.onclick = () => {
-                saveSettings(); // Ensure this function is defined and calls saveSettings logic
-            };
-        }
-        
-        // Close on outside click
-        modal.onclick = (e) => {
-            if (e.target === modal) modal.classList.remove('visible');
-        };
-    }
-
-    function loadSettings() {
-        const textarea = document.getElementById('settingFolders');
-        if(!textarea) return;
-        
-        textarea.value = "Loading...";
-        textarea.disabled = true;
-        
-        const settingsPath = ".file-editor/file-editor-settings.json";
-        
-        fetch(getApiUrl('file/' + settingsPath))
-            .then(res => {
-                if (res.status === 404) {
-                    return "{}"; // Default empty
-                }
-                if (!res.ok) throw new Error("Status " + res.status);
-                return res.text();
-            })
-            .then(text => {
-                try {
-                    const json = JSON.parse(text);
-                    const folders = json.additionalFolders || [];
-                    textarea.value = folders.join('\n');
-                } catch (e) {
-                    console.error("Error parsing settings", e);
-                    textarea.value = ""; 
-                }
-            })
-            .catch(err => {
-                console.error("Error loading settings", err);
-                textarea.value = "";
-            })
-            .finally(() => {
-                textarea.disabled = false;
-            });
-    }
-
-    function saveSettings() {
-        const textarea = document.getElementById('settingFolders');
-        const saveBtn = document.getElementById('saveSettingsBtn');
-        const modal = document.getElementById('settingsModal');
-        
-        const content = textarea.value;
-        const folders = content.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-        
-        const json = {
-            additionalFolders: folders
-        };
-        
-        saveBtn.textContent = "Saving...";
-        saveBtn.disabled = true;
-        
-        const settingsPath = ".file-editor/file-editor-settings.json";
-        
-        fetch(getApiUrl('file/' + settingsPath), {
-            method: 'PUT',
-            body: JSON.stringify(json, null, 2)
-        })
-        .then(res => {
-            if (res.ok) {
-                modal.classList.remove('visible');
-                loadFiles(); // Reload file list to include new folders
-            } else {
-                res.json().then(d => alert("Error saving settings: " + (d.error || "Unknown")));
-            }
-        })
-        .catch(err => {
-            alert("Error saving settings: " + err);
-        })
-        .finally(() => {
-            saveBtn.textContent = "Save";
-            saveBtn.disabled = false;
-        });
     }
 
     function populateFolderSelect(selectId) {
@@ -1525,10 +1648,6 @@
             if(lastSlash !== -1) dir = dir.substring(0, lastSlash);
             else dir = ""; // root
             
-            // Normalize .file-editor
-            if(dir.startsWith('.file-editor/')) dir = dir.substring(13);
-            else if(dir === '.file-editor') dir = "";
-            
             if(dir) initialPath = dir + "/";
         }
 
@@ -1600,20 +1719,7 @@
         
         if(nameInput.startsWith('/')) nameInput = nameInput.substring(1);
         
-        // Prepend .file-editor if needed. Since UI shows .file-editor prefix static, 
-        // the input is "sub/file.json". So full path is ".file-editor/sub/file.json"
-        
         let fullPath = nameInput;
-        // Ensure no double .file-editor if user typed it
-        if (!fullPath.startsWith('.file-editor/')) {
-            // Actually our backend expects relative to storage root. 
-            // In editor.html logic we often see .file-editor prefix being stripped/added.
-            // Let's look at `loadFiles`: it processes raw paths.
-            // If I save "foo.json", where does it go?
-            // "api/config/file/foo.json".
-            // If the server enforces .file-editor root, we should likely send ".file-editor/foo.json".
-            fullPath = '.file-editor/' + fullPath;
-        }
 
         closeNewFileModal();
         
@@ -1649,10 +1755,6 @@
         let displayPath = oldName;
         // Remove trailing slash for folders
         if(displayPath.endsWith('/')) displayPath = displayPath.slice(0, -1);
-        // Normalize for display (remove .file-editor prefix)
-        if(displayPath.startsWith('.file-editor/')) displayPath = displayPath.substring(13);
-        else if (displayPath === 'file-editor' || displayPath === '.file-editor') displayPath = "";
-
         // Split into parent path and item name
         const lastSlashIdx = displayPath.lastIndexOf('/');
         const parentPath = lastSlashIdx === -1 ? '' : displayPath.substring(0, lastSlashIdx + 1);
@@ -1667,7 +1769,7 @@
         const modalTitle = document.getElementById('renameModalTitle');
 
         // Update prefix dynamically to show parent directory
-        document.getElementById('renamePrefixSpan').textContent = '.file-editor/' + parentPath;
+        document.getElementById('renamePrefixSpan').textContent = parentPath;
 
         btn.disabled = false;
         errorDiv.textContent = "";
@@ -1752,7 +1854,16 @@
         })
         .then(res => {
             if(res.ok) {
-                if(currentFile === oldName) currentFile = newPath;
+                openTabs.forEach(tab => {
+                    if (tab.path === oldName || tab.path === normalizedOld) {
+                        tab.path = newPath;
+                    }
+                });
+                const activeTab = getActiveTab();
+                if (activeTab) {
+                    currentFile = activeTab.path;
+                }
+                renderTabs();
                 loadFiles();
             } else {
                 res.json().then(d => alert("Rename failed: " + d.error)).catch(() => alert("Rename failed"));
@@ -1769,11 +1880,37 @@
       })
         .then(res => {
           if (res.ok) {
-            if (currentFile === fileName) {
-                currentFile = null;
-                originalContent = "";
-                toggleEmptyState(true);
+            const deletedPrefix = fileName.endsWith('/') ? fileName : null;
+
+            const tabsToRemove = openTabs.filter(tab => {
+              if (tab.path === fileName) return true;
+              if (deletedPrefix && tab.path.startsWith(deletedPrefix)) return true;
+              return false;
+            });
+
+            tabsToRemove.forEach(tab => {
+              if (tab.model) tab.model.dispose();
+            });
+
+            openTabs = openTabs.filter(tab => !tabsToRemove.includes(tab));
+
+            if (previewTabId && !getTabById(previewTabId)) {
+              previewTabId = null;
             }
+
+            if (activeTabId && !getTabById(activeTabId)) {
+              activeTabId = openTabs.length ? openTabs[openTabs.length - 1].id : null;
+            }
+
+            if (activeTabId) {
+              activateTab(activeTabId);
+            } else {
+              currentFile = null;
+              originalContent = '';
+              toggleEmptyState(true);
+              renderTabs();
+            }
+
             loadFiles();
           } else {
             res.json().then(data => alert('Error deleting: ' + (data.error || 'Unknown')));
@@ -1782,9 +1919,12 @@
         .catch(err => alert('Error deleting: ' + err));
     }
 
+
     function copyContent() {
         if (!editor) return;
-        const val = editor.getValue();
+        const activeTab = getActiveTab();
+        if (!activeTab) return;
+        const val = activeTab.model.getValue();
         navigator.clipboard.writeText(val).then(() => {
             const btn = document.getElementById('copyBtn');
             const originalText = btn.textContent;
@@ -1799,9 +1939,9 @@
     <div class="modal-content">
         <h3>Create New File</h3>
         <div class="modal-field">
-            <label>Location (Inside .file-editor)</label>
+            <label>Location</label>
             <div class="path-container" style="position:relative;">
-                <span class="path-prefix" title="All files are enforced to be in .file-editor folder" style="min-width:55px;">.file-editor/</span>
+                <span class="path-prefix" style="min-width:0;"></span>
                 <input type="text" id="newFileName" name="polarion_file_editor_abs_path_field_xyz" class="path-input" 
                        placeholder="folder/subfolder/filename.yaml" autocomplete="off" list="autocompleteOff"
                        spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
@@ -1827,7 +1967,7 @@
         <div class="modal-field">
             <label>New name</label>
             <div class="path-container" style="position:relative;">
-                <span id="renamePrefixSpan" class="path-prefix">.file-editor/</span>
+                <span id="renamePrefixSpan" class="path-prefix"></span>
                 <input type="text" id="renameFileName" name="polarion_file_editor_rename_field_xyz" class="path-input" 
                        autocomplete="off" list="autocompleteOff" spellcheck="false" autocapitalize="off" autocorrect="off" style="flex:1;">
                 
