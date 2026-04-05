@@ -11,6 +11,7 @@ A **VS Code-like file editor** for Polarion ALM, available directly inside the P
 - [Prerequisites](#prerequisites)
 - [Build & Installation](#build--installation)
 - [Usage](#usage)
+- [Branding & Legal Notice](#branding--legal-notice)
 - [REST API Reference](#rest-api-reference)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
@@ -29,6 +30,7 @@ A **VS Code-like file editor** for Polarion ALM, available directly inside the P
 - **Resizable & collapsible sidebar** — drag to resize or collapse the explorer; width is persisted between sessions.
 - **Unsaved-changes protection** — the browser warns before navigating away with unsaved edits.
 - **Dark theme** — consistent with VS Code's default dark appearance.
+- **Free to use** — the plugin remains fully free to use (Apache 2.0).
 
 ---
 
@@ -111,6 +113,16 @@ The CodeEditor is accessible from:
 
 The editor automatically detects the current scope (global, project, or project group) from the Polarion URL.
 
+## Branding & Legal Notice
+
+This plugin includes subtle branding (custom navigation/editor icon and in-editor attribution) while remaining fully **free to use**.
+
+- Website: [https://digital.boesger.com](https://digital.boesger.com)
+- Legal Notice: [https://digital.boesger.com/impressum](https://digital.boesger.com/impressum)
+- Feedback & Requests: [GitHub Issues](https://github.com/phillipboesger/polarion.fileEditor/issues)
+
+There is no paywall, no license key, and no feature limitation introduced by the branding.
+
 ### Editing Files
 
 1. **Browse files** in the left-hand explorer panel.
@@ -157,6 +169,31 @@ The editor is protected by Polarion permissions and checked server-side on every
 
 The permissions are declared in `META-INF/permissions.xml` and can be assigned in Polarion like other standard permissions.
 Additionally, the plugin grants effective read/write access by default for users with global role `admin` or project role `project_admin`.
+
+### Optional: Permissions Management UI helper (JS injection)
+
+To simplify managing the two custom permissions in Polarion's standard **Permissions Management** page, this plugin ships a helper script:
+
+- `/polarion/code-editor/resources/permissions-injection.js`
+
+The script is intentionally client-side only and injects missing table rows for these permissions directly into the standard permissions matrix so they can be configured like native entries:
+
+- `boesger.codeeditor.read`
+- `boesger.codeeditor.write`
+
+#### Preferred (automatic, if your Polarion setup supports global script injection)
+
+Register this script in your existing Polarion-wide HTML/script injection mechanism so it is loaded on standard UI pages:
+
+```html
+<script src="/polarion/code-editor/resources/permissions-injection.js"></script>
+```
+
+#### Fallback (manual)
+
+If automatic loading is not available in your instance, keep the same script tag in your manual script injection/configuration entry.
+
+The injection is idempotent and only activates on pages that look like the permissions management UI.
 
 ---
 

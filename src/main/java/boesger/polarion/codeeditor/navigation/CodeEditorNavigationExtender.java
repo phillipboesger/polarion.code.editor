@@ -20,7 +20,7 @@ public class CodeEditorNavigationExtender extends NavigationExtender {
 	private static final PluginLogger log = new PluginLogger(CodeEditorNavigationExtender.class);
 	private static final String ROOT_ID = "code-editor";
 	private static final String LABEL = "Code Editor";
-	private static final String ROOT_ICON_URL = "/polarion/ria/images/topicIcons/integrations.svg";
+	private static final String ROOT_ICON_URL = "/polarion/code-editor/resources/img/code-editor-icon.svg";
 	private static final String PAGE_URL = "/polarion/code-editor/editor.html";
 	private static final String GLOBAL_ADMIN_ROLE = "admin";
 	private static final String PROJECT_ADMIN_ROLE = "project_admin";

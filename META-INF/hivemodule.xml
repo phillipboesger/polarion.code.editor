@@ -2,7 +2,7 @@
 <module id="boesger.polarion.codeeditor" version="1.0.0">
 
 	<contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
-		<extender id="code-editor" name="Code Editor" iconUrl="/polarion/ria/images/topicIcons/integrations.svg" pageUrl="/polarion/code-editor/editor.html" projectScope="true" projectGroupScope="true" repositoryScope="true" />
+		<extender id="code-editor" name="Code Editor" iconUrl="/polarion/code-editor/resources/img/code-editor-icon.svg" pageUrl="/polarion/code-editor/editor.html" projectScope="true" projectGroupScope="true" repositoryScope="true" />
 	</contribution>
 
 	<service-point id="code-editor-navigation-extender" interface="com.polarion.alm.ui.server.navigation.NavigationExtender">

@@ -199,6 +199,12 @@
       margin-left: 4px;
     }
 
+    .sidebar-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     /* Buttons */
     .icon-btn {
       background: transparent;
@@ -343,6 +349,28 @@
       height: 100%;
     }
 
+    .editor-footer {
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      border-top: 1px solid var(--border-color);
+      background: #252526;
+      color: #a8a8a8;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .editor-footer a {
+      color: #78d7f5;
+      text-decoration: none;
+    }
+
+    .editor-footer a:hover {
+      text-decoration: underline;
+    }
+
     /* Empty State */
     .empty-state-overlay {
       position: absolute;
@@ -366,6 +394,52 @@
       font-weight: normal;
       margin-bottom: 10px;
       color: var(--text-light);
+    }
+
+    .empty-state-content.permission-state {
+      max-width: 560px;
+      text-align: left;
+      background: rgba(255, 107, 107, 0.08);
+      border: 1px solid rgba(255, 107, 107, 0.45);
+      border-radius: 8px;
+      padding: 18px 20px;
+      line-height: 1.55;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    .empty-state-content.permission-state h3 {
+      margin: 0 0 10px 0;
+      color: #ffb3b3;
+      font-weight: 600;
+      font-size: 18px;
+    }
+
+    .permission-state-paragraph {
+      margin: 0 0 12px 0;
+      color: #ffd6d6;
+      font-size: 13px;
+    }
+
+    .permission-state-hint {
+      margin: 0 0 14px 0;
+      color: #ffe8e8;
+      font-size: 12px;
+      font-family: Consolas, Monaco, 'Courier New', monospace;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      padding: 6px 8px;
+      display: inline-block;
+    }
+
+    .permission-state-actions {
+      margin: 0;
+      padding-left: 18px;
+      color: #ffd6d6;
+      font-size: 13px;
+    }
+
+    .permission-state-actions li {
+      margin: 6px 0;
     }
 
     /* Helper for hidden elements */
@@ -664,7 +738,7 @@
         })();
       </script>
       <div class="sidebar-header">
-        <span>EXPLORER</span>
+        <span class="sidebar-title">EXPLORER</span>
          <div class="sidebar-header-actions">
            <button id="newBtn" class="action-btn">New File</button>
            <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
@@ -716,6 +790,15 @@
           </div>
         </div>
       </div>
+
+      <div class="editor-footer">
+        <span>Code Editor is available for free.</span>
+        <span>
+          Made by <a href="https://digital.boesger.com" target="_blank" rel="noopener noreferrer">Boesger Digital</a>
+          · <a href="https://digital.boesger.com/impressum" target="_blank" rel="noopener noreferrer">Legal Notice</a>
+          · <a href="https://github.com/phillipboesger/polarion.fileEditor/issues" target="_blank" rel="noopener noreferrer">Feedback &amp; requests via GitHub issue</a>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -742,6 +825,7 @@
     let isInitialBootstrap = true;
     let initialBootstrapFallbackTimer = null;
     let editorUserSettings = loadEditorUserSettings();
+    let defaultEmptyStateMarkup = '';
 
     function setGlobalBootstrapLoading(active, message) {
       const app = document.getElementById('app-container');
@@ -770,6 +854,31 @@
         initialBootstrapFallbackTimer = null;
       }
     }
+
+    function ensureDefaultEmptyStateMarkup() {
+      if (defaultEmptyStateMarkup) return;
+      const content = document.querySelector('#emptyState .empty-state-content');
+      if (content) {
+        defaultEmptyStateMarkup = content.innerHTML;
+      }
+    }
+
+    function restoreDefaultEmptyStateContent() {
+      ensureDefaultEmptyStateMarkup();
+      const content = document.querySelector('#emptyState .empty-state-content');
+      if (!content || !defaultEmptyStateMarkup) return;
+      content.classList.remove('permission-state');
+      content.innerHTML = defaultEmptyStateMarkup;
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
     
     // Attempt to get projectId from query param OR window.top URL (if accessible)
     let projectId = new URLSearchParams(window.location.search).get('projectId') || '';
@@ -790,6 +899,27 @@
     }
 
     require.config({ paths: { 'vs': '/polarion/code-editor/resources/lib/monaco-editor/min/vs' } });
+
+
+    const STORAGE_CONTEXT_GLOBAL = 'global';
+
+    function getStorageContextId() {
+      const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+      return normalizedProjectId || STORAGE_CONTEXT_GLOBAL;
+    }
+
+    function getContextStorageKey(baseKey) {
+      return `${baseKey}::${getStorageContextId()}`;
+    }
+
+    function getContextStorageValueWithLegacy(baseKey) {
+      const contextKey = getContextStorageKey(baseKey);
+      const contextValue = localStorage.getItem(contextKey);
+      if (contextValue !== null) {
+        return contextValue;
+      }
+      return localStorage.getItem(baseKey);
+    }
 
     window.MonacoEnvironment = {
       getWorkerUrl: function (workerId, label) {
@@ -856,6 +986,7 @@
 
       // Initialize UI
       updateEditorToolbarState();
+      ensureDefaultEmptyStateMarkup();
       loadFiles();
       setupEventListeners();
       setupResizer();
@@ -938,20 +1069,22 @@
     }
 
     function saveLastOpenedFile(path) {
+      const storageKey = getContextStorageKey(EDITOR_LAST_OPEN_FILE_KEY);
       if (!path) {
-        localStorage.removeItem(EDITOR_LAST_OPEN_FILE_KEY);
+        localStorage.removeItem(storageKey);
         return;
       }
-      localStorage.setItem(EDITOR_LAST_OPEN_FILE_KEY, path);
+      localStorage.setItem(storageKey, path);
     }
 
     function getLastOpenedFile() {
-      return localStorage.getItem(EDITOR_LAST_OPEN_FILE_KEY) || '';
+      return getContextStorageValueWithLegacy(EDITOR_LAST_OPEN_FILE_KEY) || '';
     }
 
     function saveOpenTabsSession() {
+      const storageKey = getContextStorageKey(EDITOR_OPEN_TABS_STORAGE_KEY);
       if (!openTabs.length) {
-        localStorage.removeItem(EDITOR_OPEN_TABS_STORAGE_KEY);
+        localStorage.removeItem(storageKey);
         return;
       }
 
@@ -960,12 +1093,12 @@
         paths: uniquePaths,
         activePath: currentFile || uniquePaths[0] || ''
       };
-      localStorage.setItem(EDITOR_OPEN_TABS_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(storageKey, JSON.stringify(payload));
     }
 
     function getOpenTabsSession() {
       try {
-        const raw = localStorage.getItem(EDITOR_OPEN_TABS_STORAGE_KEY);
+        const raw = getContextStorageValueWithLegacy(EDITOR_OPEN_TABS_STORAGE_KEY);
         if (!raw) return { paths: [], activePath: '' };
         const parsed = JSON.parse(raw) || {};
         const paths = Array.isArray(parsed.paths) ? parsed.paths.filter(p => typeof p === 'string' && p) : [];
@@ -1410,6 +1543,7 @@
       const emptyState = document.getElementById('emptyState');
 
       if (visible) {
+        restoreDefaultEmptyStateContent();
         emptyState.classList.remove('hidden');
         if (editor) {
           editor.updateOptions({ readOnly: true });
@@ -1577,7 +1711,7 @@
 
       return fetch(buildFileApiUrl(filePath), fetchOptions)
         .then(res => {
-          if (!res.ok) throw new Error('Status ' + res.status);
+          if (!res.ok) return throwHttpError(res);
           return res.text();
         })
         .then(content => {
@@ -1606,7 +1740,12 @@
             saveLastOpenedFile('');
             return null;
           }
-          alert('Error loading file content: ' + err);
+          const permissionMessage = getPermissionGuidanceMessage(err);
+          if (permissionMessage) {
+            showPermissionMessageInEditor(err);
+          } else {
+            alert('Error loading file content: ' + err);
+          }
           return null;
         })
         .finally(() => {
@@ -1614,6 +1753,100 @@
             clearTimeout(abortTimeout);
           }
         });
+    }
+
+
+
+    function throwHttpError(res) {
+      return res.text()
+        .catch(() => '')
+        .then(responseBody => {
+          const message = responseBody ? `Status ${res.status}: ${responseBody}` : `Status ${res.status}`;
+          const error = new Error(message);
+          error.status = res.status;
+          error.responseBody = responseBody;
+          throw error;
+        });
+    }
+
+    function extractMissingPermission(err) {
+      const candidates = [err && err.responseBody, err && err.message];
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        const match = candidate.match(/Missing permission:\s*([a-zA-Z0-9._-]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+      return null;
+    }
+
+    function isForbiddenError(err) {
+      return !!err && (err.status === 403 || /Status 403/.test(String(err.message || '')));
+    }
+
+    function getPermissionGuidanceMessage(err) {
+      if (!isForbiddenError(err)) {
+        return '';
+      }
+
+      const permission = extractMissingPermission(err);
+      const permissionHint = permission
+        ? `\nRequired permission: ${permission}`
+        : '\nRequired permission: Code Editor read access';
+
+      return 'You do not have permission to access this content in Code Editor.'
+        + permissionHint
+        + '\n\nWhat you can do:'
+        + '\n- Ask a Polarion administrator to grant the required permission.'
+        + '\n- Open a project where you already have access.';
+    }
+
+    function showPermissionMessageInEditor(err) {
+      const permission = extractMissingPermission(err) || 'boesger.codeeditor.read';
+      const emptyState = document.getElementById('emptyState');
+      const content = emptyState ? emptyState.querySelector('.empty-state-content') : null;
+      if (!emptyState || !content) return;
+
+      content.classList.add('permission-state');
+      content.innerHTML = `
+        <h3>Access denied</h3>
+        <p class="permission-state-paragraph">
+          You do not have the required permissions to access the Code Editor.
+        </p>
+        <p class="permission-state-hint">Required permission: ${escapeHtml(permission)}</p>
+        <ul class="permission-state-actions">
+          <li>Ask a Polarion administrator to grant this permission.</li>
+          <li>Alternatively, open a project where you already have editor access.</li>
+        </ul>
+      `;
+
+      emptyState.classList.remove('hidden');
+      if (editor) {
+        editor.updateOptions({ readOnly: true });
+      }
+      document.getElementById('currentFileLabel').textContent = 'Access denied';
+      document.getElementById('saveBtn').disabled = true;
+    }
+
+    function renderTreeLoadError(err, statusTextElement) {
+      const list = document.getElementById('fileList');
+      const permissionMessage = getPermissionGuidanceMessage(err);
+      list.innerHTML = '';
+
+      const item = document.createElement('li');
+      item.style.cssText = 'padding: 12px; color: #ff6b6b; font-size: 12px; line-height: 1.5;';
+
+      if (permissionMessage) {
+        statusTextElement.textContent = 'Missing permissions';
+        item.textContent = 'Missing permissions. See details in the editor area.';
+        showPermissionMessageInEditor(err);
+      } else {
+        statusTextElement.textContent = 'Error loading files';
+        item.textContent = 'Error loading files. Please try again or contact your administrator.';
+      }
+
+      list.appendChild(item);
     }
 
 
@@ -1627,12 +1860,12 @@
         currentTreeRoot,
         expandedFolders: [...expandedFolders]
       };
-      localStorage.setItem(EDITOR_TREE_STATE_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(getContextStorageKey(EDITOR_TREE_STATE_STORAGE_KEY), JSON.stringify(payload));
     }
 
     function loadTreeState() {
       try {
-        const raw = localStorage.getItem(EDITOR_TREE_STATE_STORAGE_KEY);
+        const raw = getContextStorageValueWithLegacy(EDITOR_TREE_STATE_STORAGE_KEY);
         if (!raw) return { currentTreeRoot: '', expandedFolders: [] };
         const parsed = JSON.parse(raw) || {};
         const currentTreeRoot = typeof parsed.currentTreeRoot === 'string' ? parsed.currentTreeRoot : '';
@@ -1710,8 +1943,7 @@
         .catch(err => {
             console.error('Error loading tree:', err);
             bar.classList.remove('visible');
-            text.textContent = "Error loading files";
-            document.getElementById('fileList').innerHTML = '<li style="padding:10px; color:#ff6b6b">Error loading files</li>';
+            renderTreeLoadError(err, text);
             if (isInitialBootstrap) {
               isInitialBootstrap = false;
               clearInitialBootstrapFallback();
@@ -1726,7 +1958,7 @@
         url += (url.includes('?') ? '&' : '?') + 'path=' + encodeURIComponent(path);
       }
       return fetch(url).then(res => {
-        if (!res.ok) throw new Error('Status ' + res.status);
+        if (!res.ok) return throwHttpError(res);
         return res.json();
       });
     }
