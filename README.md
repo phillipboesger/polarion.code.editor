@@ -1,4 +1,4 @@
-# Polarion File Editor Plugin
+# Polarion CodeEditor Plugin
 
 A **VS Code-like file editor** for Polarion ALM, available directly inside the Polarion Administration panel. Edit configuration files, Velocity macros, and other text-based repository files with syntax highlighting, a hierarchical file explorer, and full CRUD operations — all without leaving Polarion.
 
@@ -73,8 +73,8 @@ The editor is embedded directly in the Polarion Administration panel:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/phillipboesger/polarion.fileEditor.git
-cd polarion.fileEditor
+git clone https://github.com/phillipboesger/polarion.codeEditor.git
+cd polarion.codeEditor
 ```
 
 ### 2. Build the JAR
@@ -83,21 +83,21 @@ cd polarion.fileEditor
 mvn clean package
 ```
 
-The output JAR is located at `target/polarion-file-editor-<version>.jar`.
+The output JAR is located at `target/polarion-code-editor-<version>.jar`.
 
 ### 3. Deploy to Polarion
 
 Copy the built JAR into your Polarion installation's plugin directory:
 
 ```bash
-cp target/polarion-file-editor-*.jar <POLARION_HOME>/polarion/plugins/
+cp target/polarion-code-editor-*.jar <POLARION_HOME>/polarion/plugins/
 ```
 
 Restart the Polarion server to activate the plugin.
 
 ### 4. Verify Installation
 
-After restarting, navigate to **Polarion Administration** and look for the **"File Editor"** entry in the left-hand navigation tree. If it appears, the plugin is installed correctly.
+After restarting, navigate to **Polarion Administration** and look for the **"CodeEditor"** entry in the left-hand navigation tree. If it appears, the plugin is installed correctly.
 
 ---
 
@@ -105,9 +105,9 @@ After restarting, navigate to **Polarion Administration** and look for the **"Fi
 
 ### Accessing the Editor
 
-The File Editor is accessible from:
+The CodeEditor is accessible from:
 
-- **Polarion Administration** → **File Editor**
+- **Polarion Administration** → **CodeEditor**
 
 The editor automatically detects the current scope (global, project, or project group) from the Polarion URL.
 
@@ -149,19 +149,20 @@ Files are read and written directly in the Polarion SVN-based repository.
 
 The editor is protected by Polarion permissions and checked server-side on every API call.
 
-- `boesger.fileeditor.read`
+- `boesger.codeeditor.read`
   - Required for all read operations (for example `GET /api/config/list`, `GET /api/config/file/...`, `GET /api/config/health`).
   - Also controls whether the Code Editor navigation entry is visible.
-- `boesger.fileeditor.write`
+- `boesger.codeeditor.write`
   - Required for all write operations (`PUT`, `POST`, `DELETE`).
 
 The permissions are declared in `META-INF/permissions.xml` and can be assigned in Polarion like other standard permissions.
+Additionally, the plugin grants effective read/write access by default for users with global role `admin` or project role `project_admin`.
 
 ---
 
 ## REST API Reference
 
-The plugin exposes a REST API at `/polarion/file-editor/api/config/`. All endpoints require an authenticated Polarion session.
+The plugin exposes a REST API at `/polarion/code-editor/api/config/`. All endpoints require an authenticated Polarion session.
 
 ### Health Check
 
@@ -189,7 +190,7 @@ GET /api/config/list?projectId=<id>
 [
   {
     "name": "config.json",
-    "path": "file-editor/config.json",
+    "path": "code-editor/config.json",
     "projectId": "MyProject"
   }
 ]
@@ -239,8 +240,8 @@ POST /api/config/rename?projectId=<id>
 
 ```json
 {
-  "oldName": "file-editor/old-name.json",
-  "newName": "file-editor/new-name.json"
+  "oldName": "code-editor/old-name.json",
+  "newName": "code-editor/new-name.json"
 }
 ```
 
@@ -259,10 +260,10 @@ Polarion Administration Panel
 editor.html  (Monaco Editor UI)
         │  fetch()
         ▼
-FileEditorServlet  (/api/config/*)
+CodeEditorServlet  (/api/config/*)
         │
         ▼
-FileEditorService  (business logic)
+CodeEditorService  (business logic)
         │
         ├─ SaveFileAction
         ├─ DeleteFileAction
@@ -277,15 +278,15 @@ FileEditorService  (business logic)
 
 | Component | Package | Description |
 |---|---|---|
-| `FileEditorServlet` | `api` | HTTP entry point; routes GET/PUT/DELETE/POST requests |
-| `FileEditorService` | `service` | Core business logic; file listing, reading, writing |
+| `CodeEditorServlet` | `api` | HTTP entry point; routes GET/PUT/DELETE/POST requests |
+| `CodeEditorService` | `service` | Core business logic; file listing, reading, writing |
 | `SaveFileAction` | `service` | Transactional file create/update |
 | `DeleteFileAction` | `service` | Transactional file delete |
 | `RenameFileAction` | `service` | Transactional file rename/move |
 | `CopyFileAction` | `service` | Transactional file copy |
 | `RepoFile` | `model` | Data model for a repository file |
 | `PolarionUtils` | `util` | Utility methods for Polarion service access and transactions |
-| `FileEditorException` | `exception` | Plugin-specific exception type |
+| `CodeEditorException` | `exception` | Plugin-specific exception type |
 | `PluginLogger` | `logger` | Structured logging with debug mode |
 
 ### Polarion Integration
@@ -293,15 +294,15 @@ FileEditorService  (business logic)
 The plugin registers a custom main-navigation topic via `META-INF/hivemodule.xml`:
 
 ```xml
-<service-point id="file-editor-navigation-extender"
+<service-point id="code-editor-navigation-extender"
     interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
     <invoke-factory>
-        <construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
+        <construct class="boesger.polarion.codeeditor.navigation.CodeEditorNavigationExtender"/>
     </invoke-factory>
 </service-point>
 
 <contribution configuration-id="customNavigationExtenders">
-    <extenders extender="file-editor-navigation-extender"/>
+    <extenders extender="code-editor-navigation-extender"/>
 </contribution>
 ```
 

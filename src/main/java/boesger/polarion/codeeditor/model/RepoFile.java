@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.model;
+package boesger.polarion.codeeditor.model;
 
 import java.util.Date;
 import java.util.Objects;

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <permissions>
-	<permission id="boesger.fileeditor.read">Read access for Polarion File Editor.</permission>
-	<permission id="boesger.fileeditor.write">Write access for Polarion File Editor.</permission>
+	<permission id="boesger.codeeditor.read">Read access for Polarion CodeEditor.</permission>
+	<permission id="boesger.codeeditor.write">Write access for Polarion CodeEditor.</permission>
 </permissions>

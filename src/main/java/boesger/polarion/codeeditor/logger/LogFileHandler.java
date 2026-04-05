@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.logger;
+package boesger.polarion.codeeditor.logger;
 
 import java.io.File;
 import java.util.HashSet;

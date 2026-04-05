@@ -1,8 +1,9 @@
-package boesger.polarion.fileeditor.api;
+package boesger.polarion.codeeditor.api;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,28 +24,31 @@ import com.polarion.platform.security.ISecurityService;
 import com.polarion.subterra.base.data.identification.ContextId;
 import com.polarion.subterra.base.data.identification.IContextId;
 
-import boesger.polarion.fileeditor.exception.FileEditorException;
-import boesger.polarion.fileeditor.logger.PluginLogger;
-import boesger.polarion.fileeditor.model.RepoFile;
-import boesger.polarion.fileeditor.security.FileEditorPermission;
-import boesger.polarion.fileeditor.service.FileEditorService;
+import boesger.polarion.codeeditor.exception.CodeEditorException;
+import boesger.polarion.codeeditor.logger.PluginLogger;
+import boesger.polarion.codeeditor.model.RepoFile;
+import boesger.polarion.codeeditor.security.CodeEditorPermission;
+import boesger.polarion.codeeditor.service.CodeEditorService;
+import boesger.polarion.codeeditor.util.PolarionUtils;
 
 /**
- * Generic Servlet for Polarion File Editor.
+ * Generic Servlet for Polarion CodeEditor.
  * Handles file management operations in the Polarion repository.
  */
-public class FileEditorServlet extends HttpServlet {
+public class CodeEditorServlet extends HttpServlet {
 
 	private static final long serialVersionUID = 1L;
-	private static final PluginLogger log = new PluginLogger(FileEditorServlet.class);
+	private static final PluginLogger log = new PluginLogger(CodeEditorServlet.class);
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 	private static final String PARAM_PROJECT_ID = "projectId";
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
-	private static final String PERMISSION_DENIED_READ = "Missing permission: " + FileEditorPermission.PERMISSION_READ;
-	private static final String PERMISSION_DENIED_WRITE = "Missing permission: " + FileEditorPermission.PERMISSION_WRITE;
+	private static final String PERMISSION_DENIED_READ = "Missing permission: " + CodeEditorPermission.PERMISSION_READ;
+	private static final String PERMISSION_DENIED_WRITE = "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE;
+	private static final String GLOBAL_ADMIN_ROLE = "admin";
+	private static final String PROJECT_ADMIN_ROLE = "project_admin";
 
 	private ISecurityService securityService;
 	private IPermission readPermission;
@@ -54,9 +58,9 @@ public class FileEditorServlet extends HttpServlet {
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
-		readPermission = securityService.constructPermission(FileEditorPermission.PERMISSION_READ);
-		writePermission = securityService.constructPermission(FileEditorPermission.PERMISSION_WRITE);
-		log.info("FileEditorServlet initialized.");
+		readPermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_READ);
+		writePermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_WRITE);
+		log.info("CodeEditorServlet initialized.");
 	}
 
 	@Override
@@ -127,7 +131,7 @@ public class FileEditorServlet extends HttpServlet {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(FileEditorException | IOException e) {
+		catch(CodeEditorException | IOException e) {
 			log.error("Error in PUT " + pathInfo, e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
@@ -158,7 +162,7 @@ public class FileEditorServlet extends HttpServlet {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(FileEditorException | IOException e) {
+		catch(CodeEditorException | IOException e) {
 			log.error("Error in DELETE " + pathInfo, e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
@@ -186,14 +190,14 @@ public class FileEditorServlet extends HttpServlet {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
 		}
-		catch(FileEditorException | IOException e) {
+		catch(CodeEditorException | IOException e) {
 			log.error("Error in POST " + pathInfo, e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
 
 	private void handlePostRename(HttpServletRequest req, String projectId, HttpServletResponse resp)
-			throws IOException, FileEditorException {
+			throws IOException, CodeEditorException {
 		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
 		RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
 
@@ -206,7 +210,7 @@ public class FileEditorServlet extends HttpServlet {
 	}
 
 	private void handleListConfigs(String projectId, HttpServletResponse resp) throws IOException {
-		FileEditorService editor = new FileEditorService(projectId);
+		CodeEditorService editor = new CodeEditorService(projectId);
 		List<RepoFile> files = editor.getAllFiles();
 		List<Map<String, String>> result = files.stream().map(f -> {
 			Map<String, String> m = new HashMap<>();
@@ -217,13 +221,13 @@ public class FileEditorServlet extends HttpServlet {
 	}
 
 	private void handleFilesTree(String projectId, String path, HttpServletResponse resp) throws IOException {
-		FileEditorService editor = new FileEditorService(projectId);
+		CodeEditorService editor = new CodeEditorService(projectId);
 		List<Map<String, String>> entries = editor.getDirectoryEntries(path);
 		sendJson(resp, gson.toJson(entries));
 	}
 
 	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws IOException {
-		FileEditorService editor = new FileEditorService(projectId);
+		CodeEditorService editor = new CodeEditorService(projectId);
 		RepoFile file = editor.getFile(fileName);
 		resp.setContentType("text/plain");
 		resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -231,14 +235,14 @@ public class FileEditorServlet extends HttpServlet {
 	}
 
 	private void handleUpdateFile(String projectId, String fileName, String content, HttpServletResponse resp)
-			throws IOException, FileEditorException {
-		FileEditorService editor = new FileEditorService(projectId);
+			throws IOException, CodeEditorException {
+		CodeEditorService editor = new CodeEditorService(projectId);
 		editor.updateFile(fileName, content);
 		sendResponse(resp, "File updated", 200);
 	}
 
-	private void handleDeleteFile(String projectId, String fileName, HttpServletResponse resp) throws IOException, FileEditorException {
-		FileEditorService editor = new FileEditorService(projectId);
+	private void handleDeleteFile(String projectId, String fileName, HttpServletResponse resp) throws IOException, CodeEditorException {
+		CodeEditorService editor = new CodeEditorService(projectId);
 		boolean deleted = editor.deleteFile(fileName);
 		if(deleted) {
 			sendResponse(resp, "{\"status\": \"deleted\"}", 200);
@@ -249,8 +253,8 @@ public class FileEditorServlet extends HttpServlet {
 		}
 	}
 
-	private void handleRenameFile(String projectId, String oldName, String newName, HttpServletResponse resp) throws IOException, FileEditorException {
-		FileEditorService editor = new FileEditorService(projectId);
+	private void handleRenameFile(String projectId, String oldName, String newName, HttpServletResponse resp) throws IOException, CodeEditorException {
+		CodeEditorService editor = new CodeEditorService(projectId);
 		editor.renameFile(oldName, newName);
 		sendResponse(resp, "{\"status\": \"renamed\"}", 200);
 	}
@@ -296,14 +300,83 @@ public class FileEditorServlet extends HttpServlet {
 	}
 
 	private boolean hasPermission(IPermission permission, String projectId) {
-		return securityService.hasPermission(permission, resolveContextId(projectId));
+		IContextId contextId = resolveContextId(projectId);
+		if(permission != null && hasPermissionInContextSafely(permission, contextId)) {
+			return true;
+		}
+		IContextId globalContext = ContextId.getGlobalContextId();
+		if(permission != null && hasPermissionInContextSafely(permission, globalContext)) {
+			return true;
+		}
+
+		String userName = securityService.getCurrentUser();
+		if(userName == null) {
+			return false;
+		}
+
+		Collection<String> roles = getRolesForUserSafely(userName, contextId);
+		if(hasAdminRole(roles)) {
+			return true;
+		}
+		Collection<String> globalRoles = getRolesForUserSafely(userName, globalContext);
+		return hasAdminRole(globalRoles);
+	}
+
+	private IPermission constructPermissionSafely(String permissionId) {
+		try {
+			return securityService.constructPermission(permissionId);
+		}
+		catch(IllegalArgumentException permissionEx) {
+			log.error("Unknown permission id: " + permissionId + ". Falling back to admin-role checks only.",
+					permissionEx);
+			return null;
+		}
 	}
 
 	private IContextId resolveContextId(String projectId) {
 		if(projectId != null && !projectId.trim().isEmpty()) {
-			return ContextId.getContextIdFromContext(projectId.trim());
+			String normalizedProjectId = projectId.trim();
+			try {
+				// Only use project context if project can be resolved in this Polarion instance.
+				PolarionUtils.getTrackerProject(normalizedProjectId);
+				return ContextId.getContextIdFromContext(normalizedProjectId);
+			}
+			catch(RuntimeException invalidProjectContextEx) {
+				log.warn("Invalid or unresolved project context '" + normalizedProjectId
+						+ "'. Falling back to global context for permission checks. Cause: "
+						+ invalidProjectContextEx.getMessage());
+			}
 		}
 		return ContextId.getGlobalContextId();
+	}
+
+	private boolean hasPermissionInContextSafely(IPermission permission, IContextId contextId) {
+		try {
+			return securityService.hasPermission(permission, contextId);
+		}
+		catch(IllegalArgumentException invalidContextEx) {
+			log.warn("Ignoring invalid context for permission check: " + contextId + ". Cause: "
+					+ invalidContextEx.getMessage());
+			return false;
+		}
+	}
+
+	private Collection<String> getRolesForUserSafely(String userName, IContextId contextId) {
+		try {
+			return securityService.getRolesForUser(userName, contextId);
+		}
+		catch(IllegalArgumentException invalidContextEx) {
+			log.warn("Ignoring invalid context for role lookup: " + contextId + ". Cause: "
+					+ invalidContextEx.getMessage());
+			return java.util.Collections.emptyList();
+		}
+	}
+
+	private boolean hasAdminRole(Collection<String> roles) {
+		if(roles == null || roles.isEmpty()) {
+			return false;
+		}
+		return roles.contains(GLOBAL_ADMIN_ROLE) || roles.contains(PROJECT_ADMIN_ROLE);
 	}
 
 	private static class RenameRequest {

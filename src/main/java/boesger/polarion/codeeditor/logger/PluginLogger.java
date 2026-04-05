@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.logger;
+package boesger.polarion.codeeditor.logger;
 
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;

@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.util;
+package boesger.polarion.codeeditor.util;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -12,8 +12,8 @@ import com.polarion.platform.persistence.UnresolvableObjectException;
 import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
 
-import boesger.polarion.fileeditor.exception.FileEditorException;
-import boesger.polarion.fileeditor.logger.PluginLogger;
+import boesger.polarion.codeeditor.exception.CodeEditorException;
+import boesger.polarion.codeeditor.logger.PluginLogger;
 
 /**
  * Utility class to interact with Polarion services.
@@ -77,7 +77,7 @@ public class PolarionUtils {
 	/**
 	 * Executes a function within a transaction.
 	 */
-	public static void executeInTransaction(Runnable function) throws FileEditorException {
+	public static void executeInTransaction(Runnable function) throws CodeEditorException {
 		try {
 			if(!transactionService.canBeginTx()) {
 				transactionService.endTx(true);
@@ -96,14 +96,14 @@ public class PolarionUtils {
 			catch(Exception e1) {
 				log.error("Exception during transaction rollback", e1);
 			}
-			throw new FileEditorException("Exception happened while committing object: " + e.getMessage(), e);
+			throw new CodeEditorException("Exception happened while committing object: " + e.getMessage(), e);
 		}
 	}
 
 	/**
 	 * Executes a function within a transaction and returns a result.
 	 */
-	public static <T> T executeInTransactionWithResult(RunnableWEx<T> function) throws FileEditorException {
+	public static <T> T executeInTransactionWithResult(RunnableWEx<T> function) throws CodeEditorException {
 		T returnValue = null;
 		try {
 			if(!transactionService.canBeginTx()) {
@@ -123,7 +123,7 @@ public class PolarionUtils {
 			catch(Exception e1) {
 				log.error("Exception during transaction rollback", e1);
 			}
-			throw new FileEditorException("Exception happened while committing object: " + e.getMessage(), e);
+			throw new CodeEditorException("Exception happened while committing object: " + e.getMessage(), e);
 		}
 		return returnValue;
 	}

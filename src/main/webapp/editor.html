@@ -532,6 +532,54 @@
         height: 14px; /* Fixed height to prevent jumpiness, or auto */
     }
 
+    /* Global bootstrap loading overlay (prevents initial layout jumping) */
+    #app-container.bootstrap-loading {
+      filter: blur(2px);
+      opacity: 0.55;
+      pointer-events: none;
+      user-select: none;
+      transition: filter 160ms ease, opacity 160ms ease;
+    }
+
+    #globalBootLoader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(30, 30, 30, 0.82);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 1500;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 200ms ease, visibility 200ms ease;
+    }
+
+    #globalBootLoader.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .boot-loader-card {
+      min-width: 260px;
+      max-width: 360px;
+      background: rgba(37, 37, 38, 0.95);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 16px 18px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    }
+
+    .boot-loader-text {
+      display: block;
+      margin-top: 8px;
+      text-align: center;
+      font-size: 12px;
+      color: #c7c7c7;
+      letter-spacing: 0.2px;
+    }
+
     /* Path Suggestions */
     .path-container {
         position: relative; 
@@ -596,7 +644,14 @@
 </head>
 
 <body>
-  <div id="app-container">
+  <div id="globalBootLoader" class="visible" aria-live="polite" aria-busy="true">
+    <div class="boot-loader-card">
+      <div class="loading-bar visible"></div>
+      <span class="boot-loader-text">Editor is loading ...</span>
+    </div>
+  </div>
+
+  <div id="app-container" class="bootstrap-loading">
     <!-- Sidebar -->
     <div id="sidebar" class="sidebar">
       <script>
@@ -665,7 +720,7 @@
   </div>
 
   <!-- Monaco Loader -->
-  <script src="/polarion/file-editor/resources/lib/monaco-editor/min/vs/loader.js"></script>
+  <script src="/polarion/code-editor/resources/lib/monaco-editor/min/vs/loader.js"></script>
   <script>
     const EDITOR_SETTINGS_STORAGE_KEY = 'editorUserSettings';
     const EDITOR_LAST_OPEN_FILE_KEY = 'editorLastOpenFile';
@@ -684,7 +739,37 @@
     let previewTabId = null;
     let tabIdCounter = 0;
     let initialTabRestoreDone = false;
+    let isInitialBootstrap = true;
+    let initialBootstrapFallbackTimer = null;
     let editorUserSettings = loadEditorUserSettings();
+
+    function setGlobalBootstrapLoading(active, message) {
+      const app = document.getElementById('app-container');
+      const overlay = document.getElementById('globalBootLoader');
+      const text = overlay ? overlay.querySelector('.boot-loader-text') : null;
+      if (!app || !overlay) return;
+
+      if (message && text) {
+        text.textContent = message;
+      }
+
+      if (active) {
+        app.classList.add('bootstrap-loading');
+        overlay.classList.add('visible');
+        overlay.setAttribute('aria-busy', 'true');
+      } else {
+        app.classList.remove('bootstrap-loading');
+        overlay.classList.remove('visible');
+        overlay.setAttribute('aria-busy', 'false');
+      }
+    }
+
+    function clearInitialBootstrapFallback() {
+      if (initialBootstrapFallbackTimer) {
+        clearTimeout(initialBootstrapFallbackTimer);
+        initialBootstrapFallbackTimer = null;
+      }
+    }
     
     // Attempt to get projectId from query param OR window.top URL (if accessible)
     let projectId = new URLSearchParams(window.location.search).get('projectId') || '';
@@ -704,15 +789,15 @@
         }
     }
 
-    require.config({ paths: { 'vs': '/polarion/file-editor/resources/lib/monaco-editor/min/vs' } });
+    require.config({ paths: { 'vs': '/polarion/code-editor/resources/lib/monaco-editor/min/vs' } });
 
     window.MonacoEnvironment = {
       getWorkerUrl: function (workerId, label) {
         return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
           self.MonacoEnvironment = {
-            baseUrl: '/polarion/file-editor/resources/lib/monaco-editor/min/'
+            baseUrl: '/polarion/code-editor/resources/lib/monaco-editor/min/'
           };
-          importScripts('/polarion/file-editor/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
+          importScripts('/polarion/code-editor/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
         )}`;
       }
     };
@@ -1482,7 +1567,15 @@
         previewTabId = null;
       }
 
-      return fetch(buildFileApiUrl(filePath))
+      const fetchOptions = {};
+      let abortTimeout = null;
+      if (silentOnError && typeof AbortController !== 'undefined') {
+        const controller = new AbortController();
+        fetchOptions.signal = controller.signal;
+        abortTimeout = setTimeout(() => controller.abort(), 8000);
+      }
+
+      return fetch(buildFileApiUrl(filePath), fetchOptions)
         .then(res => {
           if (!res.ok) throw new Error('Status ' + res.status);
           return res.text();
@@ -1515,6 +1608,11 @@
           }
           alert('Error loading file content: ' + err);
           return null;
+        })
+        .finally(() => {
+          if (abortTimeout) {
+            clearTimeout(abortTimeout);
+          }
         });
     }
 
@@ -1557,6 +1655,17 @@
 
       bar.classList.add('visible');
       text.textContent = "Loading...";
+      if (isInitialBootstrap) {
+        setGlobalBootstrapLoading(true, 'Initializing editor ...');
+        if (!initialBootstrapFallbackTimer) {
+          initialBootstrapFallbackTimer = setTimeout(() => {
+            console.warn('Initial bootstrap fallback triggered - hiding global loader');
+            isInitialBootstrap = false;
+            setGlobalBootstrapLoading(false);
+            initialBootstrapFallbackTimer = null;
+          }, 12000);
+        }
+      }
 
       // Save expanded state so it survives reload (e.g. after create/delete)
       const previouslyExpanded = new Set(expandedFolders);
@@ -1578,7 +1687,6 @@
         })
         .then(() => {
           saveTreeState();
-          bar.classList.remove('visible');
           const rootEntries = treeCache[currentTreeRoot] || [];
           text.textContent = `Loaded ${rootEntries.length} entries`;
           renderFileList();
@@ -1586,8 +1694,17 @@
           if (!initialTabRestoreDone) {
             initialTabRestoreDone = true;
             if (openTabs.length === 0) {
-              restoreOpenTabsSession();
+              return restoreOpenTabsSession();
             }
+          }
+          return Promise.resolve();
+        })
+        .then(() => {
+          bar.classList.remove('visible');
+          if (isInitialBootstrap) {
+            isInitialBootstrap = false;
+            clearInitialBootstrapFallback();
+            setGlobalBootstrapLoading(false);
           }
         })
         .catch(err => {
@@ -1595,6 +1712,11 @@
             bar.classList.remove('visible');
             text.textContent = "Error loading files";
             document.getElementById('fileList').innerHTML = '<li style="padding:10px; color:#ff6b6b">Error loading files</li>';
+            if (isInitialBootstrap) {
+              isInitialBootstrap = false;
+              clearInitialBootstrapFallback();
+              setGlobalBootstrapLoading(false);
+            }
         });
     }
 

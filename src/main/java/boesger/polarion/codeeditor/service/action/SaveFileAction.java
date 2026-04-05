@@ -1,9 +1,9 @@
-package boesger.polarion.fileeditor.service.action;
+package boesger.polarion.codeeditor.service.action;
 
 import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.subterra.base.location.ILocation;
 
-import boesger.polarion.fileeditor.util.PolarionUtils;
+import boesger.polarion.codeeditor.util.PolarionUtils;
 
 public class SaveFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 

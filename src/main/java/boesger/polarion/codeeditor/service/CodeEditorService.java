@@ -1,4 +1,4 @@
-package boesger.polarion.fileeditor.service;
+package boesger.polarion.codeeditor.service;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,25 +20,25 @@ import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 import com.polarion.subterra.base.location.Location;
 
-import boesger.polarion.fileeditor.exception.FileEditorException;
-import boesger.polarion.fileeditor.logger.PluginLogger;
-import boesger.polarion.fileeditor.model.RepoFile;
-import boesger.polarion.fileeditor.service.action.CopyFileAction;
-import boesger.polarion.fileeditor.service.action.DeleteFileAction;
-import boesger.polarion.fileeditor.service.action.RenameFileAction;
-import boesger.polarion.fileeditor.service.action.SaveFileAction;
-import boesger.polarion.fileeditor.util.PolarionUtils;
+import boesger.polarion.codeeditor.exception.CodeEditorException;
+import boesger.polarion.codeeditor.logger.PluginLogger;
+import boesger.polarion.codeeditor.model.RepoFile;
+import boesger.polarion.codeeditor.service.action.CopyFileAction;
+import boesger.polarion.codeeditor.service.action.DeleteFileAction;
+import boesger.polarion.codeeditor.service.action.RenameFileAction;
+import boesger.polarion.codeeditor.service.action.SaveFileAction;
+import boesger.polarion.codeeditor.util.PolarionUtils;
 
-public class FileEditorService {
+public class CodeEditorService {
 
-	private static final PluginLogger log = new PluginLogger(FileEditorService.class);
+	private static final PluginLogger log = new PluginLogger(CodeEditorService.class);
 	private static final String SEARCH_PATH = "";
 	private static final String PATH_SEP = "/";
 
 	private String projectId = null;
 	private final IRepositoryReadOnlyConnection repoConnection;
 
-	public FileEditorService(String projectId) {
+	public CodeEditorService(String projectId) {
 		this.projectId = Objects.nonNull(projectId) && !projectId.isBlank() ? projectId : null;
 		this.repoConnection = PolarionUtils.getRepositoryService().getReadOnlyConnection(IRepositoryService.DEFAULT);
 	}
@@ -131,41 +131,41 @@ public class FileEditorService {
 		return loadRepoFileForLocation(projectId, getFileRepoLocation(projectId, fileName), fileName, true);
 	}
 
-	public Boolean copyFile(String currentFileName, String newFileName) throws FileEditorException {
+	public Boolean copyFile(String currentFileName, String newFileName) throws CodeEditorException {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
 
 		return PolarionUtils.executeInTransactionWithResult(new CopyFileAction(currentFileLocation, newFileLocation));
 	}
 
-	public void renameFile(String currentFileName, String newFileName) throws FileEditorException {
+	public void renameFile(String currentFileName, String newFileName) throws CodeEditorException {
 		ILocation currentFileLocation = getFileRepoLocation(this.projectId, currentFileName);
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, newFileName);
 
-		if(repoConnection.exists(newFileLocation)) { throw new FileEditorException(String.format("A file with the new name '%s' exists already!", newFileName)); }
+		if(repoConnection.exists(newFileLocation)) { throw new CodeEditorException(String.format("A file with the new name '%s' exists already!", newFileName)); }
 
 		PolarionUtils.executeInTransactionWithResult(new RenameFileAction(currentFileLocation, newFileLocation));
 	}
 
-	public Boolean createFile(String fileName, String content) throws FileEditorException {
+	public Boolean createFile(String fileName, String content) throws CodeEditorException {
 		ILocation newFileLocation = resolveTargetLocation(this.projectId, fileName);
 
-		if(repoConnection.exists(newFileLocation)) { throw new FileEditorException(String.format("A file with the name '%s' exists already!", fileName)); }
+		if(repoConnection.exists(newFileLocation)) { throw new CodeEditorException(String.format("A file with the name '%s' exists already!", fileName)); }
 
 		return PolarionUtils.executeInTransactionWithResult(new SaveFileAction(newFileLocation, content));
 	}
 
-	public Boolean saveFile(String fileName, String content) throws FileEditorException {
+	public Boolean saveFile(String fileName, String content) throws CodeEditorException {
 		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
 		return PolarionUtils.executeInTransactionWithResult(new SaveFileAction(fileLocation, content));
 	}
 
-	public boolean deleteFile(String fileName) throws FileEditorException {
+	public boolean deleteFile(String fileName) throws CodeEditorException {
 		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
 		return PolarionUtils.executeInTransactionWithResult(new DeleteFileAction(fileLocation));
 	}
 
-	public void updateFile(String fileName, String content) throws IOException, FileEditorException {
+	public void updateFile(String fileName, String content) throws IOException, CodeEditorException {
 		boolean fileExists = existsFileInRepo(this.projectId, fileName);
 		if(!fileExists) {
 			createFile(fileName, content);

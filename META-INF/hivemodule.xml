@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module id="boesger.polarion.fileeditor" version="1.0.0">
+<module id="boesger.polarion.codeeditor" version="1.0.0">
 
 	<contribution configuration-id="com.polarion.xray.webui.administrationPageExtenders">
-		<extender name="Code Editor" iconUrl="/polarion/ria/images/topicIcons/integrations.svg" pageUrl="/polarion/file-editor/editor.html" projectScope="true" projectGroupScope="true" repositoryScope="true" />
+		<extender id="code-editor" name="Code Editor" iconUrl="/polarion/ria/images/topicIcons/integrations.svg" pageUrl="/polarion/code-editor/editor.html" projectScope="true" projectGroupScope="true" repositoryScope="true" />
 	</contribution>
 
-	<service-point id="file-editor-navigation-extender" interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
+	<service-point id="code-editor-navigation-extender" interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
 		<invoke-factory>
-			<construct class="boesger.polarion.fileeditor.navigation.FileEditorNavigationExtender"/>
+			<construct class="boesger.polarion.codeeditor.navigation.CodeEditorNavigationExtender"/>
 		</invoke-factory>
 	</service-point>
 
 	<contribution configuration-id="com.polarion.xray.webui.customNavigationExtenders">
-		<extenders extender="file-editor-navigation-extender"/>
+		<extenders extender="code-editor-navigation-extender"/>
 	</contribution>
 
 </module>
