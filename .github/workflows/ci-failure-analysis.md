@@ -42,12 +42,12 @@ to fix it.
 ## Steps
 
 1. **Check the trigger**: Only proceed if `github.event.workflow_run.conclusion`
-   is `"failure"`.  If the workflow succeeded, do nothing.
+   is `"failure"`. If the workflow succeeded, do nothing.
 
 2. **Fetch the failed job logs** for the completed workflow run using the GitHub
-   tools.  Focus on the `Build & run tests` step.
+   tools. Focus on the `Build & run tests` step.
 
-3. **Identify the root cause**.  Common failure patterns for this project:
+3. **Identify the root cause**. Common failure patterns for this project:
    - Maven compilation errors (`[ERROR]` lines in the build output)
    - JUnit/test assertion failures or NullPointerExceptions in the test output
    - Missing GitHub Packages authentication (HTTP 401 when resolving
@@ -68,4 +68,4 @@ to fix it.
    - A concrete suggestion for how to fix it
    - A link to the failed workflow run for full logs
 
-Keep the message factual and actionable.  Do not repeat the entire log.
+Keep the message factual and actionable. Do not repeat the entire log.

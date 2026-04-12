@@ -31,7 +31,7 @@ a server-side Polarion ALM plugin that exposes a file-editor UI and REST API.
 
 ## Your task
 
-A new issue has just been opened.  Analyse the title and body, then:
+A new issue has just been opened. Analyse the title and body, then:
 
 1. **Classify** the issue into exactly one of the following categories:
    - **bug** – a defect or unexpected behaviour in existing functionality
@@ -51,4 +51,4 @@ A new issue has just been opened.  Analyse the title and body, then:
    - For **documentation**: acknowledges the gap and notes a fix will be explored
    - For **duplicate**: references the related issue number if you can identify it
 
-Keep the comment concise (max 5 sentences).  Write in the same language as the issue.
+Keep the comment concise (max 5 sentences). Write in the same language as the issue.
