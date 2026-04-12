@@ -14,13 +14,12 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 
+import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.repository.config.RepositoryConfigurationException;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 import com.polarion.subterra.base.location.Location;
-
-import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
@@ -33,7 +32,6 @@ import boesger.polarion.codeeditor.util.PolarionUtils;
 public class CodeEditorService {
 
 	private static final Logger log = Logger.getLogger(CodeEditorService.class.getName());
-	private static final String SEARCH_PATH = "";
 	private static final String PATH_SEP = "/";
 
 	private String projectId = null;
@@ -69,43 +67,22 @@ public class CodeEditorService {
 	 * @return      list of entries, each with keys "name", "path", "type" ("file"|"folder")
 	 */
 	public List<Map<String, String>> getDirectoryEntries(String path) {
-		ILocation rootLoc;
-		if(hasProjectScope()) {
-			rootLoc = PolarionUtils.getTrackerProject(projectId).getLocation();
-		}
-		else {
-			rootLoc = Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
-		}
+		ILocation rootLoc = hasProjectScope()
+				? PolarionUtils.getTrackerProject(projectId).getLocation()
+				: Location.getLocationWithRepository(IRepositoryService.DEFAULT, PATH_SEP);
 
-		String cleanPath = (path == null || path.isBlank()) ? ""
-				: path.replaceAll("^/+|/+$", "");
+		String cleanPath = normalizePath(path);
 		ILocation searchLoc = cleanPath.isEmpty() ? rootLoc : rootLoc.append(cleanPath);
 
 		if(!repoConnection.exists(searchLoc)) { return Collections.emptyList(); }
 
 		List<Map<String, String>> entries = new ArrayList<>();
-		for(Object obj : repoConnection.getSubLocations(searchLoc, false)) {
-			ILocation childLoc = (ILocation) obj;
+		for(ILocation childLoc : toLocationList(repoConnection.getSubLocations(searchLoc, false))) {
 			String childName = childLoc.getLastComponent();
 			String childRelPath = getRelativePath(childLoc, rootLoc);
-			String ext = childLoc.getLastComponentExtension();
-			// Primary heuristic: entries without a file extension are folders.
-			// For entries WITH an extension (e.g. .polarion, .avasis) verify by checking for children.
-			boolean isDir = (ext == null || ext.isEmpty());
-			if(!isDir) {
-				try {
-					isDir = !repoConnection.getSubLocations(childLoc, false).isEmpty();
-				}
-				catch(Exception e) {
-					isDir = false;
-				}
-			}
+			boolean isDir = isDirectoryEntry(childLoc);
 
-			Map<String, String> entry = new HashMap<>();
-			entry.put("name", childName);
-			entry.put("path", isDir ? childRelPath + PATH_SEP : childRelPath);
-			entry.put("type", isDir ? "folder" : "file");
-			entries.add(entry);
+			entries.add(createDirectoryEntry(childName, childRelPath, isDir));
 		}
 
 		// Sort: folders first, then files; each group alphabetically
@@ -266,8 +243,7 @@ public class CodeEditorService {
 		List<RepoFile> foundFiles = new ArrayList<>();
 		if(repoConnection.exists(searchLoc)) {
 			try {
-				for(Object location : repoConnection.getSubLocations(searchLoc, true)) {
-					ILocation loc = (ILocation) location;
+				for(ILocation loc : toLocationList(repoConnection.getSubLocations(searchLoc, true))) {
 					// When extension is null, include every file; otherwise filter by extension
 					if(extension == null || Objects.equals(extension, loc.getLastComponentExtension())) {
 						String relativePath = getRelativePath(loc, relativeRoot);
@@ -283,8 +259,7 @@ public class CodeEditorService {
 	}
 
 	private ILocation resolveSearchLocation(ILocation rootLocation) {
-		if(SEARCH_PATH == null || SEARCH_PATH.isBlank()) { return rootLocation; }
-		return rootLocation.append(SEARCH_PATH);
+		return rootLocation;
 	}
 
 	private boolean hasProjectScope() {
@@ -311,10 +286,6 @@ public class CodeEditorService {
 			cleanName = cleanName.substring(1);
 		}
 
-		if(!SEARCH_PATH.isBlank() && !cleanName.startsWith(SEARCH_PATH + "/")) {
-			cleanName = SEARCH_PATH + "/" + cleanName;
-		}
-
 		ILocation base;
 		if(Objects.nonNull(projectId)) {
 			base = PolarionUtils.getTrackerProject(projectId).getLocation();
@@ -336,6 +307,49 @@ public class CodeEditorService {
 			return rel;
 		}
 		return location.getLastComponent();
+	}
+
+	private String normalizePath(String path) {
+		if(path == null || path.isBlank()) { return ""; }
+
+		int start = 0;
+		int end = path.length();
+		while(start < end && path.charAt(start) == '/') {
+			start++;
+		}
+		while(end > start && path.charAt(end - 1) == '/') {
+			end--;
+		}
+		return path.substring(start, end);
+	}
+
+	private boolean isDirectoryEntry(ILocation childLoc) {
+		String ext = childLoc.getLastComponentExtension();
+		if(ext == null || ext.isEmpty()) { return true; }
+		return hasChildren(childLoc);
+	}
+
+	private boolean hasChildren(ILocation location) {
+		try {
+			return !repoConnection.getSubLocations(location, false).isEmpty();
+		}
+		catch(IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	private Map<String, String> createDirectoryEntry(String name, String relativePath, boolean isDir) {
+		Map<String, String> entry = new HashMap<>();
+		entry.put("name", name);
+		entry.put("path", isDir ? relativePath + PATH_SEP : relativePath);
+		entry.put("type", isDir ? "folder" : "file");
+		return entry;
+	}
+
+	private List<ILocation> toLocationList(List<?> rawLocations) {
+		return rawLocations.stream()
+				.map(ILocation.class::cast)
+				.collect(Collectors.toList());
 	}
 
 }
