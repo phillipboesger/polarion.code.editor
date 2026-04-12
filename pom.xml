@@ -3,8 +3,8 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>boesger.polarion.codeeditor</groupId>
-  <artifactId>polarion-code-editor</artifactId>
+  <groupId>boesger.polarion</groupId>
+  <artifactId>code-editor</artifactId>
   <version>1.0.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
@@ -159,6 +159,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
+          <finalName>${project.groupId}.${project.artifactId}</finalName>
           <archive>
             <manifestEntries>
               <Bundle-ManifestVersion>2</Bundle-ManifestVersion>
