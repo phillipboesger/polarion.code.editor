@@ -59,11 +59,11 @@ The editor is embedded directly in the Polarion Administration panel:
 
 ## Prerequisites
 
-| Requirement | Details |
-|---|---|
-| **Polarion ALM** | Version 2304 (23.4) or later recommended |
-| **Java** | JDK 11 or later |
-| **Maven** | 3.6 or later |
+| Requirement             | Details                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| **Polarion ALM**        | Version 2304 (23.4) or later recommended                                                   |
+| **Java**                | JDK 11 or later                                                                            |
+| **Maven**               | 3.6 or later                                                                               |
 | **Polarion Parent POM** | `biz.avasis.polarion:masterpom-plugins:1.6.1` (must be available in your Maven repository) |
 
 > **Note:** The plugin is deployed as an OSGi bundle inside Polarion. No external server or database is required.
@@ -75,8 +75,8 @@ The editor is embedded directly in the Polarion Administration panel:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/phillipboesger/polarion.codeEditor.git
-cd polarion.codeEditor
+git clone https://github.com/phillipboesger/polarion.fileEditor.git
+cd polarion.fileEditor
 ```
 
 ### 2. Build the JAR
@@ -159,41 +159,8 @@ Files are read and written directly in the Polarion SVN-based repository.
 
 ## Permissions
 
-The editor is protected by Polarion permissions and checked server-side on every API call.
-
-- `boesger.codeeditor.read`
-  - Required for all read operations (for example `GET /api/config/list`, `GET /api/config/file/...`, `GET /api/config/health`).
-  - Also controls whether the Code Editor navigation entry is visible.
-- `boesger.codeeditor.write`
-  - Required for all write operations (`PUT`, `POST`, `DELETE`).
-
-The permissions are declared in `META-INF/permissions.xml` and can be assigned in Polarion like other standard permissions.
-Additionally, the plugin grants effective read/write access by default for users with global role `admin` or project role `project_admin`.
-
-### Optional: Permissions Management UI helper (JS injection)
-
-To simplify managing the two custom permissions in Polarion's standard **Permissions Management** page, this plugin ships a helper script:
-
-- `/polarion/code-editor/resources/permissions-injection.js`
-
-The script is intentionally client-side only and injects missing table rows for these permissions directly into the standard permissions matrix so they can be configured like native entries:
-
-- `boesger.codeeditor.read`
-- `boesger.codeeditor.write`
-
-#### Preferred (automatic, if your Polarion setup supports global script injection)
-
-Register this script in your existing Polarion-wide HTML/script injection mechanism so it is loaded on standard UI pages:
-
-```html
-<script src="/polarion/code-editor/resources/permissions-injection.js"></script>
-```
-
-#### Fallback (manual)
-
-If automatic loading is not available in your instance, keep the same script tag in your manual script injection/configuration entry.
-
-The injection is idempotent and only activates on pages that look like the permissions management UI.
+All authenticated Polarion users have full read and write access to the Code Editor.
+No custom role or permission is required beyond a valid Polarion login.
 
 ---
 
@@ -217,9 +184,9 @@ GET /api/config/health
 GET /api/config/list?projectId=<id>
 ```
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `projectId` | string | No | Polarion project ID. Omit for global scope. |
+| Parameter   | Type   | Required | Description                                 |
+| ----------- | ------ | -------- | ------------------------------------------- |
+| `projectId` | string | No       | Polarion project ID. Omit for global scope. |
 
 **Response:** JSON array of file objects.
 
@@ -313,18 +280,18 @@ CodeEditorService  (business logic)
 
 ### Key Components
 
-| Component | Package | Description |
-|---|---|---|
-| `CodeEditorServlet` | `api` | HTTP entry point; routes GET/PUT/DELETE/POST requests |
-| `CodeEditorService` | `service` | Core business logic; file listing, reading, writing |
-| `SaveFileAction` | `service` | Transactional file create/update |
-| `DeleteFileAction` | `service` | Transactional file delete |
-| `RenameFileAction` | `service` | Transactional file rename/move |
-| `CopyFileAction` | `service` | Transactional file copy |
-| `RepoFile` | `model` | Data model for a repository file |
-| `PolarionUtils` | `util` | Utility methods for Polarion service access and transactions |
-| `CodeEditorException` | `exception` | Plugin-specific exception type |
-| `PluginLogger` | `logger` | Structured logging with debug mode |
+| Component             | Package     | Description                                                  |
+| --------------------- | ----------- | ------------------------------------------------------------ |
+| `CodeEditorServlet`   | `api`       | HTTP entry point; routes GET/PUT/DELETE/POST requests        |
+| `CodeEditorService`   | `service`   | Core business logic; file listing, reading, writing          |
+| `SaveFileAction`      | `service`   | Transactional file create/update                             |
+| `DeleteFileAction`    | `service`   | Transactional file delete                                    |
+| `RenameFileAction`    | `service`   | Transactional file rename/move                               |
+| `CopyFileAction`      | `service`   | Transactional file copy                                      |
+| `RepoFile`            | `model`     | Data model for a repository file                             |
+| `PolarionUtils`       | `util`      | Utility methods for Polarion service access and transactions |
+| `CodeEditorException` | `exception` | Plugin-specific exception type                               |
+| `PluginLogger`        | `logger`    | Structured logging with debug mode                           |
 
 ### Polarion Integration
 
@@ -347,11 +314,11 @@ This places **Code Editor** as its own block in the normal Polarion sidebar and 
 
 ### Frontend Stack
 
-| Technology | Purpose |
-|---|---|
+| Technology                                                  | Purpose                                             |
+| ----------------------------------------------------------- | --------------------------------------------------- |
 | [Monaco Editor](https://microsoft.github.io/monaco-editor/) | VS Code editor engine (syntax highlighting, themes) |
-| Vanilla JavaScript (ES6+) | UI logic, fetch API calls, state management |
-| CSS custom properties | VS Code-inspired dark theme |
+| Vanilla JavaScript (ES6+)                                   | UI logic, fetch API calls, state management         |
+| CSS custom properties                                       | VS Code-inspired dark theme                         |
 
 ---
 

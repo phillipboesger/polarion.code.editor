@@ -8,16 +8,17 @@ import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 
 import boesger.polarion.codeeditor.util.PolarionUtils;
+import lombok.RequiredArgsConstructor;
 
+/**
+ * Transactional action that renames (moves) a file in the Polarion repository.
+ * Reads the source file, writes it to the target location, then deletes the source.
+ */
+@RequiredArgsConstructor
 public class RenameFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 
 	private final ILocation currentFileLocation;
 	private final ILocation newFileLocation;
-
-	public RenameFileAction(ILocation currentFileLocation, ILocation newFileLocation) {
-		this.currentFileLocation = currentFileLocation;
-		this.newFileLocation = newFileLocation;
-	}
 
 	@Override
 	public Boolean run() throws Exception {

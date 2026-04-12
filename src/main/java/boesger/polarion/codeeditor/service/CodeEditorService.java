@@ -20,8 +20,9 @@ import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 import com.polarion.subterra.base.location.Location;
 
+import com.polarion.core.util.logging.Logger;
+
 import boesger.polarion.codeeditor.exception.CodeEditorException;
-import boesger.polarion.codeeditor.logger.PluginLogger;
 import boesger.polarion.codeeditor.model.RepoFile;
 import boesger.polarion.codeeditor.service.action.CopyFileAction;
 import boesger.polarion.codeeditor.service.action.DeleteFileAction;
@@ -31,7 +32,7 @@ import boesger.polarion.codeeditor.util.PolarionUtils;
 
 public class CodeEditorService {
 
-	private static final PluginLogger log = new PluginLogger(CodeEditorService.class);
+	private static final Logger log = Logger.getLogger(CodeEditorService.class.getName());
 	private static final String SEARCH_PATH = "";
 	private static final String PATH_SEP = "/";
 
@@ -41,14 +42,6 @@ public class CodeEditorService {
 	public CodeEditorService(String projectId) {
 		this.projectId = Objects.nonNull(projectId) && !projectId.isBlank() ? projectId : null;
 		this.repoConnection = PolarionUtils.getRepositoryService().getReadOnlyConnection(IRepositoryService.DEFAULT);
-	}
-
-	public List<RepoFile> getAllMacros() {
-		return getFiles(".vm");
-	}
-
-	public List<RepoFile> getAllConfigurations() {
-		return getFiles(".json");
 	}
 
 	/**
@@ -222,7 +215,7 @@ public class CodeEditorService {
 			return repoConnection.exists(loc);
 		}
 		catch(RepositoryConfigurationException | IllegalArgumentException e) {
-			log.debug("File existence check failed for '" + fileName + "': " + e.getMessage());
+			log.debug("File existence check failed for '" + fileName + "': " + e.getMessage()); // NOSONAR: intentional debug log
 			return false;
 		}
 	}
@@ -283,17 +276,14 @@ public class CodeEditorService {
 				}
 			}
 			catch(IOException e) {
-				log.error("Error loading files from location: " + searchLoc, e);
+				log.error("Error loading files from location: " + searchLoc + ": " + e);
 			}
 		}
 		return foundFiles;
 	}
 
-
 	private ILocation resolveSearchLocation(ILocation rootLocation) {
-		if(SEARCH_PATH == null || SEARCH_PATH.isBlank()) {
-			return rootLocation;
-		}
+		if(SEARCH_PATH == null || SEARCH_PATH.isBlank()) { return rootLocation; }
 		return rootLocation.append(SEARCH_PATH);
 	}
 

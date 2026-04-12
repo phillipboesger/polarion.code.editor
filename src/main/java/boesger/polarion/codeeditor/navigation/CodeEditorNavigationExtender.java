@@ -7,11 +7,15 @@ import com.polarion.alm.ui.server.navigation.NavigationExtender;
 import com.polarion.alm.ui.server.navigation.NavigationExtenderNode;
 import com.polarion.subterra.base.data.identification.IContextId;
 
-import boesger.polarion.codeeditor.logger.PluginLogger;
+import com.polarion.core.util.logging.Logger;
 
+/**
+ * Registers the Code Editor as a navigation entry in the Polarion sidebar.
+ * Accessible by all authenticated Polarion users without additional permissions.
+ */
 public class CodeEditorNavigationExtender extends NavigationExtender {
 
-	private static final PluginLogger log = new PluginLogger(CodeEditorNavigationExtender.class);
+	private static final Logger log = Logger.getLogger(CodeEditorNavigationExtender.class.getName());
 	private static final String ROOT_ID = "code-editor";
 	private static final String LABEL = "Code Editor";
 	private static final String ROOT_ICON_URL = "/polarion/code-editor/resources/img/code-editor-icon.svg";

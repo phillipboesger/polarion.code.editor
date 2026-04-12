@@ -1,7 +1,7 @@
 package boesger.polarion.codeeditor.exception;
 
 /**
- * Represents an exception related to file operations in the CodeEditor.
+ * Plugin-specific exception thrown when a repository operation fails within the Code Editor.
  */
 public class CodeEditorException extends Exception {
 

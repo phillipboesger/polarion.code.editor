@@ -20,19 +20,21 @@ import com.google.gson.GsonBuilder;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.security.ISecurityService;
 
+import com.polarion.core.util.logging.Logger;
+
 import boesger.polarion.codeeditor.exception.CodeEditorException;
-import boesger.polarion.codeeditor.logger.PluginLogger;
 import boesger.polarion.codeeditor.model.RepoFile;
 import boesger.polarion.codeeditor.service.CodeEditorService;
 
 /**
- * Generic Servlet for Polarion CodeEditor.
- * Handles file management operations in the Polarion repository.
+ * HTTP entry point for the Code Editor plugin.
+ * Routes GET / PUT / DELETE / POST requests to {@link boesger.polarion.codeeditor.service.CodeEditorService}.
+ * All endpoints require an authenticated Polarion session; unauthenticated requests receive HTTP 401.
  */
 public class CodeEditorServlet extends HttpServlet {
 
 	private static final long serialVersionUID = 1L;
-	private static final PluginLogger log = new PluginLogger(CodeEditorServlet.class);
+	private static final Logger log = Logger.getLogger(CodeEditorServlet.class.getName());
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 	private static final String PARAM_PROJECT_ID = "projectId";
@@ -81,7 +83,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(IOException e) {
-			log.error("Error in GET " + pathInfo, e);
+			log.error("Error in GET " + pathInfo + ": " + e);
 			resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 			sendJsonSafely(resp, "{\"error\": \"" + e.getMessage() + "\"}");
 		}
@@ -110,7 +112,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in PUT " + pathInfo, e);
+			log.error("Error in PUT " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -137,7 +139,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in DELETE " + pathInfo, e);
+			log.error("Error in DELETE " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -161,7 +163,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in POST " + pathInfo, e);
+			log.error("Error in POST " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -234,7 +236,7 @@ public class CodeEditorServlet extends HttpServlet {
 			resp.sendError(code);
 		}
 		catch(IOException ioEx) {
-			log.error("Failed to send error response: " + code, ioEx);
+			log.error("Failed to send error response: " + code + ": " + ioEx);
 		}
 	}
 
@@ -243,7 +245,7 @@ public class CodeEditorServlet extends HttpServlet {
 			resp.sendError(code, message);
 		}
 		catch(IOException ioEx) {
-			log.error("Failed to send error response: " + code, ioEx);
+			log.error("Failed to send error response: " + code + ": " + ioEx);
 		}
 	}
 
@@ -252,7 +254,7 @@ public class CodeEditorServlet extends HttpServlet {
 			sendJson(resp, json);
 		}
 		catch(IOException ioEx) {
-			log.error("Error sending JSON error response", ioEx);
+			log.error("Error sending JSON error response: " + ioEx);
 		}
 	}
 
