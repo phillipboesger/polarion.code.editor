@@ -78,7 +78,7 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 Copy the JAR into your Polarion plugins directory:
 
 ```bash
-cp target/polarion-code-editor-*.jar <POLARION_HOME>/polarion/plugins/
+cp target/boesger.polarion.code-editor-*.jar <POLARION_HOME>/polarion/plugins/
 ```
 
 Then **restart the Polarion server**.
