@@ -118,7 +118,7 @@ The editor automatically detects the current scope (global, project, or project 
 This plugin includes subtle branding (custom navigation/editor icon and in-editor attribution) while remaining fully **free to use**.
 
 - Website: [https://digital.boesger.com](https://digital.boesger.com)
-- Legal Notice: [https://digital.boesger.com/impressum](https://digital.boesger.com/impressum)
+- Legal Notice: [https://digital.boesger.com/imprint/](https://digital.boesger.com/imprint/)
 - Feedback & Requests: [GitHub Issues](https://github.com/phillipboesger/polarion.fileEditor/issues)
 
 There is no paywall, no license key, and no feature limitation introduced by the branding.
