@@ -69,11 +69,11 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ### Requirements
 
-| Requirement | Version |
-|---|---|
-| Polarion ALM | 2512 or later |
-| Java | JDK 21 or later |
-| Maven | 3.8 or later |
+| Requirement  | Version         |
+| ------------ | --------------- |
+| Polarion ALM | 2512 or later   |
+| Java         | JDK 21 or later |
+| Maven        | 3.8 or later    |
 
 ### 1. Deploy to Polarion
 
@@ -111,7 +111,6 @@ You can have multiple files open at once — they appear as tabs at the top of t
 1. Click **New File** in the top-left of the explorer panel.
 2. Enter a name or path (e.g., `config/myconfig.yaml`).
 3. Press **Create**.
-
 
 ### Renaming a File
 
@@ -151,6 +150,7 @@ Please contact me directly via email:
 GitHub Issues and a fully open collaboration workflow are planned for a future phase.
 
 When reporting a bug, please include:
+
 - Your Polarion version
 - The plugin version (visible in the JAR filename or `pom.xml`)
 - Steps to reproduce the problem
