@@ -1287,6 +1287,27 @@
         return new RegExp(`^#${name}(?:\\b|\\s*\\()`, 'i').test(line);
       }
 
+      function normalizeDirectiveParens(trimmedLine) {
+        const directiveMatch = trimmedLine.match(/^(#\w+)\s*\(/);
+        if (!directiveMatch) return trimmedLine;
+        const parenStart = trimmedLine.indexOf('(', directiveMatch[1].length);
+        if (parenStart === -1) return trimmedLine;
+        let depth = 0;
+        let parenEnd = -1;
+        for (let i = parenStart; i < trimmedLine.length; i++) {
+          if (trimmedLine[i] === '(') depth++;
+          else if (trimmedLine[i] === ')') { depth--; if (depth === 0) { parenEnd = i; break; } }
+        }
+        if (parenEnd === -1) return trimmedLine;
+        const directive = trimmedLine.substring(0, parenStart);
+        let inner = trimmedLine.substring(parenStart + 1, parenEnd);
+        const suffix = trimmedLine.substring(parenEnd + 1);
+        // Normalize spaces around = but not ==, !=, >=, <=
+        inner = inner.replace(/(?<![=!<>])\s*=\s*(?!=)/g, ' = ');
+        inner = inner.trim();
+        return `${directive}( ${inner} )${suffix}`;
+      }
+
       for (const rawLine of lines) {
         const rightTrimmed = rawLine.replace(/\s+$/g, '');
         const trimmed = rightTrimmed.trim();
@@ -1312,12 +1333,16 @@
         if (preDecrease) indentLevel = Math.max(0, indentLevel - 1);
         const currentIndent = indentUnit.repeat(Math.max(0, indentLevel));
 
+        const outputLine = (isDirectiveOnly && !inBlockComment && !isLineComment)
+          ? normalizeDirectiveParens(trimmed)
+          : trimmed;
+
         if (inBlockComment || isLineComment) {
-          out.push(currentIndent + trimmed);
+          out.push(currentIndent + outputLine);
         } else if (isDirectiveOnly) {
-          out.push(currentIndent + trimmed);
+          out.push(currentIndent + outputLine);
         } else {
-          out.push(currentIndent + trimmed);
+          out.push(currentIndent + outputLine);
         }
 
         if (isDirectiveOnly) {
