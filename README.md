@@ -42,10 +42,6 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ## Screenshots
 
-### Animated demo
-
-![Polarion Code Editor animated demo](docs/media/code-editor-demo.gif)
-
 ### Code Editor entry in the Polarion sidebar
 
 <img src="https://github.com/user-attachments/assets/2143d7db-18ba-44c1-bf88-7fdeaa6e1e25" alt="Polarion sidebar showing the Code Editor navigation entry" width="260"/>
@@ -54,9 +50,6 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 <img src="https://github.com/user-attachments/assets/197ab388-a2eb-4618-b594-3d978340210e" alt="Tab bar with mainLogic.vm, llmConfig.json and workitem-type-enum.xml open"/>
 
-### The Code Editor navigation icon
-
-<img src="https://github.com/user-attachments/assets/7d2ad821-c901-4f6b-a7ed-7380cbbb5227" alt="Code Editor navigation icon" width="260"/>
 
 ### File explorer with repository structure
 
