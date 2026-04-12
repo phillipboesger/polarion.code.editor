@@ -24,6 +24,21 @@
     <tag>HEAD</tag>
   </scm>
 
+  <!--
+    Polarion platform JARs are published to GitHub Packages.
+    CI authenticates via the PACKAGES_TOKEN secret (PAT with read:packages).
+    The server id "github" is injected by actions/setup-java in the CI workflow.
+  -->
+  <repositories>
+    <repository>
+      <id>github</id>
+      <url>https://maven.pkg.github.com/avasis-solutions/masterPom-plugins</url>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
