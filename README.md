@@ -13,6 +13,7 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 - [Installation](#installation)
 - [Usage](#usage)
 - [Permissions](#permissions)
+- [Navigation Tab in User View](#navigation-tab-in-user-view)
 - [Bugs & Feature Requests](#bugs--feature-requests)
 - [Branding & Legal Notice](#branding--legal-notice)
 - [License](#license)
@@ -128,6 +129,31 @@ The plugin currently does **not** define dedicated Polarion permissions yet.
 
 - A dedicated permission model is planned for a future release.
 - Until then, there is no separate `read`/`write` permission matrix provided by this plugin.
+
+---
+
+## Navigation Tab in User View
+
+The plugin behaves differently in Administration and User View:
+
+- The **Administration entry** is always visible.
+- The **User View sidebar tab** is only visible when it is enabled in Polarion Topics configuration.
+
+### How to enable it in User View
+
+To show **Code Editor** in the User View sidebar, add the topic in Global Administration:
+
+1. Go to **Global Administration → Portal → Topics**.
+2. Edit the active topics XML.
+3. Add this line inside `<topics>`:
+
+```xml
+<topic id="code-editor"/>
+```
+
+4. Save the configuration.
+
+After saving, the Code Editor tab is available in User View.
 
 ---
 
