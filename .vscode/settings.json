@@ -1,10 +1,10 @@
 {
-  "java.jdt.ls.java.home": "/opt/homebrew/Cellar/openjdk/23.0.2/libexec/openjdk.jdk/Contents/Home",
-  "java.configuration.runtimes": [
-    {
-      "name": "JavaSE-23",
-      "path": "/opt/homebrew/Cellar/openjdk/23.0.2/libexec/openjdk.jdk/Contents/Home",
-      "default": true
-    }
-  ]
+	"java.jdt.ls.java.home": "/opt/homebrew/Cellar/openjdk/23.0.2/libexec/openjdk.jdk/Contents/Home",
+	"java.configuration.runtimes": [
+		{
+			"name": "JavaSE-23",
+			"path": "/opt/homebrew/Cellar/openjdk/23.0.2/libexec/openjdk.jdk/Contents/Home",
+			"default": true
+		}
+	]
 }

@@ -1,20 +1,19 @@
 package boesger.polarion.codeeditor.service.action;
 
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.when;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 
+import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.polarion.platform.core.PlatformContext;

@@ -1,14 +1,13 @@
 package boesger.polarion.codeeditor.navigation;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.mock;
-
-import java.util.List;
-
 import org.junit.Test;
+import static org.mockito.Mockito.mock;
 
 import com.polarion.subterra.base.data.identification.IContextId;
 

@@ -1,8 +1,5 @@
 package boesger.polarion.codeeditor.api;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -14,6 +11,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.polarion.platform.security.ISecurityService;
@@ -128,14 +127,17 @@ public class CodeEditorServletTest {
 			public int read() {
 				return -1;
 			}
+
 			@Override
 			public boolean isFinished() {
 				return true;
 			}
+
 			@Override
 			public boolean isReady() {
 				return true;
 			}
+
 			@Override
 			public void setReadListener(javax.servlet.ReadListener rl) {
 			}
@@ -155,14 +157,17 @@ public class CodeEditorServletTest {
 			public int read() {
 				return -1;
 			}
+
 			@Override
 			public boolean isFinished() {
 				return true;
 			}
+
 			@Override
 			public boolean isReady() {
 				return true;
 			}
+
 			@Override
 			public void setReadListener(javax.servlet.ReadListener rl) {
 			}
