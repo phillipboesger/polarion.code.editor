@@ -65,10 +65,10 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       # ── 2. Java + Maven cache ─────────────────────────────────────────────
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: "17"
+          java-version: "21"
           distribution: temurin
           cache: maven
           server-id: github
