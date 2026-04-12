@@ -8,16 +8,16 @@ import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 
 import boesger.polarion.codeeditor.util.PolarionUtils;
+import lombok.RequiredArgsConstructor;
 
+/**
+ * Transactional action that copies a file to a new location in the Polarion repository.
+ */
+@RequiredArgsConstructor
 public class CopyFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 
 	private final ILocation currentFileLocation;
 	private final ILocation newFileLocation;
-
-	public CopyFileAction(ILocation currentFileLocation, ILocation newFileLocation) {
-		this.currentFileLocation = currentFileLocation;
-		this.newFileLocation = newFileLocation;
-	}
 
 	@Override
 	public Boolean run() throws Exception {

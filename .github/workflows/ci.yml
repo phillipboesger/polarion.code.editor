@@ -1,0 +1,45 @@
+# Runs on every push and every pull request targeting main.
+# Compiles the project and executes all unit tests.
+#
+# PREREQUISITE: The Polarion platform JARs (com.polarion.*) must be accessible
+# via GitHub Packages. Set the repository secret PACKAGES_TOKEN to a Personal
+# Access Token with "read:packages" permission that can read the package registry
+# where the Polarion JARs are published.
+
+name: CI – Build & Test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          # Adds a <server id="github"> entry to ~/.m2/settings.xml so that Maven
+          # can authenticate against GitHub Packages using the token below.
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
+      - name: Build & run tests
+        run: mvn --batch-mode verify
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}

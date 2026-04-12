@@ -1,13 +1,8 @@
 package boesger.polarion.codeeditor.api;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.Arrays;
-import java.util.Collections;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -16,221 +11,170 @@ import javax.servlet.http.HttpServletResponse;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
-import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
-import com.polarion.subterra.base.data.identification.IContextId;
-
-import boesger.polarion.codeeditor.security.CodeEditorPermission;
 
 public class CodeEditorServletTest {
 
-  private CodeEditorServlet servlet;
+	private CodeEditorServlet servlet;
 
-  @Mock
-  private HttpServletRequest request;
+	@Mock
+	private HttpServletRequest request;
 
-  @Mock
-  private HttpServletResponse response;
+	@Mock
+	private HttpServletResponse response;
 
-  @Mock
-  private ISecurityService securityService;
+	@Mock
+	private ISecurityService securityService;
 
-  @Mock
-  private IPermission readPermission;
+	@Before
+	public void setUp() throws Exception {
+		MockitoAnnotations.openMocks(this);
+		servlet = new CodeEditorServlet();
+		when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
 
-  @Mock
-  private IPermission writePermission;
+		java.lang.reflect.Field securityServiceField = CodeEditorServlet.class.getDeclaredField("securityService");
+		securityServiceField.setAccessible(true);
+		securityServiceField.set(servlet, securityService);
+	}
 
-  @Before
-  public void setUp() throws Exception {
-    MockitoAnnotations.openMocks(this);
-    servlet = new CodeEditorServlet();
-    when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+	@Test
+	public void testDoGetHealth_Unauthorized() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/health");
 
-    // Inject mocks using Reflection
-    java.lang.reflect.Field securityServiceField = CodeEditorServlet.class.getDeclaredField("securityService");
-    securityServiceField.setAccessible(true);
-    securityServiceField.set(servlet, securityService);
+		servlet.doGet(request, response);
 
-    java.lang.reflect.Field readPermissionField = CodeEditorServlet.class.getDeclaredField("readPermission");
-    readPermissionField.setAccessible(true);
-    readPermissionField.set(servlet, readPermission);
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
+	}
 
-    java.lang.reflect.Field writePermissionField = CodeEditorServlet.class.getDeclaredField("writePermission");
-    writePermissionField.setAccessible(true);
-    writePermissionField.set(servlet, writePermission);
-  }
+	@Test
+	public void testDoGetHealth_Authorized() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/health");
+		when(securityService.getCurrentUser()).thenReturn("tester");
 
-  private void setPermissionField(String fieldName, IPermission permission) throws Exception {
-    java.lang.reflect.Field permissionField = CodeEditorServlet.class.getDeclaredField(fieldName);
-    permissionField.setAccessible(true);
-    permissionField.set(servlet, permission);
-  }
+		servlet.doGet(request, response);
 
-  @Test
-  public void testDoGetHealth_Unauthorized() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/health");
+		verify(response).setStatus(HttpServletResponse.SC_OK);
+	}
 
-    // securityService.getCurrentUser() returns null by default (unauthorized)
+	@Test
+	public void testDoDeleteFile_Unauthorized() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/test.json");
+		when(request.getParameter("projectId")).thenReturn("testProject");
 
-    servlet.doGet(request, response);
+		servlet.doDelete(request, response);
 
-    verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
-  }
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	}
 
-  @Test
-  public void testDoGetHealth_ForbiddenWithoutReadPermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.hasPermission(readPermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
+	@Test
+	public void testDoPutFile_Unauthorized() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/new.json");
+		when(request.getParameter("projectId")).thenReturn("testProject");
 
-    servlet.doGet(request, response);
+		servlet.doPut(request, response);
 
-    verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
-      "Missing permission: " + CodeEditorPermission.PERMISSION_READ);
-  }
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	}
 
-  @Test
-  public void testDoGetHealth_AllowedForGlobalAdminRoleWithoutExplicitPermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("");
-    when(securityService.hasPermission(readPermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Arrays.asList("admin"));
+	@Test
+	public void testDoPost_Unauthorized() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/rename");
 
-    servlet.doGet(request, response);
+		servlet.doPost(request, response);
 
-    verify(response).setStatus(HttpServletResponse.SC_OK);
-  }
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	}
 
-  @Test
-  public void testDoGetHealth_AllowedForProjectAdminRoleWithoutExplicitPermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.hasPermission(readPermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Arrays.asList("project_admin"));
+	@Test
+	public void testDoGetUnknownPath_Authorized_Returns404() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/unknown/endpoint");
+		when(securityService.getCurrentUser()).thenReturn("tester");
 
-    servlet.doGet(request, response);
+		servlet.doGet(request, response);
 
-    verify(response).setStatus(HttpServletResponse.SC_OK);
-  }
+		verify(response).sendError(HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
+	}
 
-  @Test
-  public void testDoGetHealth_AllowedForGlobalAdminRoleFromGlobalContextFallback() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.hasPermission(readPermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Collections.emptyList())
-      .thenReturn(Arrays.asList("admin"));
+	@Test
+	public void testDoDelete_Unauthorized_WithoutPathInfo() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/other/path");
 
-    servlet.doGet(request, response);
+		servlet.doDelete(request, response);
 
-    verify(response).setStatus(HttpServletResponse.SC_OK);
-  }
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	}
 
-  @Test
-  public void testDoGetHealth_AllowedForAdminWhenReadPermissionUnavailable() throws Exception {
-    setPermissionField("readPermission", null);
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Collections.singletonList("admin"));
+	@Test
+	public void testDoDeleteUnknownPath_Authorized_Returns404() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/unknown");
+		when(securityService.getCurrentUser()).thenReturn("tester");
 
-    servlet.doGet(request, response);
+		servlet.doDelete(request, response);
 
-    verify(response).setStatus(HttpServletResponse.SC_OK);
-  }
+		verify(response).sendError(HttpServletResponse.SC_NOT_FOUND);
+	}
 
-  @Test
-  public void testDoGetHealth_ForbiddenForNonAdminWhenReadPermissionUnavailable() throws Exception {
-    setPermissionField("readPermission", null);
-    when(request.getPathInfo()).thenReturn("/health");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Collections.singletonList("developer"));
+	@Test
+	public void testDoPutUnknownPath_Authorized_Returns404() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/unknown");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(request.getInputStream()).thenReturn(new javax.servlet.ServletInputStream() {
+			@Override
+			public int read() {
+				return -1;
+			}
 
-    servlet.doGet(request, response);
+			@Override
+			public boolean isFinished() {
+				return true;
+			}
 
-    verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
-      "Missing permission: " + CodeEditorPermission.PERMISSION_READ);
-  }
+			@Override
+			public boolean isReady() {
+				return true;
+			}
 
-  @Test
-  public void testDoDeleteFile_Unauthorized() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/config/file/test.json");
-    when(request.getParameter("projectId")).thenReturn("testProject");
+			@Override
+			public void setReadListener(javax.servlet.ReadListener rl) {
+			}
+		});
 
-    servlet.doDelete(request, response);
+		servlet.doPut(request, response);
 
-    // Expect unauthorized because we haven't mocked a user
-    verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
-  }
+		verify(response).sendError(HttpServletResponse.SC_NOT_FOUND);
+	}
 
-  @Test
-  public void testDoDeleteFile_ForbiddenWithoutWritePermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/config/file/test.json");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(securityService.hasPermission(writePermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
+	@Test
+	public void testDoPostUnknownPath_Authorized_Returns404() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/unknown");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(request.getInputStream()).thenReturn(new javax.servlet.ServletInputStream() {
+			@Override
+			public int read() {
+				return -1;
+			}
 
-    servlet.doDelete(request, response);
+			@Override
+			public boolean isFinished() {
+				return true;
+			}
 
-    verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
-      "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE);
-  }
+			@Override
+			public boolean isReady() {
+				return true;
+			}
 
-  @Test
-  public void testDoDeleteFile_ForbiddenForNonAdminRoleWithoutWritePermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/config/file/test.json");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(securityService.hasPermission(writePermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
-    when(securityService.getRolesForUser(org.mockito.ArgumentMatchers.eq("tester"),
-      org.mockito.ArgumentMatchers.any(IContextId.class)))
-      .thenReturn(Collections.singletonList("developer"));
+			@Override
+			public void setReadListener(javax.servlet.ReadListener rl) {
+			}
+		});
 
-    servlet.doDelete(request, response);
+		servlet.doPost(request, response);
 
-    verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
-      "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE);
-  }
-
-  @Test
-  public void testDoPutFile_Unauthorized() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/config/file/new.json");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-
-    servlet.doPut(request, response);
-
-    // Expect unauthorized
-    verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
-  }
-
-  @Test
-  public void testDoPutFile_ForbiddenWithoutWritePermission() throws ServletException, IOException {
-    when(request.getPathInfo()).thenReturn("/config/file/new.json");
-    when(request.getParameter("projectId")).thenReturn("testProject");
-    when(securityService.getCurrentUser()).thenReturn("tester");
-    when(securityService.hasPermission(writePermission, org.mockito.ArgumentMatchers.any())).thenReturn(false);
-
-    servlet.doPut(request, response);
-
-    verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
-      "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE);
-  }
+		verify(response).sendError(HttpServletResponse.SC_NOT_FOUND);
+	}
 }

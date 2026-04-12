@@ -3,7 +3,6 @@ package boesger.polarion.codeeditor.api;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,47 +18,36 @@ import org.apache.commons.io.IOUtils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.polarion.platform.core.PlatformContext;
-import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
-import com.polarion.subterra.base.data.identification.ContextId;
-import com.polarion.subterra.base.data.identification.IContextId;
+
+import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
-import boesger.polarion.codeeditor.logger.PluginLogger;
 import boesger.polarion.codeeditor.model.RepoFile;
-import boesger.polarion.codeeditor.security.CodeEditorPermission;
 import boesger.polarion.codeeditor.service.CodeEditorService;
-import boesger.polarion.codeeditor.util.PolarionUtils;
 
 /**
- * Generic Servlet for Polarion CodeEditor.
- * Handles file management operations in the Polarion repository.
+ * HTTP entry point for the Code Editor plugin.
+ * Routes GET / PUT / DELETE / POST requests to {@link boesger.polarion.codeeditor.service.CodeEditorService}.
+ * All endpoints require an authenticated Polarion session; unauthenticated requests receive HTTP 401.
  */
 public class CodeEditorServlet extends HttpServlet {
 
 	private static final long serialVersionUID = 1L;
-	private static final PluginLogger log = new PluginLogger(CodeEditorServlet.class);
+	private static final Logger log = Logger.getLogger(CodeEditorServlet.class.getName());
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 	private static final String PARAM_PROJECT_ID = "projectId";
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
-	private static final String PERMISSION_DENIED_READ = "Missing permission: " + CodeEditorPermission.PERMISSION_READ;
-	private static final String PERMISSION_DENIED_WRITE = "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE;
-	private static final String GLOBAL_ADMIN_ROLE = "admin";
-	private static final String PROJECT_ADMIN_ROLE = "project_admin";
 
 	private ISecurityService securityService;
-	private IPermission readPermission;
-	private IPermission writePermission;
 
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
-		readPermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_READ);
-		writePermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_WRITE);
 		log.info("CodeEditorServlet initialized.");
 	}
 
@@ -72,10 +60,6 @@ public class CodeEditorServlet extends HttpServlet {
 
 		if(securityService.getCurrentUser() == null) {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
-			return;
-		}
-		if(!hasPermission(readPermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_READ);
 			return;
 		}
 
@@ -99,7 +83,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(IOException e) {
-			log.error("Error in GET " + pathInfo, e);
+			log.error("Error in GET " + pathInfo + ": " + e);
 			resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 			sendJsonSafely(resp, "{\"error\": \"" + e.getMessage() + "\"}");
 		}
@@ -116,10 +100,6 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
-		if(!hasPermission(writePermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
-			return;
-		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -132,7 +112,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in PUT " + pathInfo, e);
+			log.error("Error in PUT " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -148,10 +128,6 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
-		if(!hasPermission(writePermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
-			return;
-		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -163,7 +139,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in DELETE " + pathInfo, e);
+			log.error("Error in DELETE " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -177,10 +153,6 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
-		if(!hasPermission(writePermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
-			return;
-		}
 
 		try {
 			if("/config/rename".equals(pathInfo)) {
@@ -191,7 +163,7 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 		}
 		catch(CodeEditorException | IOException e) {
-			log.error("Error in POST " + pathInfo, e);
+			log.error("Error in POST " + pathInfo + ": " + e);
 			sendErrorSafely(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
 		}
 	}
@@ -264,7 +236,7 @@ public class CodeEditorServlet extends HttpServlet {
 			resp.sendError(code);
 		}
 		catch(IOException ioEx) {
-			log.error("Failed to send error response: " + code, ioEx);
+			log.error("Failed to send error response: " + code + ": " + ioEx);
 		}
 	}
 
@@ -273,7 +245,7 @@ public class CodeEditorServlet extends HttpServlet {
 			resp.sendError(code, message);
 		}
 		catch(IOException ioEx) {
-			log.error("Failed to send error response: " + code, ioEx);
+			log.error("Failed to send error response: " + code + ": " + ioEx);
 		}
 	}
 
@@ -282,7 +254,7 @@ public class CodeEditorServlet extends HttpServlet {
 			sendJson(resp, json);
 		}
 		catch(IOException ioEx) {
-			log.error("Error sending JSON error response", ioEx);
+			log.error("Error sending JSON error response: " + ioEx);
 		}
 	}
 
@@ -297,86 +269,6 @@ public class CodeEditorServlet extends HttpServlet {
 	private void sendResponse(HttpServletResponse resp, String message, int status) throws IOException {
 		resp.setStatus(status);
 		resp.getWriter().write(message);
-	}
-
-	private boolean hasPermission(IPermission permission, String projectId) {
-		IContextId contextId = resolveContextId(projectId);
-		if(permission != null && hasPermissionInContextSafely(permission, contextId)) {
-			return true;
-		}
-		IContextId globalContext = ContextId.getGlobalContextId();
-		if(permission != null && hasPermissionInContextSafely(permission, globalContext)) {
-			return true;
-		}
-
-		String userName = securityService.getCurrentUser();
-		if(userName == null) {
-			return false;
-		}
-
-		Collection<String> roles = getRolesForUserSafely(userName, contextId);
-		if(hasAdminRole(roles)) {
-			return true;
-		}
-		Collection<String> globalRoles = getRolesForUserSafely(userName, globalContext);
-		return hasAdminRole(globalRoles);
-	}
-
-	private IPermission constructPermissionSafely(String permissionId) {
-		try {
-			return securityService.constructPermission(permissionId);
-		}
-		catch(IllegalArgumentException permissionEx) {
-			log.error("Unknown permission id: " + permissionId + ". Falling back to admin-role checks only.",
-					permissionEx);
-			return null;
-		}
-	}
-
-	private IContextId resolveContextId(String projectId) {
-		if(projectId != null && !projectId.trim().isEmpty()) {
-			String normalizedProjectId = projectId.trim();
-			try {
-				// Only use project context if project can be resolved in this Polarion instance.
-				PolarionUtils.getTrackerProject(normalizedProjectId);
-				return ContextId.getContextIdFromContext(normalizedProjectId);
-			}
-			catch(RuntimeException invalidProjectContextEx) {
-				log.warn("Invalid or unresolved project context '" + normalizedProjectId
-						+ "'. Falling back to global context for permission checks. Cause: "
-						+ invalidProjectContextEx.getMessage());
-			}
-		}
-		return ContextId.getGlobalContextId();
-	}
-
-	private boolean hasPermissionInContextSafely(IPermission permission, IContextId contextId) {
-		try {
-			return securityService.hasPermission(permission, contextId);
-		}
-		catch(IllegalArgumentException invalidContextEx) {
-			log.warn("Ignoring invalid context for permission check: " + contextId + ". Cause: "
-					+ invalidContextEx.getMessage());
-			return false;
-		}
-	}
-
-	private Collection<String> getRolesForUserSafely(String userName, IContextId contextId) {
-		try {
-			return securityService.getRolesForUser(userName, contextId);
-		}
-		catch(IllegalArgumentException invalidContextEx) {
-			log.warn("Ignoring invalid context for role lookup: " + contextId + ". Cause: "
-					+ invalidContextEx.getMessage());
-			return java.util.Collections.emptyList();
-		}
-	}
-
-	private boolean hasAdminRole(Collection<String> roles) {
-		if(roles == null || roles.isEmpty()) {
-			return false;
-		}
-		return roles.contains(GLOBAL_ADMIN_ROLE) || roles.contains(PROJECT_ADMIN_ROLE);
 	}
 
 	private static class RenameRequest {

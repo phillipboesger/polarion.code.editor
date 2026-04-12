@@ -12,15 +12,16 @@ import com.polarion.platform.persistence.UnresolvableObjectException;
 import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
 
+import com.polarion.core.util.logging.Logger;
+
 import boesger.polarion.codeeditor.exception.CodeEditorException;
-import boesger.polarion.codeeditor.logger.PluginLogger;
 
 /**
  * Utility class to interact with Polarion services.
  */
 public class PolarionUtils {
 
-	private static final PluginLogger log = new PluginLogger(PolarionUtils.class);
+	private static final Logger log = Logger.getLogger(PolarionUtils.class.getName());
 
 	private static final ITrackerService trackerService = PlatformContext.getPlatform().lookupService(ITrackerService.class);
 	private static final ITransactionService transactionService = PlatformContext.getPlatform()
@@ -77,29 +78,6 @@ public class PolarionUtils {
 	/**
 	 * Executes a function within a transaction.
 	 */
-	public static void executeInTransaction(Runnable function) throws CodeEditorException {
-		try {
-			if(!transactionService.canBeginTx()) {
-				transactionService.endTx(true);
-			}
-
-			transactionService.beginTx();
-			function.run();
-			transactionService.endTx(false);
-
-		}
-		catch(Exception e) {
-			log.error("Exception during transaction execution", e);
-			try {
-				transactionService.endTx(true);
-			}
-			catch(Exception e1) {
-				log.error("Exception during transaction rollback", e1);
-			}
-			throw new CodeEditorException("Exception happened while committing object: " + e.getMessage(), e);
-		}
-	}
-
 	/**
 	 * Executes a function within a transaction and returns a result.
 	 */
@@ -116,12 +94,12 @@ public class PolarionUtils {
 
 		}
 		catch(Exception e) {
-			log.error("Exception during transaction execution with result", e);
+			log.error("Exception during transaction execution with result: " + e);
 			try {
 				transactionService.endTx(true);
 			}
 			catch(Exception e1) {
-				log.error("Exception during transaction rollback", e1);
+				log.error("Exception during transaction rollback: " + e1);
 			}
 			throw new CodeEditorException("Exception happened while committing object: " + e.getMessage(), e);
 		}

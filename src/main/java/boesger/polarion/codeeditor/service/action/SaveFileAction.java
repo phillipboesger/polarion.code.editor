@@ -4,16 +4,17 @@ import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.subterra.base.location.ILocation;
 
 import boesger.polarion.codeeditor.util.PolarionUtils;
+import lombok.RequiredArgsConstructor;
 
+/**
+ * Transactional action that creates or overwrites a file in the Polarion repository.
+ * If parent directories do not exist they are created automatically.
+ */
+@RequiredArgsConstructor
 public class SaveFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 
 	private final ILocation fileLocation;
 	private final String content;
-
-	public SaveFileAction(ILocation fileLocation, String content) {
-		this.fileLocation = fileLocation;
-		this.content = content;
-	}
 
 	@Override
 	public Boolean run() throws Exception {

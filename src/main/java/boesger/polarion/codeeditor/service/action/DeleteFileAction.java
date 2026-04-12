@@ -4,14 +4,16 @@ import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.subterra.base.location.ILocation;
 
 import boesger.polarion.codeeditor.util.PolarionUtils;
+import lombok.RequiredArgsConstructor;
 
+/**
+ * Transactional action that deletes a file from the Polarion repository.
+ * Returns {@code true} if the file was deleted, {@code false} if it did not exist.
+ */
+@RequiredArgsConstructor
 public class DeleteFileAction implements PolarionUtils.RunnableWEx<Boolean> {
 
 	private final ILocation fileLocation;
-
-	public DeleteFileAction(ILocation fileLocation) {
-		this.fileLocation = fileLocation;
-	}
 
 	@Override
 	public Boolean run() throws Exception {
