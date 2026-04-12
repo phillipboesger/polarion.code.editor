@@ -1,0 +1,46 @@
+# Pre-installs Java 21 and all Maven dependencies so that the GitHub Copilot
+# coding agent starts in a ready-to-build environment.
+#
+# The job MUST be named exactly "copilot-setup-steps" – GitHub uses this name
+# to discover setup instructions for the agent.
+#
+# Triggered automatically whenever this file changes, or manually.
+
+name: Copilot Setup Steps
+
+on:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  workflow_dispatch:
+
+jobs:
+  copilot-setup-steps:
+    name: Copilot Setup Steps
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
+      - name: Pre-download Maven dependencies
+        run: mvn --batch-mode dependency:go-offline
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
