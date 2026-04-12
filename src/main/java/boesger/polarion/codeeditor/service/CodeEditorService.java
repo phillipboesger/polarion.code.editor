@@ -14,13 +14,12 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 
+import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.repository.config.RepositoryConfigurationException;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.subterra.base.location.ILocation;
 import com.polarion.subterra.base.location.Location;
-
-import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
@@ -311,9 +310,7 @@ public class CodeEditorService {
 	}
 
 	private String normalizePath(String path) {
-		if(path == null || path.isBlank()) {
-			return "";
-		}
+		if(path == null || path.isBlank()) { return ""; }
 
 		int start = 0;
 		int end = path.length();
@@ -328,9 +325,7 @@ public class CodeEditorService {
 
 	private boolean isDirectoryEntry(ILocation childLoc) {
 		String ext = childLoc.getLastComponentExtension();
-		if(ext == null || ext.isEmpty()) {
-			return true;
-		}
+		if(ext == null || ext.isEmpty()) { return true; }
 		return hasChildren(childLoc);
 	}
 
