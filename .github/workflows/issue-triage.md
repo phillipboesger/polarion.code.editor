@@ -10,7 +10,7 @@ on:
 
 permissions: read-all
 
-network: none
+network: defaults
 
 tools:
   github:

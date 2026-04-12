@@ -8,6 +8,7 @@ on:
   workflow_run:
     workflows: ["CI – Build & Test"]
     types: [completed]
+    branches: [main]
 
 permissions: read-all
 
