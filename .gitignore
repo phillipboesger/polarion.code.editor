@@ -4,7 +4,6 @@
 .classpath
 .project
 /bin/
-/docs/
 
 # Log file
 *.log
@@ -24,3 +23,4 @@
 #Maven files
 /target/
 dependency-reduced-pom.xml
+README.pdf

@@ -20,6 +20,8 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 
 ---
 
+<div style="page-break-before: always;"></div>
+
 ## What Is This?
 
 The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that adds a full-featured code editor to the Polarion Administration panel. It uses the same [Monaco Editor](https://microsoft.github.io/monaco-editor/) engine that powers VS Code, so you get syntax highlighting, a familiar dark theme, and keyboard shortcuts out of the box.
@@ -41,22 +43,25 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ---
 
+<div style="page-break-before: always;"></div>
+
 ## Screenshots
 
 ### Code Editor entry in the Polarion sidebar
 
-<img src="https://github.com/user-attachments/assets/2143d7db-18ba-44c1-bf88-7fdeaa6e1e25" alt="Polarion sidebar showing the Code Editor navigation entry" width="260"/>
+![Polarion sidebar showing the Code Editor navigation entry](docs/media/sidebar-entry.png)
 
 ### Multiple files open in tabs
 
-<img src="https://github.com/user-attachments/assets/197ab388-a2eb-4618-b594-3d978340210e" alt="Tab bar with mainLogic.vm, llmConfig.json and workitem-type-enum.xml open"/>
-
+![Tab bar with mainLogic.vm, llmConfig.json and workitem-type-enum.xml open](docs/media/open-tabs.png)
 
 ### File explorer with repository structure
 
-<img src="https://github.com/user-attachments/assets/44625fbb-bb8e-4b53-a3e5-43f75afd67e5" alt="Full editor UI showing the file explorer on the left and the editor on the right"/>
+<img src="docs/media/file-explorer.png" alt="Full editor UI showing the file explorer on the left and the editor on the right" width="200"/>
 
 ---
+
+<div style="page-break-before: always;"></div>
 
 ## Installation
 
@@ -83,6 +88,8 @@ Then **restart the Polarion server**.
 After restarting, open Polarion and look for the **Code Editor** entry in the left-hand navigation sidebar (see screenshot above). If it appears, the plugin is active.
 
 ---
+
+<div style="page-break-before: always;"></div>
 
 ## Usage
 
@@ -123,6 +130,8 @@ Use the **A−**, **A**, **A+** buttons in the toolbar to decrease, reset, or in
 
 ---
 
+<div style="page-break-before: always;"></div>
+
 ## Permissions
 
 The plugin currently does **not** define dedicated Polarion permissions yet.
@@ -157,6 +166,8 @@ After saving, the Code Editor tab is available in User View.
 
 ---
 
+<div style="page-break-before: always;"></div>
+
 ## Bugs & Feature Requests
 
 Found a bug? Have an idea for a new feature?
@@ -175,6 +186,8 @@ When reporting a bug, please include:
 - Any relevant error messages from the Polarion server log
 
 ---
+
+<div style="page-break-before: always;"></div>
 
 ## Branding & Legal Notice
 
