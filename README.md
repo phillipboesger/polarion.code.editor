@@ -62,7 +62,7 @@ The editor is embedded directly in the Polarion Administration panel:
 | Requirement             | Details                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
 | **Polarion ALM**        | Version 2304 (23.4) or later recommended                                                   |
-| **Java**                | JDK 11 or later                                                                            |
+| **Java**                | JDK 21                                                                                     |
 | **Maven**               | 3.6 or later                                                                               |
 | **Polarion Parent POM** | `biz.avasis.polarion:masterpom-plugins:1.6.1` (must be available in your Maven repository) |
 
