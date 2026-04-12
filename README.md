@@ -2,8 +2,7 @@
 
 A **VS Code-like file editor** built right into Polarion ALM — edit Velocity macros, JSON configs, XML enumerations, and any other text-based repository file without ever leaving Polarion.
 
-> **Free to use** — no license key, no paywall, no feature limitations.
-> The extension can be used freely, but the source code may not be reused in other projects.
+> **Free to use** — no license key, no paywall, no feature limitations. Licensed under the terms in the LICENSE file.
 
 ---
 
