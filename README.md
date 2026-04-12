@@ -13,9 +13,7 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 - [Installation](#installation)
 - [Usage](#usage)
 - [Permissions](#permissions)
-- [What You Can (and Cannot) Do](#what-you-can-and-cannot-do)
 - [Bugs & Feature Requests](#bugs--feature-requests)
-- [Contributing](#contributing)
 - [Branding & Legal Notice](#branding--legal-notice)
 - [License](#license)
 
@@ -35,9 +33,18 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 - Warns before you navigate away with unsaved changes.
 - No additional server, database, or cloud service required.
 
+## Important Legal Note
+
+- This plugin is free to use in your Polarion environments.
+- Reuse, redistribution, or integration of the source code into other projects is currently not permitted.
+
 ---
 
 ## Screenshots
+
+### Animated demo
+
+![Polarion Code Editor animated demo](docs/media/code-editor-demo.gif)
 
 ### Code Editor entry in the Polarion sidebar
 
@@ -61,29 +68,13 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ### Requirements
 
-| Requirement | Version |
-|---|---|
-| Polarion ALM | 2304 (23.4) or later |
-| Java | JDK 21 or later |
-| Maven | 3.8 or later |
+| Requirement  | Version         |
+| ------------ | --------------- |
+| Polarion ALM | 2512 or later   |
+| Java         | JDK 21 or later |
+| Maven        | 3.8 or later    |
 
-### 1. Download or Build the Plugin JAR
-
-**Option A — Build from source:**
-
-```bash
-git clone https://github.com/phillipboesger/polarion.fileEditor.git
-cd polarion.fileEditor
-mvn clean package
-```
-
-The JAR is created at `target/polarion-code-editor-<version>.jar`.
-
-**Option B — Download a release:**
-
-Grab the latest JAR from the [Releases page](https://github.com/phillipboesger/polarion.fileEditor/releases).
-
-### 2. Deploy to Polarion
+### 1. Deploy to Polarion
 
 Copy the JAR into your Polarion plugins directory:
 
@@ -93,7 +84,7 @@ cp target/polarion-code-editor-*.jar <POLARION_HOME>/polarion/plugins/
 
 Then **restart the Polarion server**.
 
-### 3. Verify
+### 2. Verify
 
 After restarting, open Polarion and look for the **Code Editor** entry in the left-hand navigation sidebar (see screenshot above). If it appears, the plugin is active.
 
@@ -120,8 +111,6 @@ You can have multiple files open at once — they appear as tabs at the top of t
 2. Enter a name or path (e.g., `config/myconfig.yaml`).
 3. Press **Create**.
 
-> New files are always created inside the plugin's dedicated `.file-editor/` folder in the Polarion repository.
-
 ### Renaming a File
 
 1. Hover over a file in the explorer.
@@ -142,87 +131,29 @@ Use the **A−**, **A**, **A+** buttons in the toolbar to decrease, reset, or in
 
 ## Permissions
 
-The plugin uses two Polarion permissions that can be assigned to roles in the standard Permissions Management page:
+The plugin currently does **not** define dedicated Polarion permissions yet.
 
-| Permission | What it controls |
-|---|---|
-| `boesger.codeeditor.read` | Required to view the Code Editor navigation entry and read any file |
-| `boesger.codeeditor.write` | Required to create, update, rename, or delete files |
-
-Both permissions are checked server-side on every API call.
-
-**Default access:** Users with the global role `admin` or project role `project_admin` automatically receive both read and write access.
-
-### Making the Permissions Visible in the UI
-
-The plugin ships an optional helper script that injects the two permissions into Polarion's standard Permissions Management matrix so they can be managed like any built-in permission:
-
-```html
-<script src="/polarion/code-editor/resources/permissions-injection.js"></script>
-```
-
-Add this to your Polarion-wide HTML/script injection configuration. The script is client-side only and idempotent — it only activates on the Permissions Management page.
-
----
-
-## What You Can (and Cannot) Do
-
-### ✅ You Can
-
-- Edit any text-based file that is listed in the file explorer.
-- Create new files inside the `.file-editor/` folder.
-- Rename or delete files that were created through the plugin.
-- Use the editor commercially, in your own Polarion instance, free of charge.
-- Fork and modify the plugin under the terms of the Apache 2.0 license.
-
-### ❌ You Cannot
-
-- Write files outside the `.file-editor/` folder — the backend enforces this automatically; path traversal and writes to arbitrary locations are blocked server-side.
-- Bypass Polarion's permission system — all API calls require a valid, authenticated Polarion session and the appropriate `read`/`write` permission.
-- Remove or hide the "Made by Boesger Digital" attribution in the editor footer (see [Branding & Legal Notice](#branding--legal-notice)).
+- A dedicated permission model is planned for a future release.
+- Until then, there is no separate `read`/`write` permission matrix provided by this plugin.
 
 ---
 
 ## Bugs & Feature Requests
 
-Found a bug? Have an idea for a new feature? Please use **GitHub Issues**:
+Found a bug? Have an idea for a new feature?
 
-👉 **[Open an issue](https://github.com/phillipboesger/polarion.fileEditor/issues)**
+Please contact me directly via email:
+
+👉 **digital@boesger.com**
+
+GitHub Issues and a fully open collaboration workflow are planned for a future phase.
 
 When reporting a bug, please include:
+
 - Your Polarion version
 - The plugin version (visible in the JAR filename or `pom.xml`)
 - Steps to reproduce the problem
 - Any relevant error messages from the Polarion server log
-
----
-
-## Contributing
-
-Contributions are welcome!
-
-1. **Fork** the repository.
-2. **Create a branch**: `git checkout -b feature/my-feature` or `fix/my-bug`.
-3. **Commit** your changes with a clear message.
-4. **Push** and open a **Pull Request** against `main`.
-
-### Building & Testing
-
-```bash
-# Build
-mvn clean package
-
-# Run tests
-mvn test
-```
-
-Tests are in `src/test/java` and use JUnit 4 with Mockito.
-
-### Code Guidelines
-
-- Keep servlet logic thin — business logic belongs in the service layer.
-- Wrap all repository writes in a Polarion transaction via `PolarionUtils.executeInTransactionWithResult()`.
-- Use `PluginLogger` for logging — do not use `System.out` or raw `java.util.logging`.
 
 ---
 
@@ -237,4 +168,8 @@ The plugin includes subtle branding (a custom navigation icon and a footer attri
 
 ## License
 
-This project is licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file for details.
+The extension is free to use.
+
+Source code usage, reuse, and redistribution are currently not permitted.
+
+For legal details, see [LICENSE](LICENSE).
