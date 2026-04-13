@@ -10,7 +10,7 @@
 
   <name>Polarion Code Editor Plugin</name>
   <description>Comprehensive Code Editor for Polarion Administration.</description>
-  <url>https://github.com/phillipboesger/polarion.fileEditor</url>
+  <url>https://github.com/phillipboesger/polarion.code.editor</url>
 
   <organization>
     <name>Bösger</name>
@@ -18,9 +18,9 @@
   </organization>
 
   <scm>
-    <connection>scm:git:https://github.com/phillipboesger/polarion.fileEditor.git</connection>
-    <developerConnection>scm:git:https://github.com/phillipboesger/polarion.fileEditor.git</developerConnection>
-    <url>https://github.com/phillipboesger/polarion.fileEditor</url>
+    <connection>scm:git:https://github.com/phillipboesger/polarion.code.editor.git</connection>
+    <developerConnection>scm:git:https://github.com/phillipboesger/polarion.code.editor.git</developerConnection>
+    <url>https://github.com/phillipboesger/polarion.code.editor</url>
     <tag>HEAD</tag>
   </scm>
 

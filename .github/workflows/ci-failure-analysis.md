@@ -1,6 +1,6 @@
 ---
 description: |
-  Analyses failed CI runs for the polarion.fileEditor plugin, identifies the
+  Analyses failed CI runs for the polarion.code.editor plugin, identifies the
   root cause, and posts a diagnostic comment on the triggering pull request or
   the latest commit with an actionable fix suggestion.
 
@@ -30,7 +30,7 @@ timeout-minutes: 15
 
 # CI Failure Analysis Agent
 
-You are a senior Java developer helping to maintain the **polarion.fileEditor**
+You are a senior Java developer helping to maintain the **polarion.code.editor**
 Polarion ALM plugin (Java 21, Maven, OSGi).
 
 ## Background

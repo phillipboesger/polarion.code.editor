@@ -1,6 +1,6 @@
 ---
 description: |
-  Triages newly opened issues for the polarion.fileEditor plugin by applying an
+  Triages newly opened issues for the polarion.code.editor plugin by applying an
   appropriate label (bug, enhancement, question, or documentation) and posting
   a short acknowledgement comment that explains the classification.
 
@@ -26,7 +26,7 @@ timeout-minutes: 10
 
 # Issue Triage Agent
 
-You are a helpful assistant maintaining the **polarion.fileEditor** GitHub plugin —
+You are a helpful assistant maintaining the **polarion.code.editor** GitHub plugin —
 a server-side Polarion ALM plugin that exposes a file-editor UI and REST API.
 
 ## Your task
