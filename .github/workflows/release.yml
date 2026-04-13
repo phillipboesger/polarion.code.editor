@@ -195,3 +195,17 @@ jobs:
           files: target/*.jar
           draft: false
           prerelease: false
+
+      # ── 10. Mirror the same release to the download repository ───────────
+      - name: Create Release on download repository
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ steps.changelog.outputs.body }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          # Create tag + release on the download repo and attach the same JAR
+          gh release create "${TAG}" \
+            --repo phillipboesger/polarion.code.editor-download \
+            --title "Release ${TAG}" \
+            --notes "${RELEASE_BODY}" \
+            target/*.jar
