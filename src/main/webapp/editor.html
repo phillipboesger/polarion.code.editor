@@ -1276,10 +1276,186 @@
 
       const normalized = content.replace(/\r\n/g, '\n');
       const hasTrailingNewline = normalized.endsWith('\n');
-      const lines = normalized.split('\n');
       const indentUnit = '  ';
-      let indentLevel = 0;
+
+      // ── HTML tag sets ──────────────────────────────────────────────────────
+      const VOID_TAGS = new Set([
+        'area','base','br','col','embed','hr','img','input',
+        'link','meta','param','source','track','wbr'
+      ]);
+
+      // Block-level HTML tags whose children get indented.
+      // <script> and <style> are NOT listed here – they are handled via embedded-mode logic below.
+      const BLOCK_TAGS = new Set([
+        'html','head','body',
+        'table','thead','tbody','tfoot','tr','colgroup',
+        'ul','ol','dl',
+        'div','section','article','header','footer','main','nav','aside',
+        'form','fieldset','select','datalist','optgroup',
+        'details','summary','blockquote','figure','figcaption'
+      ]);
+
+      // Inline container tags: collapse open+content+close to one line when small
+      const INLINE_COLLAPSIBLE = new Set([
+        'td','th','li','dt','dd',
+        'p','h1','h2','h3','h4','h5','h6',
+        'label','button','caption','title',
+        'span','a','strong','em','i','b','small','code'
+      ]);
+
+      function getSoloOpenTag(line) {
+        const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>$/);
+        if (!m) return null;
+        const tag = m[1].toLowerCase();
+        return VOID_TAGS.has(tag) ? null : tag;
+      }
+
+      function getSoloCloseTag(line) {
+        const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>$/);
+        return m ? m[1].toLowerCase() : null;
+      }
+
+      function getBlockOpenTag(line) {
+        const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>/);
+        if (!m) return null;
+        const tag = m[1].toLowerCase();
+        if (!BLOCK_TAGS.has(tag)) return null;
+        if (new RegExp(`</${tag}\\s*>`, 'i').test(line)) return null;
+        return tag;
+      }
+
+      function getBlockCloseTag(line) {
+        const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>/);
+        if (!m) return null;
+        const tag = m[1].toLowerCase();
+        return BLOCK_TAGS.has(tag) ? tag : null;
+      }
+
+      // ── Step 0: Expand compact CSS inside <style> blocks ──────────────────
+      // Tokenises on { } ; while preserving Velocity ${...} expressions.
+      function expandCss(cssText) {
+        let result = '';
+        let vDepth = 0;
+        for (let k = 0; k < cssText.length; k++) {
+          const c    = cssText[k];
+          const prev = k > 0 ? cssText[k - 1] : '';
+          if      (c === '{' && prev === '$') { vDepth++; result += c; }
+          else if (c === '}' && vDepth > 0)  { vDepth--; result += c; }
+          else if (vDepth > 0)               { result += c; }
+          else if (c === '{')  { result += ' {\n'; }
+          else if (c === '}')  { result += '\n}\n'; }
+          else if (c === ';')  { result += ';\n'; }
+          else                 { result += c; }
+        }
+        return result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      }
+
+      function preprocessStyleBlocks(inputLines) {
+        const output = [];
+        let inStyle = false;
+        let cssBuffer = [];
+        for (const line of inputLines) {
+          const t  = line.trim();
+          const tl = t.toLowerCase();
+          if (!inStyle && /^<style(\s[^>]*)?>/.test(tl) && !/<\/style\s*>/.test(tl)) {
+            inStyle = true;
+            output.push(line);
+            continue;
+          }
+          if (inStyle && /^<\/style\s*>/.test(tl)) {
+            if (cssBuffer.length > 0) {
+              output.push(...expandCss(cssBuffer.join(' ')));
+              cssBuffer = [];
+            }
+            inStyle = false;
+            output.push(line);
+            continue;
+          }
+          if (inStyle) { if (t.length > 0) cssBuffer.push(t); continue; }
+          output.push(line);
+        }
+        if (cssBuffer.length > 0) output.push(...expandCss(cssBuffer.join(' ')));
+        return output;
+      }
+
+      // ── Brace counters for embedded modes ─────────────────────────────────
+      // JS: skip strings ("'`), line comments (//), block comments (/* */)
+      function countJsBraces(line) {
+        let open = 0, close = 0;
+        let inStr = false, strChar = '', inLineCom = false, inBlockCom = false;
+        for (let k = 0; k < line.length; k++) {
+          const c  = line[k];
+          const c2 = k + 1 < line.length ? line[k + 1] : '';
+          if (inLineCom) break;
+          if (inBlockCom) { if (c === '*' && c2 === '/') { inBlockCom = false; k++; } continue; }
+          if (inStr) { if (c === '\\') { k++; continue; } if (c === strChar) inStr = false; continue; }
+          if (c === '/' && c2 === '/') { inLineCom = true; continue; }
+          if (c === '/' && c2 === '*') { inBlockCom = true; k++; continue; }
+          if (c === '"' || c === "'" || c === '`') { inStr = true; strChar = c; continue; }
+          if (c === '{') open++; else if (c === '}') close++;
+        }
+        return { open, close };
+      }
+
+      // CSS: skip Velocity ${...} expressions
+      function countCssBraces(line) {
+        let open = 0, close = 0, vDepth = 0;
+        for (let k = 0; k < line.length; k++) {
+          const c    = line[k];
+          const prev = k > 0 ? line[k - 1] : '';
+          if (c === '{' && prev === '$') { vDepth++; }
+          else if (c === '}' && vDepth > 0) { vDepth--; }
+          else if (vDepth === 0) { if (c === '{') open++; else if (c === '}') close++; }
+        }
+        return { open, close };
+      }
+
+      // Shared helper: apply pre/post brace logic and write one embedded line
+      function pushEmbedded(trimmed, indentLevel, embeddedDelta, braces) {
+        const preClose = Math.min(braces.close, (trimmed.match(/^}+/) || [''])[0].length);
+        const delta    = Math.max(0, embeddedDelta - preClose);
+        const netPost  = braces.open - (braces.close - preClose);
+        return {
+          line:         indentUnit.repeat(indentLevel + delta) + trimmed,
+          embeddedDelta: Math.max(0, delta + netPost)
+        };
+      }
+
+      // ── Step 0 apply ───────────────────────────────────────────────────────
+      let lines = preprocessStyleBlocks(normalized.split('\n'));
+
+      // ── Step 1: Collapse tall inline tags to one line ──────────────────────
+      const MAX_INLINE_CONTENT = 80;
+      const collapsed = [];
+      let i = 0;
+      while (i < lines.length) {
+        const t0 = lines[i].trim();
+        const t1 = i + 1 < lines.length ? lines[i + 1].trim() : null;
+        const t2 = i + 2 < lines.length ? lines[i + 2].trim() : null;
+        if (t1 !== null && t2 !== null) {
+          const openTag  = getSoloOpenTag(t0);
+          const closeTag = getSoloCloseTag(t2);
+          if (
+            openTag && INLINE_COLLAPSIBLE.has(openTag) && closeTag === openTag &&
+            t1.length > 0 && t1.length <= MAX_INLINE_CONTENT && !/<[a-zA-Z]/.test(t1)
+          ) {
+            const originalIndent = (lines[i].match(/^(\s*)/) || ['', ''])[1];
+            collapsed.push(`${originalIndent}${t0}${t1}</${openTag}>`);
+            i += 3;
+            continue;
+          }
+        }
+        collapsed.push(lines[i]);
+        i++;
+      }
+      lines = collapsed;
+
+      // ── Step 2: Indentation pass ───────────────────────────────────────────
+      let indentLevel    = 0;   // Velocity / HTML structural level
+      let embeddedDelta  = 0;   // extra CSS / JS brace-based level inside <style>/<script>
       let inBlockComment = false;
+      let inStyleBlock   = false;
+      let inScriptBlock  = false;
       const out = [];
 
       function startsDirective(line, name) {
@@ -1291,70 +1467,86 @@
         if (!directiveMatch) return trimmedLine;
         const parenStart = trimmedLine.indexOf('(', directiveMatch[1].length);
         if (parenStart === -1) return trimmedLine;
-        let depth = 0;
-        let parenEnd = -1;
-        for (let i = parenStart; i < trimmedLine.length; i++) {
-          if (trimmedLine[i] === '(') depth++;
-          else if (trimmedLine[i] === ')') { depth--; if (depth === 0) { parenEnd = i; break; } }
+        let depth = 0, parenEnd = -1;
+        for (let j = parenStart; j < trimmedLine.length; j++) {
+          if (trimmedLine[j] === '(') depth++;
+          else if (trimmedLine[j] === ')') { depth--; if (depth === 0) { parenEnd = j; break; } }
         }
         if (parenEnd === -1) return trimmedLine;
         const directive = trimmedLine.substring(0, parenStart);
         let inner = trimmedLine.substring(parenStart + 1, parenEnd);
         const suffix = trimmedLine.substring(parenEnd + 1);
-        // Normalize spaces around = but not ==, !=, >=, <=
-        inner = inner.replace(/(?<![=!<>])\s*=\s*(?!=)/g, ' = ');
-        inner = inner.trim();
+        inner = inner.replace(/(?<![=!<>])\s*=\s*(?!=)/g, ' = ').trim();
         return `${directive}( ${inner} )${suffix}`;
       }
 
       for (const rawLine of lines) {
         const rightTrimmed = rawLine.replace(/\s+$/g, '');
-        const trimmed = rightTrimmed.trim();
+        const trimmed      = rightTrimmed.trim();
 
-        if (trimmed.length === 0) {
-          out.push('');
-          continue;
-        }
+        if (trimmed.length === 0) { out.push(''); continue; }
+
+        const tl              = trimmed.toLowerCase();
+        const isLineComment   = trimmed.startsWith('##');
+        const isDirectiveOnly = trimmed.startsWith('#') && !trimmed.startsWith('##');
 
         if (trimmed.includes('#*')) inBlockComment = true;
         const leaveBlockComment = trimmed.includes('*#');
-        const isLineComment = trimmed.startsWith('##');
-        const isDirectiveOnly = trimmed.startsWith('#') && !trimmed.startsWith('##');
 
-        let preDecrease = false;
-        if (isDirectiveOnly) {
-          preDecrease =
-            startsDirective(trimmed, 'end') ||
-            startsDirective(trimmed, 'else') ||
-            startsDirective(trimmed, 'elseif');
+        // Detect embedded block boundaries
+        const enterStyle  = /^<style(\s[^>]*)?>/.test(tl)  && !/<\/style\s*>/.test(tl);
+        const leaveStyle  = /^<\/style\s*>/.test(tl);
+        const enterScript = /^<script(\s[^>]*)?>/.test(tl) && !/src\s*=/.test(tl) && !/<\/script\s*>/.test(tl);
+        const leaveScript = /^<\/script\s*>/.test(tl);
+
+        // ── Embedded CSS mode ────────────────────────────────────────────────
+        if (inStyleBlock && !leaveStyle) {
+          const r = pushEmbedded(trimmed, indentLevel, embeddedDelta, countCssBraces(trimmed));
+          out.push(r.line);
+          embeddedDelta = r.embeddedDelta;
+          if (leaveBlockComment) inBlockComment = false;
+          continue;
         }
 
-        if (preDecrease) indentLevel = Math.max(0, indentLevel - 1);
+        // ── Embedded JS mode ─────────────────────────────────────────────────
+        if (inScriptBlock && !leaveScript) {
+          const r = pushEmbedded(trimmed, indentLevel, embeddedDelta, countJsBraces(trimmed));
+          out.push(r.line);
+          embeddedDelta = r.embeddedDelta;
+          if (leaveBlockComment) inBlockComment = false;
+          continue;
+        }
+
+        // ── Normal HTML / Velocity mode ──────────────────────────────────────
+        if (isDirectiveOnly && !inBlockComment) {
+          if (startsDirective(trimmed, 'end') || startsDirective(trimmed, 'else') || startsDirective(trimmed, 'elseif'))
+            indentLevel = Math.max(0, indentLevel - 1);
+        } else if (!inBlockComment) {
+          if (leaveStyle || leaveScript) {
+            inStyleBlock = false; inScriptBlock = false; embeddedDelta = 0;
+            indentLevel = Math.max(0, indentLevel - 1);
+          } else if (getBlockCloseTag(trimmed)) {
+            indentLevel = Math.max(0, indentLevel - 1);
+          }
+        }
+
         const currentIndent = indentUnit.repeat(Math.max(0, indentLevel));
+        const outputLine    = (isDirectiveOnly && !inBlockComment && !isLineComment)
+          ? normalizeDirectiveParens(trimmed) : trimmed;
 
-        const outputLine = (isDirectiveOnly && !inBlockComment && !isLineComment)
-          ? normalizeDirectiveParens(trimmed)
-          : trimmed;
+        out.push(currentIndent + outputLine);
 
-        if (inBlockComment || isLineComment) {
-          out.push(currentIndent + outputLine);
-        } else if (isDirectiveOnly) {
-          out.push(currentIndent + outputLine);
-        } else {
-          out.push(currentIndent + outputLine);
-        }
-
-        if (isDirectiveOnly) {
-          const increasesIndent =
-            startsDirective(trimmed, 'if') ||
-            startsDirective(trimmed, 'foreach') ||
-            startsDirective(trimmed, 'macro') ||
-            startsDirective(trimmed, 'define') ||
-            startsDirective(trimmed, 'try') ||
-            startsDirective(trimmed, 'else') ||
-            startsDirective(trimmed, 'elseif');
-
-          if (increasesIndent) indentLevel += 1;
+        if (isDirectiveOnly && !inBlockComment) {
+          if (
+            startsDirective(trimmed, 'if') || startsDirective(trimmed, 'foreach') ||
+            startsDirective(trimmed, 'macro') || startsDirective(trimmed, 'define') ||
+            startsDirective(trimmed, 'try') || startsDirective(trimmed, 'else') ||
+            startsDirective(trimmed, 'elseif')
+          ) indentLevel += 1;
+        } else if (!inBlockComment) {
+          if (enterStyle)  { indentLevel += 1; inStyleBlock  = true; }
+          else if (enterScript) { indentLevel += 1; inScriptBlock = true; }
+          else if (getBlockOpenTag(trimmed)) { indentLevel += 1; }
         }
 
         if (leaveBlockComment) inBlockComment = false;
