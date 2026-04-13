@@ -71,7 +71,6 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 | ------------ | --------------- |
 | Polarion ALM | 2512 or later   |
 | Java         | JDK 21 or later |
-| Maven        | 3.8 or later    |
 
 ### 1. Deploy to Polarion
 
