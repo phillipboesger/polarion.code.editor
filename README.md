@@ -9,6 +9,7 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 ## Table of Contents
 
 - [What Is This?](#what-is-this)
+- [Compatibility Policy](#compatibility-policy)
 - [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -40,6 +41,26 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 - This plugin is free to use in your Polarion environments.
 - Reuse, redistribution, or integration of the source code into other projects is currently not permitted.
+
+---
+
+<div style="page-break-before: always;"></div>
+
+## Compatibility Policy
+
+**Minimum supported versions: Polarion 2512 / Java 21**
+
+This plugin requires **Polarion 2512 or later** and **Java 21 or later**. Older versions of Polarion and Java are explicitly not supported, and there are no plans to backport compatibility.
+
+### Why not older versions?
+
+Technically, supporting older Polarion releases (e.g., those still running Java 17) would not require significant effort. However, this is a **deliberate design decision**:
+
+- This is a new plugin built on a freshly set up build pipeline. Starting with legacy constraints from day one adds unnecessary overhead without any meaningful benefit.
+- The strategy is **not** to always chase the absolute latest Polarion release, but to **anchor to the current Java LTS version** (Java 21) and maintain that baseline going forward.
+- Polarion 2512 may feel recent today — but within a few months it will be mainstream across most production deployments, and the version gap will naturally disappear.
+
+If you are still on an older Polarion version, the recommended path is to upgrade your Polarion installation rather than waiting for a backport.
 
 ---
 
