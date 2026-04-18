@@ -17,10 +17,9 @@ import org.apache.commons.io.IOUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.security.ISecurityService;
-
-import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
@@ -201,7 +200,7 @@ public class CodeEditorServlet extends HttpServlet {
 	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws IOException {
 		CodeEditorService editor = new CodeEditorService(projectId);
 		String mimeType = getImageMimeType(fileName);
-		if (mimeType != null) {
+		if(mimeType != null) {
 			byte[] bytes = editor.getFileBytes(fileName);
 			resp.setContentType(mimeType);
 			resp.setContentLength(bytes.length);
@@ -216,20 +215,19 @@ public class CodeEditorServlet extends HttpServlet {
 
 	/** Returns the MIME type for known image extensions, or {@code null} for non-image files. */
 	private static String getImageMimeType(String fileName) {
-		if (fileName == null) return null;
+		if(fileName == null) return null;
 		int dot = fileName.lastIndexOf('.');
-		if (dot < 0) return null;
-		switch (fileName.substring(dot + 1).toLowerCase()) {
-			case "png":  return "image/png";
-			case "jpg":
-			case "jpeg": return "image/jpeg";
-			case "gif":  return "image/gif";
-			case "svg":  return "image/svg+xml";
-			case "webp": return "image/webp";
-			case "bmp":  return "image/bmp";
-			case "ico":  return "image/x-icon";
-			default:     return null;
-		}
+		if(dot < 0) return null;
+		return switch (fileName.substring(dot + 1).toLowerCase()) {
+			case "png" -> "image/png";
+			case "jpg", "jpeg" -> "image/jpeg";
+			case "gif" -> "image/gif";
+			case "svg" -> "image/svg+xml";
+			case "webp" -> "image/webp";
+			case "bmp" -> "image/bmp";
+			case "ico" -> "image/x-icon";
+			default -> null;
+		};
 	}
 
 	private void handleUpdateFile(String projectId, String fileName, String content, HttpServletResponse resp)
