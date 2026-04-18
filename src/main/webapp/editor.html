@@ -273,6 +273,7 @@
 
     .editor-tabs {
       height: 28px;
+      box-sizing: content-box;
       background: #252526;
       border-bottom: 1px solid var(--border-color);
       display: flex;
@@ -280,6 +281,23 @@
       overflow-x: auto;
       overflow-y: hidden;
       white-space: nowrap;
+    }
+
+    .editor-tabs::-webkit-scrollbar {
+      height: 4px;
+    }
+
+    .editor-tabs::-webkit-scrollbar-track {
+      background: #252526;
+    }
+
+    .editor-tabs::-webkit-scrollbar-thumb {
+      background: #555555;
+      border-radius: 2px;
+    }
+
+    .editor-tabs::-webkit-scrollbar-thumb:hover {
+      background: #888888;
     }
 
     .editor-tab {
