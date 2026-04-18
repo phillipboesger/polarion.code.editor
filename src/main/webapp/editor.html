@@ -1951,10 +1951,6 @@
 
       openTabs.splice(idx, 1);
 
-      if (tab.isImage && tab.imageUrl) {
-        URL.revokeObjectURL(tab.imageUrl);
-      }
-
       if (tab.model) {
         tab.model.dispose();
       }
@@ -2018,50 +2014,28 @@
         abortTimeout = setTimeout(() => controller.abort(), 8000);
       }
 
-      // Image files: fetch as blob and show in image viewer (read-only)
+      // Image files: use the API URL directly as img.src to avoid blob: URLs
+      // which are blocked by Polarion's Content Security Policy.
       if (isImageFile(filePath)) {
-        return fetch(buildFileApiUrl(filePath), fetchOptions)
-          .then(res => {
-            if (!res.ok) return throwHttpError(res);
-            return res.blob();
-          })
-          .then(blob => {
-            const imageUrl = URL.createObjectURL(blob);
-            const newTab = {
-              id: `tab-${++tabIdCounter}`,
-              path: filePath,
-              model: null,
-              originalContent: '',
-              isPreview: !persistent,
-              isImage: true,
-              imageUrl
-            };
+        if (abortTimeout) clearTimeout(abortTimeout);
+        const imageUrl = buildFileApiUrl(filePath);
+        const newTab = {
+          id: `tab-${++tabIdCounter}`,
+          path: filePath,
+          model: null,
+          originalContent: '',
+          isPreview: !persistent,
+          isImage: true,
+          imageUrl
+        };
 
-            openTabs.push(newTab);
-            if (!persistent) previewTabId = newTab.id;
+        openTabs.push(newTab);
+        if (!persistent) previewTabId = newTab.id;
 
-            activateTab(newTab.id);
-            renderFileList();
-            renderTabs();
-            return newTab.id;
-          })
-          .catch(err => {
-            if (silentOnError) {
-              console.warn('Could not restore last opened file:', filePath, err);
-              saveLastOpenedFile('');
-              return null;
-            }
-            const permissionMessage = getPermissionGuidanceMessage(err);
-            if (permissionMessage) {
-              showPermissionMessageInEditor(err);
-            } else {
-              alert('Error loading file content: ' + err);
-            }
-            return null;
-          })
-          .finally(() => {
-            if (abortTimeout) clearTimeout(abortTimeout);
-          });
+        activateTab(newTab.id);
+        renderFileList();
+        renderTabs();
+        return Promise.resolve(newTab.id);
       }
 
       return fetch(buildFileApiUrl(filePath), fetchOptions)
