@@ -187,10 +187,20 @@
       border-bottom: 1px solid var(--border-color);
     }
 
-    .toolbar-left, .toolbar-right {
+    .toolbar-left {
       display: flex;
       align-items: center;
       gap: 5px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
     }
 
     .toolbar-title {
@@ -198,6 +208,9 @@
       color: var(--text-light);
       font-weight: 500;
       margin-left: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .sidebar-title {
