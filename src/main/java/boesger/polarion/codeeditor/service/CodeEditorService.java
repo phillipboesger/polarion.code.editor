@@ -205,6 +205,23 @@ public class CodeEditorService {
 		return writer.toString();
 	}
 
+	/**
+	 * Returns the raw byte content of the specified file.
+	 * Use this instead of {@link #getFile(String)} for binary files such as images,
+	 * where converting through a {@link java.io.StringWriter} would corrupt the data.
+	 *
+	 * @param  fileName relative path of the file within the repository
+	 * @return          raw file bytes
+	 * @throws IllegalArgumentException if the path is invalid
+	 * @throws IOException              if the file cannot be read
+	 */
+	public byte[] getFileBytes(String fileName) throws IllegalArgumentException, IOException {
+		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
+		try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
+			return IOUtils.toByteArray(fileContent);
+		}
+	}
+
 	private List<RepoFile> getFiles(String extension) {
 		List<RepoFile> files = new ArrayList<>();
 
