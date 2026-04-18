@@ -2,7 +2,17 @@
 name: Daily Documentation Updater
 description: Automatically reviews and updates documentation to ensure accuracy and completeness
 on:
+<<<<<<< current (local changes)
   schedule: weekly
+||||||| base (original)
+  schedule:
+    # Every day at 6am UTC
+    - cron: daily
+=======
+  schedule:
+    # Every day around 2am PST (10:00 UTC)
+    - cron: daily around 10:00
+>>>>>>> new (upstream)
   workflow_dispatch:
 
 permissions:
@@ -29,9 +39,11 @@ safe-outputs:
     auto-merge: true
 
 tools:
+  mount-as-clis: true
   cache-memory: true
   github:
     toolsets: [default]
+    min-integrity: approved
   edit:
   bash:
     - "find docs -name '*.md' -o -name '*.mdx'"
@@ -39,12 +51,18 @@ tools:
     - "find docs -name '*.md' -exec cat {} +"
     - "grep -r '*' docs"
     - "git"
+    - "find pkg/parser/schemas -name '*.json'"
+    - "cat pkg/parser/schemas/*.json"
 
 timeout-minutes: 45
 
 imports:
-  - shared/mood.md
-source: github/gh-aw/.github/workflows/daily-doc-updater.md@852cb06ad52958b402ed982b69957ffc57ca0619
+  - shared/github-guard-policy.md
+  - shared/observability-otlp.md
+
+features:
+  mcp-cli: true
+source: github/gh-aw/.github/workflows/daily-doc-updater.md@395fb25ee80fc80976cb83e107b090fd4af675d5
 ---
 
 {{#runtime-import? .github/shared-instructions.md}}
@@ -69,6 +87,49 @@ Use the GitHub tools to:
 - Review commits from the last 24 hours using `list_commits`
 - Get detailed commit information using `get_commit` for significant changes
 
+### 1b. Check Open Documentation Issues
+
+Search for open issues labeled `documentation` that may represent unaddressed gaps:
+
+```
+repo:${{ github.repository }} is:issue is:open label:documentation
+```
+
+For each open issue:
+1. Read the issue body to understand the described gap.
+2. Check the referenced documentation file to verify the gap still exists.
+   - **If the issue references an existing file**: confirm the content is missing or incorrect.
+   - **If the issue references a file path that does not yet exist** (e.g., body says "Create `docs/guides/foo.md`"): treat this as a **confirmed new-file gap** and proceed to Step 5 to create the file.
+3. If confirmed, include a fix in this run's PR and reference the issue with `Closes #NNN`.
+4. If the gap is already fixed (file exists and contains the described content), note it and skip.
+5. If you choose not to address an open documentation issue in this run (e.g., it requires structural navigation changes, is out of scope, or cannot be confirmed), record it in the **Skipped Issues** section of the PR description (see Step 6).
+
+### 1c. Scan Recently Closed Documentation Issues
+
+Search for documentation issues closed in the last 7 days (replace YYYY-MM-DD with the date 7 days ago):
+
+```
+repo:${{ github.repository }} is:issue is:closed label:documentation closed:>=YYYY-MM-DD
+```
+
+For each closed issue:
+- **closed as completed**: Check whether a `[docs]` PR references it. If no such PR exists, also search for any merged PR that closes or fixes the issue by number (e.g. `closes #NNN`, `fixes #NNN`, `resolves #NNN` in the PR body). If such a PR is found and its documentation change is complete, skip the issue. Otherwise, treat it as an unaddressed gap and follow the normal Step 2 flow.
+- **closed as not_planned**: Do not create documentation based solely on this issue. Instead, cross-reference the issue's subject matter against commits from the same 7-day window (Step 2). If a related code change is found, treat it as a new documentation gap (independent of the original issue decision) and follow the normal Step 2 flow for that code change.
+
+### 1d. Scan Cookie-Labeled Automation Issues
+
+Search for open and recently closed issues from automated monitoring workflows (CLI Consistency Checker, Multi-Device Docs Tester). These carry the `cookie` label and may surface real documentation gaps that Step 1b and 1c miss due to the integrity filter:
+
+```
+repo:${{ github.repository }} is:issue label:documentation label:cookie
+```
+
+For each issue found:
+- Read the issue body to understand the described documentation gap.
+- Check whether the gap still exists in the relevant documentation file.
+- If confirmed, include a fix in this run's PR and reference the issue with `Closes #NNN`.
+- If the issue is already closed and the gap is already fixed, note it and skip.
+
 ### 2. Analyze Changes
 
 For each merged PR and commit, analyze:
@@ -77,6 +138,7 @@ For each merged PR and commit, analyze:
 - **Features Removed**: Deprecated or removed functionality
 - **Features Modified**: Changed behavior, updated APIs, or modified interfaces
 - **Breaking Changes**: Any changes that affect existing users
+- **Removed Features in Docs**: Search docs for references to properties, flags, or options that no longer exist in the current schema. Check `pkg/parser/schemas/` or run `gh aw compile` on representative workflows to confirm current valid properties.
 
 Create a summary of changes that should be documented.
 
@@ -106,12 +168,17 @@ Pay special attention to:
 
 Review the documentation in the `docs/src/content/docs/` directory:
 
+**First, use `search` to search for existing documentation** related to each identified change — this is faster and more accurate than browsing files manually:
+- For each new feature or change, run a targeted query: e.g., `search("engine configuration options")` or `search("permissions frontmatter field")`
+- Read the returned file paths to check if documentation already exists
+- Only resort to `find` for exhaustive listing when you need a complete inventory
+
 - Check if new features are already documented
 - Identify which documentation files need updates
 - Determine the appropriate documentation type (tutorial, how-to, reference, explanation)
 - Find the best location for new content
 
-Use bash commands to explore documentation structure:
+Use bash commands to explore documentation structure when needed:
 
 ```bash
 find docs/src/content/docs -name '*.md' -o -name '*.mdx'
@@ -163,7 +230,7 @@ If you made any documentation changes:
 
 **PR Description Template**:
 ```markdown
-## Documentation Updates - [Date]
+### Documentation Updates - [Date]
 
 This PR updates the documentation based on features merged in the last 24 hours.
 
@@ -171,6 +238,9 @@ This PR updates the documentation based on features merged in the last 24 hours.
 
 - Feature 1 (from #PR_NUMBER)
 - Feature 2 (from #PR_NUMBER)
+
+<details>
+<summary>📝 Detailed Changes & References</summary>
 
 ### Changes Made
 
@@ -181,6 +251,15 @@ This PR updates the documentation based on features merged in the last 24 hours.
 
 - #PR_NUMBER - Brief description
 - #PR_NUMBER - Brief description
+
+</details>
+
+### Skipped Issues
+
+<!-- List every open documentation issue that was NOT addressed in this run -->
+<!-- Format: - #NNN — [title]: [reason for skip] -->
+<!-- Example: - #123 — docs: add guide for foo: requires structural nav changes beyond docs scope -->
+<!-- If all open issues were addressed or confirmed already fixed, write "None." -->
 
 ### Notes
 
@@ -203,6 +282,8 @@ This PR updates the documentation based on features merged in the last 24 hours.
 - **Use Proper Format**: Use the correct Diátaxis category and Astro Starlight syntax
 - **Link References**: Include links to relevant PRs and issues where appropriate
 - **Test Understanding**: If unsure about a feature, review the code changes in detail
+- **Issue-Driven**: Proactively check open `documentation` issues — do not wait for them to be reported manually.
+- **Validate Examples**: YAML frontmatter examples in docs must be structurally valid. When in doubt, test with `gh aw compile`.
 
 ## Important Notes
 
@@ -214,3 +295,5 @@ This PR updates the documentation based on features merged in the last 24 hours.
 - Focus on user-facing features and changes that affect the developer experience
 
 Good luck! Your documentation updates help keep our project accessible and up-to-date.
+
+{{#import shared/noop-reminder.md}}

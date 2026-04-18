@@ -1,37 +1,46 @@
 ---
-name: Documentation Noob Tester
-description: Tests documentation as a new user would, identifying confusing or broken steps in getting started guides
 on:
   schedule: weekly
-  workflow_dispatch:
+  workflow_dispatch: null
 permissions:
   contents: read
   issues: read
   pull-requests: read
-engine: copilot
-timeout-minutes: 30
-tools:
-  playwright:
-  edit:
-  bash:
-    - "*"
-safe-outputs:
-  upload-asset:
-  create-discussion:
-    category: "audits"
-    close-older-discussions: true
-
 network:
   allowed:
-    - defaults
-    - node
-
+  - defaults
+  - node
 imports:
-  - shared/mood.md
-  - shared/docs-server-lifecycle.md
-source: github/gh-aw/.github/workflows/docs-noob-tester.md@852cb06ad52958b402ed982b69957ffc57ca0619
+- shared/docs-server-lifecycle.md
+- github/gh-aw/.github/workflows/shared/reporting.md@395fb25ee80fc80976cb83e107b090fd4af675d5
+- github/gh-aw/.github/workflows/shared/keep-it-short.md@395fb25ee80fc80976cb83e107b090fd4af675d5
+safe-outputs:
+  upload-asset:
+    allowed-exts:
+    - .png
+    - .jpg
+    - .jpeg
+    - .svg
+    max: 10
+description: Tests documentation as a new user would, identifying confusing or broken steps in getting started guides
+engine: copilot
+features:
+  copilot-requests: true
+  mcp-cli: true
+name: Documentation Noob Tester
+runtimes:
+  node:
+    version: "22"
+source: github/gh-aw/.github/workflows/docs-noob-tester.md@395fb25ee80fc80976cb83e107b090fd4af675d5
+timeout-minutes: 45
+tools:
+  bash:
+  - "*"
+  edit: null
+  mount-as-clis: true
+  playwright: null
+  timeout: 120
 ---
-
 # Documentation Noob Testing
 
 You are a brand new user trying to get started with GitHub Agentic Workflows for the first time. Your task is to navigate through the documentation site, follow the getting started guide, and identify any confusing, broken, or unclear steps.
@@ -48,28 +57,73 @@ Act as a complete beginner who has never used GitHub Agentic Workflows before. B
 
 ## Step 1: Build and Serve Documentation Site
 
-Navigate to the docs folder and build the documentation site using the steps from docs.yml:
+Navigate to the docs folder and start the documentation site:
 
 ```bash
 cd ${{ github.workspace }}/docs
 npm install
-npm run build
 ```
 
 Follow the shared **Documentation Server Lifecycle Management** instructions:
 1. Start the preview server (section "Starting the Documentation Preview Server")
 2. Wait for server readiness (section "Waiting for Server Readiness")
 
+**Get the bridge IP for Playwright access** (run this after the server is ready):
+
+```bash
+SERVER_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+if [ -z "$SERVER_IP" ]; then SERVER_IP=$(hostname -I | awk '{print $1}'); fi
+echo "Playwright server URL: http://${SERVER_IP}:4321/gh-aw/"
+```
+
+Use `http://${SERVER_IP}:4321/gh-aw/` (NOT `localhost:4321`) for all Playwright navigation below.
+
 ## Step 2: Navigate Documentation as a Noob
 
-Using Playwright, navigate through the documentation site as if you're a complete beginner:
+**IMPORTANT: Using Playwright in gh-aw Workflows**
 
-1. **Visit the home page** at http://localhost:4321/gh-aw/
+Playwright is provided through an MCP server interface. Use the bridge IP obtained in Step 1 for all navigation:
+
+- ✅ **Correct**: `browser_run_code` with `page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })`
+- ✅ **Correct**: `browser_navigate` to `http://${SERVER_IP}:4321/gh-aw/` (use the bridge IP, NOT localhost)
+- ❌ **Incorrect**: Using `http://localhost:4321/...` — Playwright runs with `--network host` so its localhost is the Docker host, not the agent container
+
+**⚠️ Playwright Connectivity — If Playwright times out or fails:**
+If `browser_navigate` or `browser_run_code` returns `net::ERR_CONNECTION_TIMED_OUT` or a timeout error, **do not attempt to debug the network or install alternative browsers** (chromium, puppeteer, etc.). This is a known network isolation constraint. Instead:
+1. Skip the Playwright navigation step immediately
+2. Use the following command to fetch and analyze page content via curl:
+   ```bash
+   curl -s http://localhost:4321/gh-aw/ | python3 -c "
+   import sys, re
+   html = sys.stdin.read()
+   text = re.sub(r'<[^>]+>', '', html)
+   print(text[:5000])
+   "
+   ```
+3. Note in the report that visual screenshots were unavailable
+
+**⚠️ CRITICAL: Navigation Timeout Prevention**
+
+The Astro development server loads many JavaScript modules per page. Always use `waitUntil: 'domcontentloaded'`:
+
+```javascript
+// ALWAYS use domcontentloaded - replace SERVER_IP with the actual IP from Step 1
+mcp__playwright__browser_run_code({
+  code: `async (page) => {
+    await page.goto('http://SERVER_IP:4321/gh-aw/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    return { url: page.url(), title: await page.title() };
+  }`
+})
+```
+
+Using Playwright, visit exactly these 3 pages and stop:
+
+1. **Visit the home page** at `http://${SERVER_IP}:4321/gh-aw/`
    - Take a screenshot
    - Note: Is it immediately clear what this tool does?
    - Note: Can you quickly find the "Get Started" or "Quick Start" link?
 
-2. **Follow the Quick Start Guide** at http://localhost:4321/gh-aw/setup/quick-start/
+2. **Follow the Quick Start Guide** at `http://${SERVER_IP}:4321/gh-aw/setup/quick-start/`
    - Take screenshots of each major section
    - Try to understand each step from a beginner's perspective
    - Questions to consider:
@@ -79,20 +133,12 @@ Using Playwright, navigate through the documentation site as if you're a complet
      - Do code examples work as shown?
      - Are error messages explained?
 
-3. **Check the CLI Commands page** at http://localhost:4321/gh-aw/setup/cli/
+3. **Check the CLI Commands page** at `http://${SERVER_IP}:4321/gh-aw/setup/cli/`
    - Take a screenshot
    - Note: Are the most important commands highlighted?
    - Note: Are examples provided for common use cases?
 
-4. **Explore Creating Workflows guide** at http://localhost:4321/gh-aw/setup/creating-workflows/
-   - Take screenshots of confusing sections
-   - Note: Is the workflow format explained clearly?
-   - Note: Are there enough examples?
-
-5. **Browse Examples section**
-   - Visit at least 2-3 example pages
-   - Take screenshots if explanations are unclear
-   - Note: Can you understand how to adapt examples to your own use case?
+After visiting all 3 pages, immediately proceed to the report.
 
 ## Step 3: Identify Pain Points
 
@@ -124,8 +170,10 @@ As you navigate, specifically look for:
 
 For each confusing or broken area:
 - Take a screenshot showing the issue
-- Name the screenshot descriptively (e.g., "confusing-quick-start-step-3.png")
+- Save it to a descriptive filename (e.g., "confusing-quick-start-step-3.png") in `/tmp/gh-aw/screenshots/`
 - Note the page URL and specific section
+- Upload the screenshot by calling the `upload_asset` safe-output tool with the absolute file path `path: "/tmp/gh-aw/screenshots/<filename>.png"`.
+  Record the returned asset URL.
 
 ## Step 5: Create Discussion Report
 
@@ -151,7 +199,10 @@ Create a GitHub discussion titled "📚 Documentation Noob Test Report - [Date]"
 - Longer-term documentation improvements
 
 ### Screenshots
-[Embed all relevant screenshots showing issues or confusing areas]
+For each uploaded screenshot, include its asset URL. Format:
+```
+📎 **[filename.png]** — asset URL: https://github.com/.../blob/.../filename.png?raw=true
+```
 
 Label the discussion with: `documentation`, `user-experience`, `automated-testing`
 
@@ -171,7 +222,9 @@ Follow the shared **Documentation Server Lifecycle Management** instructions for
 ## Success Criteria
 
 You've successfully completed this task if you:
-- Navigated at least 5 key documentation pages
+- Navigated exactly 3 key documentation pages
 - Identified specific pain points with examples
 - Provided actionable recommendations
 - Created a discussion with clear findings and screenshots
+
+{{#import github/gh-aw/.github/workflows/shared/noop-reminder.md@395fb25ee80fc80976cb83e107b090fd4af675d5}}
