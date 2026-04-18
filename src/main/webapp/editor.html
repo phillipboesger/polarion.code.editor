@@ -124,6 +124,7 @@
       font-size: 13px;
       color: var(--text-main);
       transition: background 0.1s;
+      user-select: none;
     }
 
     .file-item:hover {
@@ -779,6 +780,9 @@
 
       <div id="editor-wrapper">
         <div id="editor-container"></div>
+        <div id="image-viewer" class="hidden" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:var(--bg-dark); overflow:auto; position:absolute; top:0; left:0; right:0; bottom:0;">
+          <img id="image-viewer-img" src="" alt="" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">
+        </div>
         <div id="emptyState" class="empty-state-overlay">
           <div class="empty-state-content">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
@@ -1202,6 +1206,10 @@
 
     /** Maps a file extension to a Monaco editor language identifier. */
     function getMonacoLanguage(fileName) {
+      // Special case: Polarion page.xml files use Velocity templating
+      const baseName = (fileName.split('/').pop() || '').toLowerCase();
+      if (baseName === 'page.xml') return 'velocity';
+
       const ext = (fileName.split('.').pop() || '').toLowerCase();
       const langMap = {
         'json':       'json',
@@ -1268,7 +1276,14 @@
     function isVelocityLikeFile(filePath) {
       if (!filePath) return false;
       const lowerPath = filePath.toLowerCase();
-      return lowerPath.endsWith('.vm') || lowerPath.endsWith('.vtl') || lowerPath.endsWith('.fhtml');
+      const baseName = lowerPath.split('/').pop() || '';
+      return baseName === 'page.xml' || lowerPath.endsWith('.vm') || lowerPath.endsWith('.vtl') || lowerPath.endsWith('.fhtml');
+    }
+
+    function isImageFile(filePath) {
+      if (!filePath) return false;
+      const ext = (filePath.split('.').pop() || '').toLowerCase();
+      return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
     }
 
     function formatVelocityLike(content) {
@@ -1631,6 +1646,14 @@
         'c':          '🔧',
         'cpp':        '🔧',
         'cs':         '🔷',
+        'png':        '🖼',
+        'jpg':        '🖼',
+        'jpeg':       '🖼',
+        'gif':        '🖼',
+        'svg':        '🖼',
+        'webp':       '🖼',
+        'bmp':        '🖼',
+        'ico':        '🖼',
       };
       return iconMap[ext] || '📄';
     }
@@ -1745,6 +1768,12 @@
     function updateToolbarState() {
       const saveBtn = document.getElementById('saveBtn');
       const tab = getActiveTab();
+      if (tab && tab.isImage) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Save';
+        renderTabs();
+        return;
+      }
       if (tab && isTabDirty(tab)) {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save *';
@@ -1761,6 +1790,11 @@
       if (visible) {
         restoreDefaultEmptyStateContent();
         emptyState.classList.remove('hidden');
+        // Restore editor container visibility in case an image tab was active
+        const editorContainer = document.getElementById('editor-container');
+        const imageViewer = document.getElementById('image-viewer');
+        if (editorContainer) editorContainer.style.display = '';
+        if (imageViewer) imageViewer.classList.add('hidden');
         if (editor) {
           editor.updateOptions({ readOnly: true });
         }
@@ -1768,10 +1802,10 @@
         document.getElementById('saveBtn').disabled = true;
       } else {
         emptyState.classList.add('hidden');
-        if (editor) {
+        const tab = getActiveTab();
+        if (editor && tab && !tab.isImage) {
           editor.updateOptions({ readOnly: false });
         }
-        const tab = getActiveTab();
         document.getElementById('currentFileLabel').textContent = tab ? tab.path : 'No File Selected';
         updateToolbarState();
       }
@@ -1834,8 +1868,23 @@
       saveLastOpenedFile(currentFile);
       saveOpenTabsSession();
 
-      if (editor) {
-        editor.setModel(tab.model);
+      const editorContainer = document.getElementById('editor-container');
+      const imageViewer = document.getElementById('image-viewer');
+      const imageEl = document.getElementById('image-viewer-img');
+
+      if (tab.isImage) {
+        if (editorContainer) editorContainer.style.display = 'none';
+        if (imageViewer) imageViewer.classList.remove('hidden');
+        if (imageEl) {
+          imageEl.src = tab.imageUrl || '';
+          imageEl.alt = getDisplayName(tab.path);
+        }
+      } else {
+        if (editorContainer) editorContainer.style.display = '';
+        if (imageViewer) imageViewer.classList.add('hidden');
+        if (editor) {
+          editor.setModel(tab.model);
+        }
       }
 
       setActiveFileInTree(tab.path);
@@ -1861,6 +1910,10 @@
         : activeTabId;
 
       openTabs.splice(idx, 1);
+
+      if (tab.isImage && tab.imageUrl) {
+        URL.revokeObjectURL(tab.imageUrl);
+      }
 
       if (tab.model) {
         tab.model.dispose();
@@ -1923,6 +1976,52 @@
         const controller = new AbortController();
         fetchOptions.signal = controller.signal;
         abortTimeout = setTimeout(() => controller.abort(), 8000);
+      }
+
+      // Image files: fetch as blob and show in image viewer (read-only)
+      if (isImageFile(filePath)) {
+        return fetch(buildFileApiUrl(filePath), fetchOptions)
+          .then(res => {
+            if (!res.ok) return throwHttpError(res);
+            return res.blob();
+          })
+          .then(blob => {
+            const imageUrl = URL.createObjectURL(blob);
+            const newTab = {
+              id: `tab-${++tabIdCounter}`,
+              path: filePath,
+              model: null,
+              originalContent: '',
+              isPreview: !persistent,
+              isImage: true,
+              imageUrl
+            };
+
+            openTabs.push(newTab);
+            if (!persistent) previewTabId = newTab.id;
+
+            activateTab(newTab.id);
+            renderFileList();
+            renderTabs();
+            return newTab.id;
+          })
+          .catch(err => {
+            if (silentOnError) {
+              console.warn('Could not restore last opened file:', filePath, err);
+              saveLastOpenedFile('');
+              return null;
+            }
+            const permissionMessage = getPermissionGuidanceMessage(err);
+            if (permissionMessage) {
+              showPermissionMessageInEditor(err);
+            } else {
+              alert('Error loading file content: ' + err);
+            }
+            return null;
+          })
+          .finally(() => {
+            if (abortTimeout) clearTimeout(abortTimeout);
+          });
       }
 
       return fetch(buildFileApiUrl(filePath), fetchOptions)
@@ -2450,7 +2549,7 @@
 
     async function saveCurrentFile() {
       const activeTab = getActiveTab();
-      if (!activeTab) return;
+      if (!activeTab || activeTab.isImage) return;
 
       const btn = document.getElementById('saveBtn');
       btn.textContent = 'Saving...';
