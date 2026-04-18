@@ -607,6 +607,29 @@
         height: 14px; /* Fixed height to prevent jumpiness, or auto */
     }
 
+    /* Image Viewer */
+    #image-viewer {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-dark);
+      overflow: auto;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    #image-viewer-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
     /* Global bootstrap loading overlay (prevents initial layout jumping) */
     #app-container.bootstrap-loading {
       filter: blur(2px);
@@ -780,8 +803,8 @@
 
       <div id="editor-wrapper">
         <div id="editor-container"></div>
-        <div id="image-viewer" class="hidden" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:var(--bg-dark); overflow:auto; position:absolute; top:0; left:0; right:0; bottom:0;">
-          <img id="image-viewer-img" src="" alt="" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">
+        <div id="image-viewer" class="hidden">
+          <img id="image-viewer-img" src="" alt="">
         </div>
         <div id="emptyState" class="empty-state-overlay">
           <div class="empty-state-content">
@@ -1282,7 +1305,10 @@
 
     function isImageFile(filePath) {
       if (!filePath) return false;
-      const ext = (filePath.split('.').pop() || '').toLowerCase();
+      const baseName = (filePath.split('/').pop() || '').toLowerCase();
+      const dotIdx = baseName.lastIndexOf('.');
+      if (dotIdx === -1) return false;
+      const ext = baseName.substring(dotIdx + 1);
       return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
     }
 
@@ -1771,6 +1797,7 @@
       if (tab && tab.isImage) {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Save';
+        document.getElementById('currentFileLabel').textContent = tab.path + ' (View only)';
         renderTabs();
         return;
       }
