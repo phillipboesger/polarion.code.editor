@@ -35,10 +35,8 @@ on:
         options: [patch, minor, major]
 
 jobs:
-  release:
-    name: Create Release
-    # PR path: only when the PR was actually merged AND carries a release label.
-    # Manual path: always run.
+  prepare-release:
+    name: Prepare Release Metadata
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
@@ -51,20 +49,17 @@ jobs:
       )
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: read
+    outputs:
+      bump_type: ${{ steps.bump.outputs.type }}
+      new_version: ${{ steps.version.outputs.new }}
+      new_tag: ${{ steps.version.outputs.tag }}
 
     steps:
-      # ── 1. Checkout with full history so we can compare tags ──────────────
-      - name: Checkout (full history)
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # RELEASE_TOKEN (PAT) is needed when main is branch-protected;
-          # falls back to the built-in GITHUB_TOKEN otherwise.
-          token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # ── 2. Java + Maven cache ─────────────────────────────────────────────
       - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
@@ -75,7 +70,6 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      # ── 3. Determine bump type ────────────────────────────────────────────
       - name: Determine version bump type
         id: bump
         run: |
@@ -92,7 +86,6 @@ jobs:
             fi
           fi
 
-      # ── 4. Compute the next semantic version ─────────────────────────────
       - name: Compute new version
         id: version
         run: |
@@ -105,20 +98,143 @@ jobs:
             minor) NEW="${MAJOR}.$((MINOR + 1)).0" ;;
             *)     NEW="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
           esac
-          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
-          echo "new=$NEW"         >> "$GITHUB_OUTPUT"
-          echo "tag=v${NEW}"      >> "$GITHUB_OUTPUT"
+          echo "new=$NEW"    >> "$GITHUB_OUTPUT"
+          echo "tag=v${NEW}" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # ── 5. Write new version into pom.xml ────────────────────────────────
+  discover-test-shards:
+    name: Discover Test Shards
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build shard matrix
+        id: shards
+        run: |
+          set -euo pipefail
+
+          mapfile -t TEST_FILES < <(find src/test/java -name '*Test.java' | sort)
+          if [ "${#TEST_FILES[@]}" -eq 0 ]; then
+            echo "No test files found under src/test/java" >&2
+            exit 1
+          fi
+
+          SHARD_COUNT=4
+          declare -a SHARD_TESTS
+
+          for i in "${!TEST_FILES[@]}"; do
+            shard_index=$((i % SHARD_COUNT))
+            fqcn="${TEST_FILES[$i]#src/test/java/}"
+            fqcn="${fqcn%.java}"
+            fqcn="${fqcn//\//.}"
+            if [ -n "${SHARD_TESTS[$shard_index]:-}" ]; then
+              SHARD_TESTS[$shard_index]="${SHARD_TESTS[$shard_index]},${fqcn}"
+            else
+              SHARD_TESTS[$shard_index]="${fqcn}"
+            fi
+          done
+
+          matrix='[]'
+          for shard_index in "${!SHARD_TESTS[@]}"; do
+            shard_num=$((shard_index + 1))
+            tests="${SHARD_TESTS[$shard_index]}"
+            matrix=$(jq \
+              --arg shard "$shard_num" \
+              --arg tests "$tests" \
+              '. + [{"shard": $shard, "tests": $tests}]' <<< "$matrix")
+          done
+
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+  test-shards:
+    name: Release Tests (Shard ${{ matrix.shard }})
+    needs: [prepare-release, discover-test-shards]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.discover-test-shards.outputs.matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
+      - name: Run tests in shard
+        run: mvn --batch-mode -Dtest="${{ matrix.tests }}" test
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Publish shard test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: "Release Tests (Shard ${{ matrix.shard }})"
+          path: target/surefire-reports/*.xml
+          reporter: java-junit
+          fail-on-error: true
+
+      - name: Upload shard report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-shard-${{ matrix.shard }}
+          path: target/surefire-reports/
+          if-no-files-found: warn
+
+  build-and-release:
+    name: Build And Publish Release
+    needs: [prepare-release, test-shards]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
       - name: Update version in pom.xml
         run: |
-          NEW="${{ steps.version.outputs.new }}"
-          # Update the Maven project <version> (removes -SNAPSHOT, sets release)
+          NEW="${{ needs.prepare-release.outputs.new_version }}"
           mvn --batch-mode versions:set -DnewVersion="${NEW}" -DgenerateBackupPoms=false
-          # Keep the OSGi Bundle-Version (manifest.version property) in sync
           sed -i \
             "s|<manifest.version>.*</manifest.version>|<manifest.version>${NEW}</manifest.version>|" \
             pom.xml
@@ -126,18 +242,16 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # ── 6. Build & test (validates the new version compiles correctly) ────
-      - name: Build & run tests
-        run: mvn --batch-mode verify
+      - name: Build release artifact (tests already passed)
+        run: mvn --batch-mode -DskipTests package
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # ── 7. Generate a human-readable, categorised changelog ──────────────
       - name: Generate changelog
         id: changelog
         run: |
-          NEW_TAG="${{ steps.version.outputs.tag }}"
+          NEW_TAG="${{ needs.prepare-release.outputs.new_tag }}"
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           RANGE="${LAST_TAG:+${LAST_TAG}..}HEAD"
 
@@ -156,10 +270,10 @@ jobs:
             esac
           done < <(git log ${RANGE} --no-merges --pretty=format:"%H%x09%s")
 
-          BODY="## 📦 What's new in ${NEW_TAG}\n\n"
-          [ -n "$FEATURES" ] && BODY="${BODY}### ✨ New Features\n${FEATURES}\n\n"
-          [ -n "$FIXES" ]    && BODY="${BODY}### 🐛 Bug Fixes\n${FIXES}\n\n"
-          [ -n "$OTHERS" ]   && BODY="${BODY}### 🔧 Other Changes\n${OTHERS}\n\n"
+          BODY="## What's new in ${NEW_TAG}\n\n"
+          [ -n "$FEATURES" ] && BODY="${BODY}### New Features\n${FEATURES}\n\n"
+          [ -n "$FIXES" ]    && BODY="${BODY}### Bug Fixes\n${FIXES}\n\n"
+          [ -n "$OTHERS" ]   && BODY="${BODY}### Other Changes\n${OTHERS}\n\n"
 
           if [ -n "$LAST_TAG" ]; then
             CMP="https://github.com/${{ github.repository }}/compare/${LAST_TAG}...${NEW_TAG}"
@@ -174,36 +288,33 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # ── 8. Commit the version bump and push the new tag ──────────────────
-      - name: Commit version bump & push tag
+      - name: Commit version bump and push tag
         run: |
+          TAG="${{ needs.prepare-release.outputs.new_tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pom.xml
-          git commit -m "chore: release ${{ steps.version.outputs.tag }} [skip ci]"
-          git tag "${{ steps.version.outputs.tag }}"
+          git commit -m "chore: release ${TAG} [skip ci]"
+          git tag "${TAG}"
           git push origin HEAD:main
-          git push origin "${{ steps.version.outputs.tag }}"
+          git push origin "${TAG}"
 
-      # ── 9. Publish the GitHub Release with the JAR as an attachment ───────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "Release ${{ steps.version.outputs.tag }}"
+          tag_name: ${{ needs.prepare-release.outputs.new_tag }}
+          name: "Release ${{ needs.prepare-release.outputs.new_tag }}"
           body: ${{ steps.changelog.outputs.body }}
           files: target/*.jar
           draft: false
           prerelease: false
 
-      # ── 10. Mirror the same release to the download repository ───────────
-      - name: Create Release on download repository
+      - name: Create release on download repository
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ steps.changelog.outputs.body }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          # Create tag + release on the download repo and attach the same JAR
+          TAG="${{ needs.prepare-release.outputs.new_tag }}"
           gh release create "${TAG}" \
             --repo phillipboesger/polarion.code.editor-download \
             --title "Release ${TAG}" \

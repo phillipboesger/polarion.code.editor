@@ -19,7 +19,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.core.PlatformContext;
-import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
@@ -43,27 +42,12 @@ public class CodeEditorServlet extends HttpServlet {
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
 
 	private ISecurityService securityService;
-	private IPermission readPermission;
-	private IPermission writePermission;
 
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
-		readPermission = constructPermissionSafely("boesger.codeeditor.read");
-		writePermission = constructPermissionSafely("boesger.codeeditor.write");
 		log.info("CodeEditorServlet initialized.");
-	}
-
-	private IPermission constructPermissionSafely(String permissionId) {
-		try {
-			return securityService.constructPermission(permissionId);
-		}
-		catch(IllegalArgumentException e) {
-			log.warn("Unknown permission id: " + permissionId + ". Falling back to admin-role checks only.");
-			log.warn(e.toString());
-			return null;
-		}
 	}
 
 	@Override
