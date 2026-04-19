@@ -11,8 +11,17 @@ export async function openEditor(page: Page, projectId?: string): Promise<void> 
   const url = projectId ? `${EDITOR_URL}?projectId=${encodeURIComponent(projectId)}` : EDITOR_URL;
   await page.goto(url);
   await page.waitForLoadState('networkidle');
-  // Wait until the boot-loader overlay disappears
-  await page.waitForSelector('#globalBootLoader:not(.visible)', { timeout: 30_000 });
+  // Wait until boot overlay and bootstrap blur are both cleared.
+  await page.waitForFunction(
+    () => {
+      const boot = document.querySelector('#globalBootLoader');
+      const app = document.querySelector('#app-container');
+      const bootReady = !boot || !boot.classList.contains('visible');
+      const appReady = !app || !app.classList.contains('bootstrap-loading');
+      return bootReady && appReady;
+    },
+    { timeout: 30_000 }
+  );
 }
 
 /** Returns the visible text of the file-list items in the sidebar. */
