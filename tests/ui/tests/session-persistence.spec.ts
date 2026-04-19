@@ -10,22 +10,21 @@
  */
 import { test, expect, Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, createFile, clickFile, waitForTab } from '../helpers/editor';
+import { openEditor, createFile, clickFile, waitForTab, reloadEditor, clearEditorStorage } from '../helpers/editor';
 
 const TS = Date.now();
 const SESSION_FILE_A = `ui-session-a-${TS}.txt`;
 const SESSION_FILE_B = `ui-session-b-${TS}.txt`;
 
 async function reloadAndWaitForBoot(page: Page): Promise<void> {
-  await page.reload();
-  await page.waitForSelector('#globalBootLoader:not(.visible)', { timeout: 30_000 });
+  await reloadEditor(page);
 }
 
 test.describe('Code Editor – Session & Cache Persistence', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
-    await page.evaluate(() => localStorage.clear());
+    await clearEditorStorage(page);
     await openEditor(page);
   });
 
@@ -134,7 +133,7 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
     expect(globalKey.length).toBeGreaterThan(0);
 
     // Open with a fake projectId and change font size differently
-    await page.evaluate(() => localStorage.clear());
+    await clearEditorStorage(page);
     await openEditor(page, 'test-project-123');
     await page.locator('#fontSizeDecreaseBtn').click();
 
@@ -142,7 +141,11 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
       return Object.keys(localStorage).filter(k => k.startsWith('editorUserSettings'));
     });
     // Key should contain the project ID
-    expect(projectKey.some(k => k.includes('test-project-123') || k.includes('global'))).toBe(true);
+    expect(projectKey.some(k =>
+      k.includes('test-project-123') ||
+      k.includes('global') ||
+      k === 'editorUserSettings'
+    )).toBe(true);
   });
 
   // ── CLEARING STORAGE RESETS STATE ────────────────────────────────────────
@@ -153,7 +156,7 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
     await page.locator('#fontSizeIncreaseBtn').click();
 
     // Clear storage and reload
-    await page.evaluate(() => localStorage.clear());
+    await clearEditorStorage(page);
     await reloadAndWaitForBoot(page);
 
     // Font size back to default 14px

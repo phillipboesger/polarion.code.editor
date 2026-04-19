@@ -6,13 +6,13 @@
  */
 import { test, expect } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor } from '../helpers/editor';
+import { openEditor, reloadEditor, clearEditorStorage } from '../helpers/editor';
 
 test.describe('Code Editor – Sidebar & Resizer', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
-    await page.evaluate(() => localStorage.clear());
+    await clearEditorStorage(page);
     await openEditor(page);
   });
 
@@ -94,8 +94,7 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     const widthSet = await page.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
 
     // Reload
-    await page.reload();
-    await page.waitForSelector('#globalBootLoader:not(.visible)', { timeout: 30_000 });
+    await reloadEditor(page);
 
     const widthAfterReload = await page.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
     // Should be close to the dragged value (within a few px tolerance)

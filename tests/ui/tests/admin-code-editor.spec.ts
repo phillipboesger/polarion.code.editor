@@ -1,30 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
-
-// ---------------------------------------------------------------------------
-// Constants – override via environment variables if needed
-// ---------------------------------------------------------------------------
-const BASE_URL  = process.env.POLARION_URL  ?? 'http://localhost';
-const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
-const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
+import { BASE_URL, loginAsPolarionAdmin } from '../helpers/auth';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Logs in to Polarion via the standard login form.
- * Polarion uses j_username / j_password / #submitButton.
- */
-async function loginAsPolarionAdmin(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/polarion/`);
-  await page.waitForLoadState('networkidle');
-
-  await page.fill('#j_username', ADMIN_USER);
-  await page.fill('#j_password', ADMIN_PASS);
-  await page.click('#submitButton');
-
-  await page.waitForLoadState('networkidle');
-}
 
 /**
  * Navigates to the Repository (Global) Administration in Polarion.
@@ -32,7 +11,7 @@ async function loginAsPolarionAdmin(page: Page): Promise<void> {
  */
 async function navigateToRepositoryAdmin(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/polarion/#/administration`);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   // Give the Angular/Dojo router time to render the admin navigation
   await page.waitForTimeout(3_000);
 }
@@ -60,7 +39,11 @@ test.describe('Polarion Administration – Code Editor Plugin', () => {
     // The plugin registers itself via:
     //   com.polarion.xray.webui.administrationPageExtenders  id="code-editor"  name="Code Editor"
     // Polarion renders these as links / list items in the left admin nav.
-    const codeEditorEntry = page.getByText('Code Editor', { exact: false });
+    await expect
+      .poll(async () => page.getByText(/Code Editor/i).count(), { timeout: 20_000 })
+      .toBeGreaterThan(0);
+
+    const codeEditorEntry = page.getByText(/Code Editor/i).first();
     await expect(codeEditorEntry).toBeVisible({ timeout: 20_000 });
   });
 
