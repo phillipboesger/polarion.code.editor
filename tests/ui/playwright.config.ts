@@ -9,10 +9,8 @@ export default defineConfig({
   // Retry once on CI to tolerate transient slowness
   retries: process.env.CI ? 1 : 0,
 
-  // Spec files run in parallel across workers; tests within each file run serially.
-  // This is safe because each spec uses a unique filename prefix (ui-test-*, ui-session-*,
-  // ui-tab-*) and each worker gets its own isolated browser context.
-  workers: process.env.CI ? 2 : 4,
+  // Run fully sequential to avoid load-related interference on the shared Polarion instance.
+  workers: 1,
 
   reporter: [
     ['list'],
