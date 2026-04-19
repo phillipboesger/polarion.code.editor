@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Playwright UI tests for the Polarion Code Editor plugin",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "report": "playwright show-report"
+    "test": "./node_modules/.bin/playwright test",
+    "test:headed": "./node_modules/.bin/playwright test --headed",
+    "report": "./node_modules/.bin/playwright show-report"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0"
