@@ -10,7 +10,7 @@
  */
 import { test, expect, Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, createFile, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
 
 const TS = Date.now();
 const TEST_FILE      = `ui-test-${TS}.txt`;

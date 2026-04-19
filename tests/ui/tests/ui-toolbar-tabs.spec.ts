@@ -10,7 +10,7 @@
  */
 import { test, expect, Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, createFile, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
 
 const TS = Date.now();
 const FILE_A = `ui-tab-a-${TS}.txt`;
@@ -74,7 +74,7 @@ test.describe('Code Editor – Toolbar & Font Size', () => {
 
     const raw = await page.evaluate(() => localStorage.getItem('editorUserSettings'));
     expect(raw).not.toBeNull();
-    const settings = JSON.parse(raw!);
+    const settings = JSON.parse(raw ?? '{}');
     expect(settings.fontSize).toBe(16);
   });
 

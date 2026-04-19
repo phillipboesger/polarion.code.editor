@@ -1,8 +1,10 @@
 import { Page, BrowserContext } from '@playwright/test';
 
-export const BASE_URL  = process.env.POLARION_URL  ?? 'http://localhost';
-export const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
-export const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
+const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+
+export const BASE_URL = env.POLARION_URL ?? 'http://localhost';
+export const ADMIN_USER = env.POLARION_USER ?? 'admin';
+export const ADMIN_PASS = env.POLARION_PASS ?? 'admin';
 
 /** Logs in to Polarion via the standard login form and waits for redirect. */
 export async function loginAsPolarionAdmin(page: Page): Promise<void> {
