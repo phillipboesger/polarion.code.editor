@@ -13,51 +13,15 @@ const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
 
 /**
  * Logs in to Polarion via the standard login form.
- * Works for both the classic JSP form and the Angular-wrapper login page.
+ * Polarion uses j_username / j_password / #submitButton.
  */
 async function loginAsPolarionAdmin(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/polarion/`);
   await page.waitForLoadState('networkidle');
 
-  // Polarion login form – try common selector variants
-  const usernameSelectors = ['input[name="loginName"]', 'input[name="username"]', '#loginName'];
-  const passwordSelectors = ['input[name="password"]', '#password'];
-
-  let filledUser = false;
-  for (const sel of usernameSelectors) {
-    const loc = page.locator(sel).first();
-    if (await loc.count() > 0) {
-      await loc.fill(ADMIN_USER);
-      filledUser = true;
-      break;
-    }
-  }
-  if (!filledUser) {
-    throw new Error('Could not find Polarion username input. Check the login page selectors.');
-  }
-
-  for (const sel of passwordSelectors) {
-    const loc = page.locator(sel).first();
-    if (await loc.count() > 0) {
-      await loc.fill(ADMIN_PASS);
-      break;
-    }
-  }
-
-  // Submit the form
-  const submitSelectors = [
-    'input[type="submit"]',
-    'button[type="submit"]',
-    'button:has-text("Log In")',
-    'button:has-text("Login")',
-  ];
-  for (const sel of submitSelectors) {
-    const loc = page.locator(sel).first();
-    if (await loc.count() > 0) {
-      await loc.click();
-      break;
-    }
-  }
+  await page.fill('#j_username', ADMIN_USER);
+  await page.fill('#j_password', ADMIN_PASS);
+  await page.click('#submitButton');
 
   await page.waitForLoadState('networkidle');
 }
