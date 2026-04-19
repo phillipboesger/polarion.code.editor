@@ -24,3 +24,8 @@
 /target/
 dependency-reduced-pom.xml
 README.pdf
+
+# Playwright / UI tests
+tests/ui/node_modules/
+tests/ui/playwright-report/
+tests/ui/test-results/
