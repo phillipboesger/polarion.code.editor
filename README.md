@@ -31,6 +31,8 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 - Browse and edit files in the Polarion SVN repository directly in the browser.
 - Syntax highlighting for `.json`, `.xml`, `.vm`, `.yaml`, `.sh`, `.md`, and more.
+- Velocity template highlighting for `.vm`, `.vtl`, `.fhtml`, and `page.xml` files.
+- Preview image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`) directly in the editor.
 - Create, rename, and delete files — all via a simple file explorer sidebar.
 - Project-aware: automatically scopes to the current Polarion project.
 - Keyboard shortcuts (`Ctrl+S` / `Cmd+S` to save).
@@ -124,7 +126,11 @@ Navigate to **Polarion Administration → Code Editor** (or click the Code Edito
 3. Make your changes.
 4. Press **`Ctrl+S`** / **`Cmd+S`** or click the **Save** button in the top-right corner.
 
-You can have multiple files open at once — they appear as tabs at the top of the editor.
+You can have multiple files open at once — they appear as tabs at the top of the editor. If you open more tabs than fit in the bar, a thin horizontal scrollbar appears below the tabs.
+
+### Viewing an Image File
+
+Click any image file (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`) in the file explorer to open it in the built-in image viewer. The image is displayed centered and scaled to fit the editor area. Image tabs are read-only — saving is disabled for them.
 
 ### Creating a New File
 
