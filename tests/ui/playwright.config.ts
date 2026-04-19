@@ -24,8 +24,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
-    // Generous navigation timeout for Polarion's SSR pages
-    navigationTimeout: 60_000,
-    actionTimeout: 30_000,
+    // CI runners are often slower than local Docker; use slightly higher limits there.
+    navigationTimeout: process.env.CI ? 90_000 : 60_000,
+    actionTimeout: process.env.CI ? 45_000 : 30_000,
   },
 });

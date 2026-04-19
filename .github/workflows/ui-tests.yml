@@ -144,7 +144,7 @@ jobs:
           POLARION_URL: "http://localhost"
           POLARION_USER: "admin"
           POLARION_PASS: "admin"
-        run: npx playwright test
+        run: npm run test:fast
 
       # ------------------------------------------------------------------
       # 8. Upload artefacts on failure
