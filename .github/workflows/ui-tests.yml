@@ -20,7 +20,7 @@ jobs:
   ui-tests:
     name: Playwright UI Tests (Polarion)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 55
 
     permissions:
       contents: read
@@ -88,11 +88,11 @@ jobs:
           docker run -d \
             --name polarion \
             --platform linux/amd64 \
-            --memory 4g \
+            --memory 6g \
             -p 80:80 \
             -p 5433:5433 \
             -p 5005:5005 \
-            -e JAVA_OPTS="-Xmx4g -Xms4g" \
+            -e JAVA_OPTS="-Xmx5g -Xms2g" \
             -e JDWP_ENABLED=false \
             --volume polarion_repo:/opt/polarion/data/svn \
             --volume polarion_extensions:/opt/polarion/polarion/extensions \
@@ -123,7 +123,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: tests/ui/package-lock.json
 

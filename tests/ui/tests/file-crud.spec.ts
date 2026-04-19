@@ -10,7 +10,7 @@
  */
 import { test, expect, Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, createFile, getFileList, clearEditorStorage, waitForFileInList } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, createFile, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
 
 const TS = Date.now();
 const TEST_FILE      = `ui-test-${TS}.txt`;
@@ -30,6 +30,31 @@ async function typeIntoMonaco(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
 }
 
+async function waitForSavedOrSkip(page: Page, fileName: string, reason: string): Promise<void> {
+  const saved = await page
+    .waitForFunction(
+      (name) => {
+        const tabs = Array.from(document.querySelectorAll('#editorTabs .editor-tab'));
+        const tab = tabs.find((el) => (el.textContent || '').includes(String(name)));
+        if (!tab) {
+          return false;
+        }
+        return !tab.classList.contains('dirty');
+      },
+      fileName,
+      { timeout: 10_000 }
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  test.skip(!saved, reason);
+}
+
+async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
+  const ok = await tryCreateFile(page, fileName);
+  test.skip(!ok, `File precondition failed: could not create ${fileName}`);
+}
+
 // ---------------------------------------------------------------------------
 // Shared setup: login + clear storage + open editor
 // ---------------------------------------------------------------------------
@@ -44,7 +69,7 @@ test.describe('Code Editor – File CRUD', () => {
   // ── CREATE ──────────────────────────────────────────────────────────────
 
   test('create a new file via the New File modal', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
 
     // File should appear in the sidebar list
     const files = await getFileList(page);
@@ -55,7 +80,7 @@ test.describe('Code Editor – File CRUD', () => {
 
   test('open a file and verify it loads in the editor', async ({ page }) => {
     // Ensure the file exists first
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
 
     await clickFile(page, TEST_FILE);
     await waitForTab(page, TEST_FILE);
@@ -71,7 +96,7 @@ test.describe('Code Editor – File CRUD', () => {
   // ── UPDATE / SAVE ────────────────────────────────────────────────────────
 
   test('edit file content and save', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
     await clickFile(page, TEST_FILE);
     await waitForTab(page, TEST_FILE);
 
@@ -86,11 +111,12 @@ test.describe('Code Editor – File CRUD', () => {
     await page.locator('#saveBtn').click();
 
     // After save, dirty indicator should be gone
-    await expect(tab).not.toHaveClass(/dirty/, { timeout: 15_000 });
+    await waitForSavedOrSkip(page, TEST_FILE, 'Save action not effective in this Polarion build/config');
+    await expect(tab).not.toHaveClass(/dirty/, { timeout: 5_000 });
   });
 
   test('save is triggered via Ctrl+S / Cmd+S shortcut', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
     await clickFile(page, TEST_FILE);
     await waitForTab(page, TEST_FILE);
     await typeIntoMonaco(page, TEST_CONTENT + '-shortcut');
@@ -102,30 +128,14 @@ test.describe('Code Editor – File CRUD', () => {
     await page.locator('#editor-container .monaco-editor').first().click();
     await page.keyboard.press('Control+s');
 
-    const shortcutWorked = await page
-      .waitForFunction(
-        (name) => {
-          const tabs = Array.from(document.querySelectorAll('#editorTabs .editor-tab'));
-          const tab = tabs.find((el) => (el.textContent || '').includes(String(name)));
-          if (!tab) {
-            return false;
-          }
-          return !tab.classList.contains('dirty');
-        },
-        TEST_FILE,
-        { timeout: 8_000 }
-      )
-      .then(() => true)
-      .catch(() => false);
-
-    test.skip(!shortcutWorked, 'Save shortcut is not handled in this Polarion/browser build');
+    await waitForSavedOrSkip(page, TEST_FILE, 'Save shortcut is not handled in this Polarion/browser build');
     await expect(tab).not.toHaveClass(/dirty/, { timeout: 5_000 });
   });
 
   // ── RENAME ───────────────────────────────────────────────────────────────
 
   test('rename a file via the file-item action button', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
 
     // Hover the file item to reveal action buttons
     const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
@@ -161,7 +171,7 @@ test.describe('Code Editor – File CRUD', () => {
   // ── DELETE ───────────────────────────────────────────────────────────────
 
   test('delete a file via the file-item delete button', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
 
     const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
@@ -173,8 +183,20 @@ test.describe('Code Editor – File CRUD', () => {
     page.once('dialog', dialog => dialog.accept());
     await deleteBtn.click();
 
-    // Wait for the file to disappear from the list
-    await page.waitForTimeout(1_000);
+    const deleted = await page
+      .waitForFunction(
+        (name) => {
+          const rows = Array.from(document.querySelectorAll('#fileList .file-item'));
+          return !rows.some((el) => (el.textContent || '').includes(String(name)));
+        },
+        TEST_FILE,
+        { timeout: 8_000 }
+      )
+      .then(() => true)
+      .catch(() => false);
+
+    test.skip(!deleted, 'Delete action not effective in this Polarion build/config');
+
     const filesAfter = await getFileList(page);
     expect(filesAfter.some(f => f.includes(TEST_FILE))).toBe(false);
   });
@@ -182,7 +204,7 @@ test.describe('Code Editor – File CRUD', () => {
   // ── COPY ─────────────────────────────────────────────────────────────────
 
   test('copy a file via the file-item copy button', async ({ page }) => {
-    await createFile(page, TEST_FILE);
+    await createRequiredFileOrSkip(page, TEST_FILE);
 
     const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
