@@ -99,37 +99,44 @@ jobs:
             ghcr.io/phillipboesger/polarion-docker:latest
 
       # ------------------------------------------------------------------
-      # 5. Wait for Polarion to be ready (up to 10 min)
+      # 5. Wait for Polarion to be ready
+      #
+      # Strategy: the HTTP-200 check fires quickly (Apache is up) but the
+      # Polarion JVM still needs time to boot.  We therefore wait for the
+      # actual login-form HTML on /polarion/login, which only becomes
+      # available once the OSGi runtime has fully started.
+      #
+      # • Phase 1 – wait for Apache to accept connections (HTTP ≠ 000)
+      # • Phase 2 – 90 s grace period for JVM bootstrap (one-time sleep)
+      # • Phase 3 – poll /polarion/login for the j_username field (≤ 8 min)
       # ------------------------------------------------------------------
-      - name: Wait for Polarion to become healthy
+      - name: Wait for Polarion to become ready (login form)
         run: |
-          echo "⏳ Waiting for Polarion to respond on http://localhost/polarion/ ..."
-          for i in $(seq 1 60); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/polarion/ || true)
-            if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" || "$HTTP_CODE" == "301" ]]; then
-              echo "✅ Polarion is up (HTTP $HTTP_CODE) after attempt $i"
-              exit 0
+          echo "⏳ Phase 1: waiting for Apache to accept connections..."
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/polarion/ || echo "000")
+            if [[ "$CODE" != "000" ]]; then
+              echo "  Apache is up (HTTP $CODE) after attempt $i"
+              break
             fi
-            echo "  Attempt $i/60 – HTTP $HTTP_CODE, retrying in 10s…"
-            sleep 10
+            echo "  Attempt $i/30 – no connection yet, retrying in 5s..."
+            sleep 5
           done
-          echo "❌ Polarion did not become ready within 10 minutes"
-          docker logs polarion --tail 100
-          exit 1
 
-      - name: Wait for Polarion login form
-        run: |
-          echo "⏳ Waiting for Polarion login form (up to 10 min) ..."
-          for i in $(seq 1 60); do
-            HTML=$(curl -sL http://localhost/polarion/ 2>/dev/null || true)
-            if echo "$HTML" | grep -qiE 'j_username|j_password|name="j_password"'; then
-              echo "✅ Login form is available after attempt $i"
+          echo "⏳ Phase 2: waiting 90s for Polarion JVM to bootstrap..."
+          sleep 90
+
+          echo "⏳ Phase 3: polling for login form on /polarion/login..."
+          for i in $(seq 1 48); do
+            HTML=$(curl -sL http://localhost/polarion/login 2>/dev/null || true)
+            if echo "$HTML" | grep -qiE 'j_username|j_password'; then
+              echo "✅ Login form ready after attempt $i"
               exit 0
             fi
-            echo "  Attempt $i/60 – login form not ready, retrying in 10s..."
+            echo "  Attempt $i/48 – login form not ready yet, retrying in 10s..."
             sleep 10
           done
-          echo "❌ Login form did not become ready in 10 minutes"
+          echo "❌ Login form did not become available in time"
           docker logs polarion --tail 200
           exit 1
 
