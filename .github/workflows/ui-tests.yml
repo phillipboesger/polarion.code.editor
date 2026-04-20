@@ -117,6 +117,22 @@ jobs:
           docker logs polarion --tail 100
           exit 1
 
+      - name: Wait for Polarion login form
+        run: |
+          echo "⏳ Waiting for Polarion login form (#j_username) ..."
+          for i in $(seq 1 30); do
+            HTML=$(curl -s http://localhost/polarion/login || true)
+            if echo "$HTML" | grep -Eq 'id="j_username"|name="j_username"|class="[^"]*j_username'; then
+              echo "✅ Login form is available after attempt $i"
+              exit 0
+            fi
+            echo "  Attempt $i/30 – login form not ready, retrying in 5s..."
+            sleep 5
+          done
+          echo "❌ Login form did not become ready in time"
+          docker logs polarion --tail 200
+          exit 1
+
       # ------------------------------------------------------------------
       # 6. Install Node.js & Playwright
       # ------------------------------------------------------------------
