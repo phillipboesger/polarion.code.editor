@@ -119,17 +119,17 @@ jobs:
 
       - name: Wait for Polarion login form
         run: |
-          echo "⏳ Waiting for Polarion login form (#j_username) ..."
-          for i in $(seq 1 30); do
-            HTML=$(curl -s http://localhost/polarion/login || true)
-            if echo "$HTML" | grep -Eq 'id="j_username"|name="j_username"|class="[^"]*j_username'; then
+          echo "⏳ Waiting for Polarion login form (up to 10 min) ..."
+          for i in $(seq 1 60); do
+            HTML=$(curl -sL http://localhost/polarion/ 2>/dev/null || true)
+            if echo "$HTML" | grep -qiE 'j_username|j_password|name="j_password"'; then
               echo "✅ Login form is available after attempt $i"
               exit 0
             fi
-            echo "  Attempt $i/30 – login form not ready, retrying in 5s..."
-            sleep 5
+            echo "  Attempt $i/60 – login form not ready, retrying in 10s..."
+            sleep 10
           done
-          echo "❌ Login form did not become ready in time"
+          echo "❌ Login form did not become ready in 10 minutes"
           docker logs polarion --tail 200
           exit 1
 
