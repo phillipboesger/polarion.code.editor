@@ -24,19 +24,22 @@ async function firstVisibleSelector(page: Page, selectors: string[]): Promise<st
   return null;
 }
 
+/** Returns true if the login form (username input) is currently visible on the page. */
+async function isLoginFormVisible(page: Page): Promise<boolean> {
+  const sel = await firstVisibleSelector(page, USERNAME_SELECTORS);
+  return sel !== null;
+}
+
 async function waitForLoginForm(page: Page, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const userSelector = await firstVisibleSelector(page, USERNAME_SELECTORS);
-    const hasUserInput = userSelector !== null;
-
-    if (hasUserInput) {
+    if (await isLoginFormVisible(page)) {
       return true;
     }
 
-    // If we are already past login, treat as authenticated session.
-    if (!/\/polarion\/login/i.test(page.url())) {
+    // If we are already authenticated (no login form and not on the login page), done.
+    if (!page.url().endsWith('/polarion') && !page.url().endsWith('/polarion/')) {
       return false;
     }
 
@@ -49,16 +52,17 @@ async function waitForLoginForm(page: Page, timeoutMs: number): Promise<boolean>
 
 /** Logs in to Polarion via the standard login form and waits for redirect. */
 export async function loginAsPolarionAdmin(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/polarion/login`, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('domcontentloaded');
+  // The Polarion login page lives at /polarion (not /polarion/login)
+  await page.goto(`${BASE_URL}/polarion`, { waitUntil: 'domcontentloaded' });
 
-  const formReady = await waitForLoginForm(page, 45_000);
+  // If the login form is not visible, we may already be authenticated.
+  if (!await isLoginFormVisible(page)) {
+    return;
+  }
 
-  // Some Polarion environments may already carry an authenticated session.
+  const formReady = await waitForLoginForm(page, 20_000);
+
   if (!formReady) {
-    if (!/\/polarion\/login/i.test(page.url())) {
-      return;
-    }
     throw new Error(`Polarion login form not available (url: ${page.url()})`);
   }
 
@@ -74,9 +78,9 @@ export async function loginAsPolarionAdmin(page: Page): Promise<void> {
   await page.fill(passSelector, ADMIN_PASS);
   await page.click(submitSelector);
 
-  // Polarion may keep background network activity alive; avoid relying on networkidle.
+  // Wait for the login form to disappear – reliable across all Polarion redirect patterns.
   let loggedIn = await page
-    .waitForURL((url) => !url.href.includes('/polarion/login'), { timeout: 30_000 })
+    .waitForFunction(() => !document.querySelector('#j_username, input[name="j_username"]'), { timeout: 15_000 })
     .then(() => true)
     .catch(() => false);
 
@@ -85,7 +89,7 @@ export async function loginAsPolarionAdmin(page: Page): Promise<void> {
     await page.locator(passSelector).press('Enter').catch(() => {});
     await page.click(submitSelector).catch(() => {});
     loggedIn = await page
-      .waitForURL((url) => !url.href.includes('/polarion/login'), { timeout: 20_000 })
+      .waitForFunction(() => !document.querySelector('#j_username, input[name="j_username"]'), { timeout: 10_000 })
       .then(() => true)
       .catch(() => false);
   }

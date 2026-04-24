@@ -8,12 +8,14 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.After;
+import org.junit.AfterClass;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -27,6 +29,8 @@ import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.polarion.alm.tracker.model.ITrackerProject;
+import com.polarion.platform.core.IPlatform;
+import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
 import com.polarion.platform.service.repository.IRevisionMetaData;
@@ -38,6 +42,23 @@ import boesger.polarion.codeeditor.model.RepoFile;
 import boesger.polarion.codeeditor.util.PolarionUtils;
 
 public class CodeEditorServiceTest {
+
+	private static MockedStatic<PlatformContext> platformContextMock;
+
+	@BeforeClass
+	public static void setUpClass() {
+		IPlatform mockPlatform = mock(IPlatform.class);
+		platformContextMock = Mockito.mockStatic(PlatformContext.class);
+		platformContextMock.when(PlatformContext::getPlatform).thenReturn(mockPlatform);
+		when(mockPlatform.lookupService(any())).thenReturn(null);
+	}
+
+	@AfterClass
+	public static void tearDownClass() {
+		if (platformContextMock != null) {
+			platformContextMock.close();
+		}
+	}
 
 	@Mock
 	private IRepositoryService mockRepoService;

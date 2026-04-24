@@ -22,11 +22,18 @@ public class PolarionUtils {
 
 	private static final Logger log = Logger.getLogger(PolarionUtils.class.getName());
 
-	private static ITrackerService trackerService = PlatformContext.getPlatform().lookupService(ITrackerService.class);
-	private static ITransactionService transactionService = PlatformContext.getPlatform()
-			.lookupService(ITransactionService.class);
-	private static IRepositoryService repositoryService = PlatformContext.getPlatform()
-			.lookupService(IRepositoryService.class);
+	private static ITrackerService trackerService = lookupService(ITrackerService.class);
+	private static ITransactionService transactionService = lookupService(ITransactionService.class);
+	private static IRepositoryService repositoryService = lookupService(IRepositoryService.class);
+
+	private static <T> T lookupService(Class<T> serviceClass) {
+		try {
+			com.polarion.platform.core.IPlatform platform = PlatformContext.getPlatform();
+			return platform != null ? platform.lookupService(serviceClass) : null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
 
 	/** For testing only. Replaces the tracker service with a test double. */
 	static void setTrackerService(ITrackerService service) {
