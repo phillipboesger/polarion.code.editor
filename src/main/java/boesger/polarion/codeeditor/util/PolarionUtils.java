@@ -30,7 +30,8 @@ public class PolarionUtils {
 		try {
 			com.polarion.platform.core.IPlatform platform = PlatformContext.getPlatform();
 			return platform != null ? platform.lookupService(serviceClass) : null;
-		} catch (Exception e) {
+		}
+		catch(Exception e) {
 			return null;
 		}
 	}

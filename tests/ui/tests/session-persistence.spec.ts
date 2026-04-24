@@ -119,10 +119,15 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
       return;
     }
 
-    await page.mouse.move(resizerBox.x, resizerBox.y + 10);
-    await page.mouse.down();
+    const startX = resizerBox.x + resizerBox.width / 2;
+    await page.mouse.move(startX, resizerBox.y + 10);
+    // Dispatch mousedown directly on the resizer element to ensure it registers
+    await resizer.dispatchEvent('mousedown', { bubbles: true, cancelable: true });
     await page.mouse.move(480, resizerBox.y + 10, { steps: 15 });
     await page.mouse.up();
+
+    // Allow localStorage write to complete
+    await page.waitForTimeout(200);
 
     const widthBefore = await page.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
     expect(widthBefore).toBeGreaterThan(400);

@@ -1071,6 +1071,10 @@
         updateToolbarState();
       });
 
+      // Expose editor instance and key functions globally for testing
+      window.editor = editor;
+      window.formatCurrentDocument = formatCurrentDocument;
+
       // Initialize UI
       updateEditorToolbarState();
       ensureDefaultEmptyStateMarkup();
@@ -2753,7 +2757,11 @@
             if (e.key === 'Enter') { e.preventDefault(); confirmUploadFile(); }
             if (e.key === 'Escape') { e.preventDefault(); closeUploadModal(); }
         };
-        document.getElementById('uploadModal').classList.add('visible');
+        const modal = document.getElementById('uploadModal');
+        modal.onkeydown = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeUploadModal(); }
+        };
+        modal.classList.add('visible');
         setTimeout(() => { input.focus(); input.select(); }, 50);
     }
 

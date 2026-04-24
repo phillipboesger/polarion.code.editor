@@ -55,7 +55,7 @@ public class CodeEditorServiceTest {
 
 	@AfterClass
 	public static void tearDownClass() {
-		if (platformContextMock != null) {
+		if(platformContextMock != null) {
 			platformContextMock.close();
 		}
 	}

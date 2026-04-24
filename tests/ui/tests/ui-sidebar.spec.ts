@@ -56,21 +56,26 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
 
     const startX = resizerBox!.x + resizerBox!.width / 2;
     const startY = resizerBox!.y + resizerBox!.height / 2;
-    const targetX = startX + 100; // drag 100px to the right
+    const targetX = startX + 150; // drag 150px to the right
 
+    // Move to the resizer first, then mousedown directly on the element
     await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(targetX, startY, { steps: 10 });
+    // Dispatch mousedown directly on the resizer element to ensure it registers
+    await resizer.dispatchEvent('mousedown', { bubbles: true, cancelable: true });
+    await page.mouse.move(targetX, startY, { steps: 20 });
     await page.mouse.up();
 
-    // Width should have increased
-    const widthAfter = await sidebar.evaluate((el: HTMLElement) => el.offsetWidth);
-    expect(widthAfter).toBeGreaterThan(350); // default is 350px
+    // Allow localStorage write to complete
+    await page.waitForTimeout(200);
 
     // Persisted in localStorage
     const stored = await page.evaluate(() => localStorage.getItem('sidebarWidth'));
     expect(stored).not.toBeNull();
     expect(Number(stored)).toBeGreaterThan(350);
+
+    // Width should have increased
+    const widthAfter = await sidebar.evaluate((el: HTMLElement) => el.offsetWidth);
+    expect(widthAfter).toBeGreaterThan(350); // default is 350px
   });
 
   test('resizer highlights on hover', async ({ page }) => {

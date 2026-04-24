@@ -105,42 +105,54 @@ jobs:
       # ------------------------------------------------------------------
       # 5. Wait for Polarion to be ready
       #
-      # Strategy: the HTTP-200 check fires quickly (Apache is up) but the
-      # Polarion JVM still needs time to boot.  We therefore wait for the
-      # actual login-form HTML on /polarion/login, which only becomes
-      # available once the OSGi runtime has fully started.
+      # Uses the same raw-TCP-socket approach from polarion-runtime-lib.sh
+      # in the polarion-docker repo (proven to work in CI there).
       #
-      # • Phase 1 – wait for Apache to accept connections (HTTP ≠ 000)
-      # • Phase 2 – 90 s grace period for JVM bootstrap (one-time sleep)
-      # • Phase 3 – poll /polarion/login for the j_username field (≤ 8 min)
+      # Key differences vs curl-based polling:
+      #   - Raw /dev/tcp avoids curl -L redirect-chain code-concatenation bug
+      #   - Accepts 2xx, 3xx, 401, 403 (any meaningful HTTP response = up)
+      #   - No curl dependency / no --max-time quirks
+      #
+      # Timeout: 900 s (15 min) – matches POLARION_START_TIMEOUT default in
+      # polarion-runtime-lib.sh.  Polarion on GitHub Actions ubuntu-latest
+      # typically takes 10–13 min to fully boot (OSGi + DB migrations).
       # ------------------------------------------------------------------
-      - name: Wait for Polarion to become ready (login form)
+      - name: Wait for Polarion to become ready
         run: |
-          echo "⏳ Phase 1: waiting for Apache to accept connections..."
-          for i in $(seq 1 30); do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/polarion/ || echo "000")
-            if [[ "$CODE" != "000" ]]; then
-              echo "  Apache is up (HTTP $CODE) after attempt $i"
-              break
-            fi
-            echo "  Attempt $i/30 – no connection yet, retrying in 5s..."
-            sleep 5
-          done
+          HOST=127.0.0.1
+          PORT=80
+          PATH_CHECK=/polarion/
+          TIMEOUT=900
+          POLL=5
 
-          echo "⏳ Phase 2: waiting 90s for Polarion JVM to bootstrap..."
-          sleep 90
+          polarion_read_http_status() {
+            local st=""
+            exec 3<>"/dev/tcp/${HOST}/${PORT}" 2>/dev/null || return 1
+            printf 'GET %s HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' "${PATH_CHECK}" >&3
+            IFS=$'\r' read -r st <&3 || true
+            exec 3<&- ; exec 3>&-
+            [ -n "${st}" ] || return 1
+            printf '%s\n' "${st}"
+          }
 
-          echo "⏳ Phase 3: polling for login form on /polarion/login..."
-          for i in $(seq 1 48); do
-            HTML=$(curl -sL http://localhost/polarion/login 2>/dev/null || true)
-            if echo "$HTML" | grep -qiE 'j_username|j_password'; then
-              echo "✅ Login form ready after attempt $i"
+          polarion_is_accessible() {
+            local code="${1#HTTP/* }"
+            code="${code%% *}"
+            case "${code}" in 2??|3??|401|403) return 0 ;; *) return 1 ;; esac
+          }
+
+          echo "⏳ Waiting for Polarion at http://${HOST}:${PORT}${PATH_CHECK} (timeout ${TIMEOUT}s)..."
+          deadline=$(( SECONDS + TIMEOUT ))
+          while (( SECONDS < deadline )); do
+            status="$(polarion_read_http_status 2>/dev/null || true)"
+            if polarion_is_accessible "${status}"; then
+              echo "✅ Polarion is reachable (${status}) after $(( SECONDS )) s"
               exit 0
             fi
-            echo "  Attempt $i/48 – login form not ready yet, retrying in 10s..."
-            sleep 10
+            sleep "${POLL}"
           done
-          echo "❌ Login form did not become available in time"
+
+          echo "❌ Polarion did not become reachable within ${TIMEOUT}s"
           docker logs polarion --tail 200
           exit 1
 

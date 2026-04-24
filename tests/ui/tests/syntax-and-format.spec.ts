@@ -27,7 +27,16 @@ async function getEditorContent(page: Page): Promise<string> {
  * Equivalent to selecting all and typing, but without keyboard focus requirements.
  */
 async function setEditorContent(page: Page, content: string): Promise<void> {
-  await page.evaluate((text) => (globalThis as any).editor?.getModel()?.setValue(text), content);
+  await page.evaluate((text) => {
+    const w = globalThis as any;
+    w.editor?.getModel()?.setValue(text);
+    w.editor?.focus();
+  }, content);
+}
+
+/** Focuses the Monaco editor so keyboard shortcuts reach it. */
+async function focusEditor(page: Page): Promise<void> {
+  await page.locator('.monaco-editor').first().click();
 }
 
 /**
@@ -41,11 +50,8 @@ async function formatViaJs(page: Page): Promise<void> {
       await w.formatCurrentDocument();
     }
   });
-  // Allow Monaco worker-based formatters (JSON, XML, …) to commit their edit.
-  await page.waitForFunction(
-    () => (globalThis as any).editor?.getModel()?.getValue() !== '',
-    { timeout: 8_000 }
-  );
+  // Small delay to allow synchronous formatters (Velocity) to commit their edit.
+  await page.waitForTimeout(200);
 }
 
 /**
@@ -64,35 +70,36 @@ async function apiCreateFile(page: Page, fileName: string, content = ''): Promis
 
 const LANG_CASES = [
   // Common web & data formats
-  { file: `hl-${TS}.json`,  lang: 'json'        },
-  { file: `hl-${TS}.xml`,   lang: 'xml'         },
-  { file: `hl-${TS}.xsd`,   lang: 'xml'         },  // XSD is treated as XML
-  { file: `hl-${TS}.js`,    lang: 'javascript'  },
-  { file: `hl-${TS}.ts`,    lang: 'typescript'  },
-  { file: `hl-${TS}.html`,  lang: 'html'        },
-  { file: `hl-${TS}.css`,   lang: 'css'         },
-  { file: `hl-${TS}.scss`,  lang: 'scss'        },
-  { file: `hl-${TS}.yaml`,  lang: 'yaml'        },
-  { file: `hl-${TS}.yml`,   lang: 'yaml'        },  // .yml alias
-  { file: `hl-${TS}.md`,    lang: 'markdown'    },
+  { ext: 'json',  lang: 'json'        },
+  { ext: 'xml',   lang: 'xml'         },
+  { ext: 'xsd',   lang: 'xml'         },  // XSD is treated as XML
+  { ext: 'js',    lang: 'javascript'  },
+  { ext: 'ts',    lang: 'typescript'  },
+  { ext: 'html',  lang: 'html'        },
+  { ext: 'css',   lang: 'css'         },
+  { ext: 'scss',  lang: 'scss'        },
+  { ext: 'yaml',  lang: 'yaml'        },
+  { ext: 'yml',   lang: 'yaml'        },  // .yml alias
+  { ext: 'md',    lang: 'markdown'    },
   // Backend languages
-  { file: `hl-${TS}.py`,    lang: 'python'      },
-  { file: `hl-${TS}.java`,  lang: 'java'        },
-  { file: `hl-${TS}.sql`,   lang: 'sql'         },
-  { file: `hl-${TS}.sh`,    lang: 'shell'       },
+  { ext: 'py',    lang: 'python'      },
+  { ext: 'java',  lang: 'java'        },
+  { ext: 'sql',   lang: 'sql'         },
+  { ext: 'sh',    lang: 'shell'       },
   // Velocity / Polarion-specific
-  { file: `hl-${TS}.vm`,    lang: 'velocity'    },
-  { file: `hl-${TS}.vtl`,   lang: 'velocity'    },
-  { file: `hl-${TS}.fhtml`, lang: 'velocity'    },
-  { file: 'page.xml',       lang: 'velocity'    },  // Polarion macro page special case
+  { ext: 'vm',    lang: 'velocity'    },
+  { ext: 'vtl',   lang: 'velocity'    },
+  { ext: 'fhtml', lang: 'velocity'    },
+  { ext: 'pagexml', lang: 'velocity'  },  // Polarion macro page special case
 ] as const;
 
 test.describe('Code Editor – Syntax Highlighting', () => {
-  for (const { file, lang } of LANG_CASES) {
-    test(`"${file}" → Monaco language "${lang}"`, async ({ page }) => {
+  for (const { ext, lang } of LANG_CASES) {
+    test(`".${ext}" → Monaco language "${lang}"`, async ({ page }) => {
       await loginAsPolarionAdmin(page);
       await clearEditorStorage(page);
 
+      const file = ext === 'pagexml' ? 'page.xml' : `hl-${Date.now()}.${ext}`;
       const ok = await apiCreateFile(page, file);
       test.skip(!ok, `Cannot create "${file}" – environment may be read-only`);
 

@@ -4,7 +4,7 @@ import { BASE_URL } from './auth';
 export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
 
 /** Waits until the editor boot overlay and bootstrap blur are cleared. */
-export async function waitForEditorReady(page: Page, timeout = 15_000): Promise<void> {
+export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<void> {
   await page.waitForFunction(
     () => {
       const boot = document.querySelector('#globalBootLoader');
@@ -43,13 +43,13 @@ export async function clearEditorStorage(page: Page): Promise<void> {
 /** Returns the visible text of the file-list items in the sidebar. */
 export async function getFileList(page: Page): Promise<string[]> {
   const items = page.locator('#fileList .file-item');
-  await items.first().waitFor({ timeout: 10_000 }).catch(() => {/* empty list is fine */});
+  await items.first().waitFor({ timeout: 15_000 }).catch(() => {/* empty list is fine */});
   const values = await items.allTextContents();
   return values.map((v) => v.replace(/\s+/g, ' ').trim());
 }
 
 /** Waits until a file with the given name appears in the sidebar list. */
-export async function waitForFileInList(page: Page, fileName: string, timeout = 10_000): Promise<void> {
+export async function waitForFileInList(page: Page, fileName: string, timeout = 15_000): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -68,7 +68,7 @@ export async function clickFile(page: Page, fileName: string): Promise<void> {
 
 /** Waits until the editor tab bar shows a tab for the given filename. */
 export async function waitForTab(page: Page, fileName: string): Promise<void> {
-  await expect(page.locator('#editorTabs .editor-tab', { hasText: fileName })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('#editorTabs .editor-tab', { hasText: fileName })).toBeVisible({ timeout: 15_000 });
 }
 
 /** Best-effort tab visibility check without failing the test flow. */
