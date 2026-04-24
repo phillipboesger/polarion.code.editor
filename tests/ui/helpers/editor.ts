@@ -7,10 +7,13 @@ export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
 export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<void> {
   await page.waitForFunction(
     () => {
-      const boot = document.querySelector('#globalBootLoader');
+      // Require #app-container to exist – if the page is a 503/error page the
+      // element is absent and we must NOT proceed (the old check passed trivially).
       const app = document.querySelector('#app-container');
-      const bootReady = !boot || !boot.classList.contains('visible');
-      const appReady = !app || !app.classList.contains('bootstrap-loading');
+      if (!app) return false;
+      const boot = document.querySelector('#globalBootLoader');
+      const bootReady = !boot?.classList.contains('visible');
+      const appReady = !app.classList.contains('bootstrap-loading');
       return bootReady && appReady;
     },
     { timeout }
@@ -48,13 +51,20 @@ export async function getFileList(page: Page): Promise<string[]> {
   return values.map((v) => v.replace(/\s+/g, ' ').trim());
 }
 
-/** Waits until a file with the given name appears in the sidebar list. */
+/** Waits until a file with the given name appears in the sidebar list.
+ *
+ * The sidebar always shows top-level entries (files or folder names).
+ * For nested paths like "folder/file.txt" we therefore check for the first
+ * path segment ("folder") instead of the full path, which would never match.
+ */
 export async function waitForFileInList(page: Page, fileName: string, timeout = 15_000): Promise<void> {
+  // When the path is nested, the sidebar only shows the root folder name.
+  const displayName = fileName.includes('/') ? fileName.split('/')[0] : fileName;
   await expect
     .poll(
       async () => {
         const names = await getFileList(page);
-        return names.some((name) => name.includes(fileName));
+        return names.some((name) => name.includes(displayName));
       },
       { timeout }
     )

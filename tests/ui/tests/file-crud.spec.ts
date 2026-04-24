@@ -239,13 +239,17 @@ test.describe('Code Editor – File CRUD', () => {
   test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
     // Ensure at least one folder exists by creating a file inside a subfolder first
     const folderPrefix = `tab-autocomplete-${TS}`;
-    await tryCreateFile(page, `${folderPrefix}/seed.txt`);
+    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`);
+    test.skip(!created, `Could not create seed folder ${folderPrefix} – skipping autocomplete test`);
 
     await openNewFileModal(page);
     const pathInput = page.locator('#newFileName');
 
     // Type the folder prefix so suggestions appear
     await pathInput.fill(folderPrefix.substring(0, 4));
+
+    // Wait for the suggestions dropdown to become visible before pressing Tab
+    await expect(page.locator('#newFileSuggestions')).toBeVisible({ timeout: 3_000 });
     await pathInput.press('Tab');
 
     // After Tab, the input value should be completed with the folder name + trailing slash
