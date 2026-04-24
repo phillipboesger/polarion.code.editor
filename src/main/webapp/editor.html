@@ -1662,6 +1662,54 @@
       return hasTrailingNewline ? joined + '\n' : joined;
     }
 
+    function formatXml(xmlStr) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlStr.trim(), 'application/xml');
+        if (doc.querySelector('parseerror')) return xmlStr;
+
+        function serialize(node, depth) {
+          const pad = '  '.repeat(depth);
+          if (node.nodeType === 3 /* TEXT_NODE */) {
+            const t = node.textContent.trim();
+            return t ? t : null;
+          }
+          if (node.nodeType === 8 /* COMMENT_NODE */) {
+            return pad + '<!--' + node.textContent + '-->';
+          }
+          if (node.nodeType !== 1 /* ELEMENT_NODE */) return null;
+
+          const tag = node.tagName;
+          const attrs = Array.from(node.attributes)
+            .map(a => ' ' + a.name + '="' + a.value + '"').join('');
+          const childNodes = Array.from(node.childNodes);
+          const hasOnlyText = childNodes.every(c => c.nodeType === 3);
+          const textContent = node.textContent.trim();
+
+          if (childNodes.length === 0 || (hasOnlyText && !textContent)) {
+            return pad + '<' + tag + attrs + '/>';
+          }
+          if (hasOnlyText && textContent) {
+            return pad + '<' + tag + attrs + '>' + textContent + '</' + tag + '>';
+          }
+          const childLines = childNodes
+            .map(c => serialize(c, depth + 1))
+            .filter(s => s !== null && s.trim() !== '');
+          if (childLines.length === 0) {
+            return pad + '<' + tag + attrs + '/>';
+          }
+          return pad + '<' + tag + attrs + '>\n' + childLines.join('\n') + '\n' + pad + '</' + tag + '>';
+        }
+
+        const lines = Array.from(doc.childNodes)
+          .map(n => serialize(n, 0))
+          .filter(s => s !== null && s.trim() !== '');
+        return lines.join('\n').trim();
+      } catch (_) {
+        return xmlStr;
+      }
+    }
+
     async function formatCurrentDocument() {
       const activeTab = getActiveTab();
       if (!activeTab || !activeTab.model) return;
@@ -1670,6 +1718,17 @@
         const source = activeTab.model.getValue();
         const formatted = formatVelocityLike(source);
         if (formatted !== source) {
+          activeTab.model.setValue(formatted);
+        }
+        return;
+      }
+
+      // Custom XML formatter (Monaco doesn't bundle an XML document formatter)
+      const langId = activeTab.model.getLanguageId();
+      if (langId === 'xml') {
+        const source = activeTab.model.getValue();
+        const formatted = formatXml(source);
+        if (formatted && formatted !== source) {
           activeTab.model.setValue(formatted);
         }
         return;
@@ -1843,8 +1902,14 @@
                   showAlert('Error formatting file: ' + err);
               });
           }
-          // Escape – close custom dialog
+          // Escape – close any visible modal
           if (e.key === 'Escape') {
+              const uploadModalEl = document.getElementById('uploadModal');
+              if (uploadModalEl && uploadModalEl.classList.contains('visible')) {
+                  e.preventDefault();
+                  closeUploadModal();
+                  return;
+              }
               const overlay = document.getElementById('customDialogOverlay');
               if (overlay && overlay.classList.contains('visible')) {
                   e.preventDefault();

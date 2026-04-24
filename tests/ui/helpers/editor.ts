@@ -123,6 +123,13 @@ export async function tryCreateFile(page: Page, fileName: string): Promise<boole
     await createFile(page, fileName);
     return true;
   } catch {
+    // createFile may have left a modal open (e.g. if confirm failed); close it so
+    // subsequent calls to openNewFileModal are not blocked.
+    const cancelBtn = page.locator('.modal-overlay.visible .action-btn.secondary').first();
+    if (await cancelBtn.count() > 0) {
+      await cancelBtn.click({ timeout: 2_000 }).catch(() => {});
+      await page.locator('.modal-overlay.visible').waitFor({ state: 'hidden', timeout: 2_000 }).catch(() => {});
+    }
     return false;
   }
 }
