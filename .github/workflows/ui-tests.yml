@@ -125,122 +125,68 @@ jobs:
       # ------------------------------------------------------------------
       # 6. Wait for Polarion to be ready
       #
-      # Phase 1 – TCP: quick /dev/tcp check to confirm Apache is up.
+      # Mirrors the polarion-docker repo's own startup check:
       #
-      # Phase 2 – Playwright smoke login: launch a real Chromium browser,
-      #   navigate to /polarion, wait for the login form to appear, log in,
-      #   and verify we land on the dashboard (login form gone). Only then
-      #   does Polarion's full OSGi/HiveMind stack (including plugin
-      #   contributions) exist. This mirrors the polarion-docker repo's own
-      #   smoke-test pattern and is immune to curl CSRF-token complexity.
+      # Phase 1 – Apache: nc until port 80 accepts connections.
       #
-      #   On GitHub Actions ubuntu-latest this takes 10–13 min total.
-      #   TIMEOUT controls both phases (900 s = 15 min).
+      # Phase 2 – Polarion log: poll the container log for the line
+      #   "Polarion started:  [ TIME ... ]" which only appears once the
+      #   entire OSGi/HiveMind stack (including all plugin contributions)
+      #   has been fully initialised. This is the same grep used in the
+      #   polarion-docker build-and-push.yml workflow.
+      #   On GitHub Actions ubuntu-latest this takes 10–13 min.
+      #   Timeout: 900 s (15 min).
       # ------------------------------------------------------------------
       - name: Wait for Polarion to become ready
-        working-directory: tests/ui
-        env:
-          POLARION_URL: "http://localhost"
-          POLARION_USER: "admin"
-          POLARION_PASS: "admin"
         run: |
-          HOST=127.0.0.1
-          PORT=80
-          TIMEOUT=900
-          POLL=5
+          echo "⏳ Phase 1: waiting for Apache on port 80..."
+          timeout 120s bash -c 'until nc -z localhost 80; do sleep 2; done'
+          echo "  ✅ Apache is up after ${SECONDS}s"
 
-          # ── Phase 1: TCP – wait for Apache ──────────────────────────
-          polarion_read_http_status() {
-            local st=""
-            exec 3<>"/dev/tcp/${HOST}/${PORT}" 2>/dev/null || return 1
-            printf 'GET /polarion/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
-            IFS=$'\r' read -r st <&3 || true
-            exec 3<&- ; exec 3>&-
-            [ -n "${st}" ] || return 1
-            printf '%s\n' "${st}"
-          }
+          echo "⏳ Phase 2: waiting for 'Polarion started' in container log (max 900s)..."
+          MAX_RETRIES=90  # 90 × 10 s = 15 min
+          RETRY_COUNT=0
+          SUCCESS=false
 
-          polarion_is_accessible() {
-            local code="${1#HTTP/* }"
-            code="${code%% *}"
-            case "${code}" in 2??|3??|401|403) return 0 ;; *) return 1 ;; esac
-          }
+          # Stream the log live so CI output is not silent
+          docker exec polarion tail -f /var/log/polarion/polarion.log &
+          TAIL_PID=$!
 
-          echo "⏳ Phase 1: waiting for Apache on port ${PORT} (TCP)..."
-          deadline=$(( SECONDS + TIMEOUT ))
-          while (( SECONDS < deadline )); do
-            status="$(polarion_read_http_status 2>/dev/null || true)"
-            if polarion_is_accessible "${status}"; then
-              echo "  ✅ Apache is up (${status}) after ${SECONDS}s"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if docker exec polarion grep -q "Polarion started:  \[ TIME" /var/log/polarion/polarion.log 2>/dev/null; then
+              echo ""
+              echo "✅ Polarion started successfully after ${SECONDS}s"
+              SUCCESS=true
               break
             fi
-            sleep "${POLL}"
+
+            # Fail fast on fatal JVM/OSGi errors
+            if docker exec polarion grep -E "Unrecognized VM option|Could not create the Java Virtual Machine" /var/log/polarion/polarion.log 2>/dev/null | grep -q "."; then
+              echo "❌ FATAL JVM error detected"
+              kill $TAIL_PID 2>/dev/null || true
+              docker logs polarion --tail 50
+              exit 1
+            fi
+
+            if [ "$(docker inspect -f '{{.State.Running}}' polarion 2>/dev/null)" != "true" ]; then
+              echo "❌ Container crashed!"
+              kill $TAIL_PID 2>/dev/null || true
+              docker logs polarion --tail 100
+              exit 1
+            fi
+
+            echo -n "."
+            sleep 10
+            RETRY_COUNT=$((RETRY_COUNT + 1))
           done
 
-          # ── Phase 2: Playwright smoke login ─────────────────────────
-          echo "⏳ Phase 2: waiting for successful Polarion login via Playwright (max ${TIMEOUT}s)..."
-          node - <<'SMOKE_EOF'
-          const { chromium } = require('./node_modules/playwright');
+          kill $TAIL_PID 2>/dev/null || true
 
-          const BASE_URL  = process.env.POLARION_URL  || 'http://localhost';
-          const USER      = process.env.POLARION_USER || 'admin';
-          const PASS      = process.env.POLARION_PASS || 'admin';
-          const TIMEOUT   = 900_000; // 15 min total
-          const POLL      = 5_000;
-
-          (async () => {
-            const browser = await chromium.launch({
-              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-            });
-            const page = await browser.newPage();
-            const deadline = Date.now() + TIMEOUT;
-
-            // Wait for the login form to appear
-            console.log('  Waiting for login form...');
-            let formVisible = false;
-            while (Date.now() < deadline) {
-              try {
-                await page.goto(`${BASE_URL}/polarion`, { timeout: 30_000, waitUntil: 'domcontentloaded' });
-                formVisible = await page.locator('input[name="j_username"]')
-                  .isVisible({ timeout: 5_000 }).catch(() => false);
-                if (formVisible) break;
-              } catch (_) {}
-              await new Promise(r => setTimeout(r, POLL));
-            }
-
-            if (!formVisible) {
-              console.error('❌ Login form never appeared within timeout');
-              await browser.close();
-              process.exit(1);
-            }
-
-            // Log in
-            console.log('  Login form visible – logging in...');
-            await page.locator('input[name="j_username"]').fill(USER);
-            await page.locator('input[name="j_password"]').fill(PASS);
-            const submit = page.locator('input[type="submit"], button[type="submit"]').first();
-            if (await submit.isVisible({ timeout: 3_000 }).catch(() => false)) {
-              await submit.click();
-            } else {
-              await page.locator('input[name="j_password"]').press('Enter');
-            }
-
-            // Verify login succeeded: login form disappears
-            const loggedIn = await page.waitForFunction(
-              () => !document.querySelector('input[name="j_username"]'),
-              { timeout: 30_000 }
-            ).then(() => true).catch(() => false);
-
-            if (!loggedIn) {
-              console.error('❌ Login failed – still on login page');
-              await browser.close();
-              process.exit(1);
-            }
-
-            console.log(`✅ Polarion login succeeded – stack is fully ready (url: ${page.url()})`);
-            await browser.close();
-          })();
-          SMOKE_EOF
+          if [ "$SUCCESS" = "false" ]; then
+            echo "❌ Timed out waiting for Polarion to start"
+            docker logs polarion --tail 200
+            exit 1
+          fi
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
