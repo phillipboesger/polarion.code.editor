@@ -36,7 +36,7 @@ test.describe('Polarion Administration – Code Editor Plugin', () => {
     await page.screenshot({ path: 'playwright-report/admin-page.png', fullPage: true });
 
     // Step 3: Assert the "Code Editor" navigation entry is present.
-    // The plugin registers itself via:
+    // The plugin registers itself via hivemodule.xml:
     //   com.polarion.xray.webui.administrationPageExtenders  id="code-editor"  name="Code Editor"
     // Polarion renders these as links / list items in the left admin nav.
     await expect

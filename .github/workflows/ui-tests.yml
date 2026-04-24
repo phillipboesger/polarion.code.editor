@@ -103,33 +103,51 @@ jobs:
             ghcr.io/phillipboesger/polarion-docker:latest
 
       # ------------------------------------------------------------------
-      # 5. Wait for Polarion to be ready
+      # 5. Install Node.js & Playwright
+      #    (done before the wait step so Playwright can be used as the
+      #     readiness probe – the same approach as the polarion-docker repo)
+      # ------------------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: tests/ui/package-lock.json
+
+      - name: Install npm dependencies
+        working-directory: tests/ui
+        run: npm ci
+
+      - name: Install Playwright Chromium browser
+        working-directory: tests/ui
+        run: npx playwright install chromium --with-deps
+
+      # ------------------------------------------------------------------
+      # 6. Wait for Polarion to be ready
       #
-      # Two-phase readiness check:
+      # Phase 1 – TCP: quick /dev/tcp check to confirm Apache is up.
       #
-      # Phase 1 – TCP: raw /dev/tcp socket to confirm Apache is up.
-      #   Fires quickly (~30-40 s on GitHub Actions ubuntu-latest).
-      #   Based on polarion-runtime-lib.sh from the polarion-docker repo.
+      # Phase 2 – Playwright smoke login: launch a real Chromium browser,
+      #   navigate to /polarion, wait for the login form to appear, log in,
+      #   and verify we land on the dashboard (login form gone). Only then
+      #   does Polarion's full OSGi/HiveMind stack (including plugin
+      #   contributions) exist. This mirrors the polarion-docker repo's own
+      #   smoke-test pattern and is immune to curl CSRF-token complexity.
       #
-      # Phase 2 – Plugin: poll /polarion/code-editor/editor.html until
-      #   it responds with 2xx or 3xx (redirect to login = plugin active).
-      #   This URL is registered by the plugin bundle via hivemodule.xml.
-      #   It is ONLY served once the plugin's OSGi bundle is fully
-      #   activated and the Polarion webapp is registered — making it the
-      #   definitive readiness signal for "Polarion + plugin ready".
-      #   On GitHub Actions ubuntu-latest this takes 10–13 min.
-      #   Timeout: 900 s (15 min) to stay within the 55-min job limit.
-      #
-      # Note: curl is used WITHOUT -L to avoid the redirect-chain
-      # http_code concatenation bug (e.g. "301200" instead of "200").
+      #   On GitHub Actions ubuntu-latest this takes 10–13 min total.
+      #   TIMEOUT controls both phases (900 s = 15 min).
       # ------------------------------------------------------------------
       - name: Wait for Polarion to become ready
+        working-directory: tests/ui
+        env:
+          POLARION_URL: "http://localhost"
+          POLARION_USER: "admin"
+          POLARION_PASS: "admin"
         run: |
           HOST=127.0.0.1
           PORT=80
           TIMEOUT=900
           POLL=5
-          PLUGIN_URL="http://localhost/polarion/code-editor/editor.html"
 
           # ── Phase 1: TCP – wait for Apache ──────────────────────────
           polarion_read_http_status() {
@@ -159,49 +177,70 @@ jobs:
             sleep "${POLL}"
           done
 
-          # ── Phase 2: Plugin – wait for plugin URL to respond ────────
-          # /polarion/code-editor/editor.html is served by the plugin's
-          # OSGi bundle. A 2xx/3xx response (including redirect to login)
-          # means the bundle is fully active and the webapp is registered.
-          # A 404 means Polarion is up but the plugin is not yet loaded.
-          echo "⏳ Phase 2: waiting for plugin URL to respond (max ${TIMEOUT}s)..."
-          deadline=$(( SECONDS + TIMEOUT ))
-          while (( SECONDS < deadline )); do
-            # No -L flag: get the raw first-response HTTP code
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${PLUGIN_URL}" 2>/dev/null || true)
-            case "${CODE}" in
-              2??|3??|401|403)
-                echo "✅ Plugin is active (HTTP ${CODE}) after ${SECONDS}s total"
-                exit 0
-                ;;
-              404)
-                # Polarion is up but plugin not yet registered – keep waiting
-                ;;
-            esac
-            sleep "${POLL}"
-          done
+          # ── Phase 2: Playwright smoke login ─────────────────────────
+          echo "⏳ Phase 2: waiting for successful Polarion login via Playwright (max ${TIMEOUT}s)..."
+          node - <<'SMOKE_EOF'
+          const { chromium } = require('./node_modules/playwright');
 
-          echo "❌ Plugin did not become active within ${TIMEOUT}s"
-          docker logs polarion --tail 200
-          exit 1
+          const BASE_URL  = process.env.POLARION_URL  || 'http://localhost';
+          const USER      = process.env.POLARION_USER || 'admin';
+          const PASS      = process.env.POLARION_PASS || 'admin';
+          const TIMEOUT   = 900_000; // 15 min total
+          const POLL      = 5_000;
 
-      # ------------------------------------------------------------------
-      # 6. Install Node.js & Playwright
-      # ------------------------------------------------------------------
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: tests/ui/package-lock.json
+          (async () => {
+            const browser = await chromium.launch({
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            });
+            const page = await browser.newPage();
+            const deadline = Date.now() + TIMEOUT;
 
-      - name: Install npm dependencies
-        working-directory: tests/ui
-        run: npm ci
+            // Wait for the login form to appear
+            console.log('  Waiting for login form...');
+            let formVisible = false;
+            while (Date.now() < deadline) {
+              try {
+                await page.goto(`${BASE_URL}/polarion`, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+                formVisible = await page.locator('input[name="j_username"]')
+                  .isVisible({ timeout: 5_000 }).catch(() => false);
+                if (formVisible) break;
+              } catch (_) {}
+              await new Promise(r => setTimeout(r, POLL));
+            }
 
-      - name: Install Playwright Chromium browser
-        working-directory: tests/ui
-        run: npx playwright install chromium --with-deps
+            if (!formVisible) {
+              console.error('❌ Login form never appeared within timeout');
+              await browser.close();
+              process.exit(1);
+            }
+
+            // Log in
+            console.log('  Login form visible – logging in...');
+            await page.locator('input[name="j_username"]').fill(USER);
+            await page.locator('input[name="j_password"]').fill(PASS);
+            const submit = page.locator('input[type="submit"], button[type="submit"]').first();
+            if (await submit.isVisible({ timeout: 3_000 }).catch(() => false)) {
+              await submit.click();
+            } else {
+              await page.locator('input[name="j_password"]').press('Enter');
+            }
+
+            // Verify login succeeded: login form disappears
+            const loggedIn = await page.waitForFunction(
+              () => !document.querySelector('input[name="j_username"]'),
+              { timeout: 30_000 }
+            ).then(() => true).catch(() => false);
+
+            if (!loggedIn) {
+              console.error('❌ Login failed – still on login page');
+              await browser.close();
+              process.exit(1);
+            }
+
+            console.log(`✅ Polarion login succeeded – stack is fully ready (url: ${page.url()})`);
+            await browser.close();
+          })();
+          SMOKE_EOF
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
