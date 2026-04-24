@@ -105,30 +105,37 @@ jobs:
       # ------------------------------------------------------------------
       # 5. Wait for Polarion to be ready
       #
-      # Uses the same raw-TCP-socket approach from polarion-runtime-lib.sh
-      # in the polarion-docker repo (proven to work in CI there).
+      # Two-phase readiness check:
       #
-      # Key differences vs curl-based polling:
-      #   - Raw /dev/tcp avoids curl -L redirect-chain code-concatenation bug
-      #   - Accepts 2xx, 3xx, 401, 403 (any meaningful HTTP response = up)
-      #   - No curl dependency / no --max-time quirks
+      # Phase 1 – TCP: raw /dev/tcp socket to confirm Apache is up.
+      #   Fires quickly (~30-40 s on GitHub Actions ubuntu-latest).
+      #   Based on polarion-runtime-lib.sh from the polarion-docker repo.
       #
-      # Timeout: 900 s (15 min) – matches POLARION_START_TIMEOUT default in
-      # polarion-runtime-lib.sh.  Polarion on GitHub Actions ubuntu-latest
-      # typically takes 10–13 min to fully boot (OSGi + DB migrations).
+      # Phase 2 – Plugin: poll /polarion/code-editor/editor.html until
+      #   it responds with 2xx or 3xx (redirect to login = plugin active).
+      #   This URL is registered by the plugin bundle via hivemodule.xml.
+      #   It is ONLY served once the plugin's OSGi bundle is fully
+      #   activated and the Polarion webapp is registered — making it the
+      #   definitive readiness signal for "Polarion + plugin ready".
+      #   On GitHub Actions ubuntu-latest this takes 10–13 min.
+      #   Timeout: 900 s (15 min) to stay within the 55-min job limit.
+      #
+      # Note: curl is used WITHOUT -L to avoid the redirect-chain
+      # http_code concatenation bug (e.g. "301200" instead of "200").
       # ------------------------------------------------------------------
       - name: Wait for Polarion to become ready
         run: |
           HOST=127.0.0.1
           PORT=80
-          PATH_CHECK=/polarion/
           TIMEOUT=900
           POLL=5
+          PLUGIN_URL="http://localhost/polarion/code-editor/editor.html"
 
+          # ── Phase 1: TCP – wait for Apache ──────────────────────────
           polarion_read_http_status() {
             local st=""
             exec 3<>"/dev/tcp/${HOST}/${PORT}" 2>/dev/null || return 1
-            printf 'GET %s HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' "${PATH_CHECK}" >&3
+            printf 'GET /polarion/ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
             IFS=$'\r' read -r st <&3 || true
             exec 3<&- ; exec 3>&-
             [ -n "${st}" ] || return 1
@@ -141,18 +148,40 @@ jobs:
             case "${code}" in 2??|3??|401|403) return 0 ;; *) return 1 ;; esac
           }
 
-          echo "⏳ Waiting for Polarion at http://${HOST}:${PORT}${PATH_CHECK} (timeout ${TIMEOUT}s)..."
+          echo "⏳ Phase 1: waiting for Apache on port ${PORT} (TCP)..."
           deadline=$(( SECONDS + TIMEOUT ))
           while (( SECONDS < deadline )); do
             status="$(polarion_read_http_status 2>/dev/null || true)"
             if polarion_is_accessible "${status}"; then
-              echo "✅ Polarion is reachable (${status}) after $(( SECONDS )) s"
-              exit 0
+              echo "  ✅ Apache is up (${status}) after ${SECONDS}s"
+              break
             fi
             sleep "${POLL}"
           done
 
-          echo "❌ Polarion did not become reachable within ${TIMEOUT}s"
+          # ── Phase 2: Plugin – wait for plugin URL to respond ────────
+          # /polarion/code-editor/editor.html is served by the plugin's
+          # OSGi bundle. A 2xx/3xx response (including redirect to login)
+          # means the bundle is fully active and the webapp is registered.
+          # A 404 means Polarion is up but the plugin is not yet loaded.
+          echo "⏳ Phase 2: waiting for plugin URL to respond (max ${TIMEOUT}s)..."
+          deadline=$(( SECONDS + TIMEOUT ))
+          while (( SECONDS < deadline )); do
+            # No -L flag: get the raw first-response HTTP code
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${PLUGIN_URL}" 2>/dev/null || true)
+            case "${CODE}" in
+              2??|3??|401|403)
+                echo "✅ Plugin is active (HTTP ${CODE}) after ${SECONDS}s total"
+                exit 0
+                ;;
+              404)
+                # Polarion is up but plugin not yet registered – keep waiting
+                ;;
+            esac
+            sleep "${POLL}"
+          done
+
+          echo "❌ Plugin did not become active within ${TIMEOUT}s"
           docker logs polarion --tail 200
           exit 1
 
