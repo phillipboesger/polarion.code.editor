@@ -179,9 +179,11 @@ test.describe('Code Editor – File CRUD', () => {
     // Click delete button
     const deleteBtn = fileItem.locator('.delete-btn').first();
 
-    // Accept the browser confirm dialog
-    page.once('dialog', dialog => dialog.accept());
+    // Confirm the custom dialog modal (replaces native browser confirm)
     await deleteBtn.click();
+    const confirmDeleteBtn = page.locator('#customDialogOverlay.visible #customDialogOkBtn');
+    await confirmDeleteBtn.waitFor({ state: 'visible', timeout: 5_000 });
+    await confirmDeleteBtn.click();
 
     const deleted = await page
       .waitForFunction(
@@ -230,6 +232,87 @@ test.describe('Code Editor – File CRUD', () => {
     } else {
       test.skip(true, 'Copy action is not available in this UI build');
     }
+  });
+
+  // ── NEW FILE MODAL – TAB AUTOCOMPLETE ────────────────────────────────────
+
+  test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
+    // Ensure at least one folder exists by creating a file inside a subfolder first
+    const folderPrefix = `tab-autocomplete-${TS}`;
+    await tryCreateFile(page, `${folderPrefix}/seed.txt`);
+
+    await openNewFileModal(page);
+    const pathInput = page.locator('#newFileName');
+
+    // Type the folder prefix so suggestions appear
+    await pathInput.fill(folderPrefix.substring(0, 4));
+    await pathInput.press('Tab');
+
+    // After Tab, the input value should be completed with the folder name + trailing slash
+    const value = await pathInput.inputValue();
+    expect(value).toMatch(new RegExp(`^${folderPrefix.substring(0, 4)}.*\\/`));
+
+    // The suggestions dropdown should be hidden after selection
+    await expect(page.locator('#newFileSuggestions')).toBeHidden();
+
+    // Close modal
+    await page.locator('.modal-overlay.visible .action-btn.secondary').first().click();
+  });
+
+  // ── MODAL FOCUS TRAP ─────────────────────────────────────────────────────
+
+  test('Tab without suggestions cycles focus within the New File modal', async ({ page }) => {
+    await openNewFileModal(page);
+
+    // Collect all focusable elements inside the modal
+    const focusableSelector = '#newFileModal button:not([disabled]), #newFileModal input:not([disabled])';
+
+    // Start: input should have focus
+    await expect(page.locator('#newFileName')).toBeFocused();
+
+    // Press Tab – focus must stay inside the modal (on one of the modal buttons)
+    await page.keyboard.press('Tab');
+    const activeId = await page.evaluate(() => document.activeElement?.id ?? '');
+    const isInsideModal = await page.evaluate(
+      (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
+                Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
+      focusableSelector
+    );
+    expect(isInsideModal).toBe(true);
+
+    // Shift+Tab should also stay inside
+    await page.keyboard.press('Shift+Tab');
+    const isInsideModalAfterShift = await page.evaluate(
+      (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
+                Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
+      focusableSelector
+    );
+    expect(isInsideModalAfterShift).toBe(true);
+
+    // Close modal
+    await page.locator('#newFileModal .action-btn.secondary').first().click();
+  });
+
+  test('Tab without suggestions cycles focus within the Rename modal', async ({ page }) => {
+    await createRequiredFileOrSkip(page, TEST_FILE);
+
+    const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
+    await fileItem.hover();
+    await fileItem.locator('.list-btn[title*="Rename" i]').first().click();
+    await page.waitForSelector('#renameFileModal.visible', { timeout: 5_000 });
+
+    // Input should be focused initially
+    await expect(page.locator('#renameFileName')).toBeFocused();
+
+    // Tab must not escape the modal
+    await page.keyboard.press('Tab');
+    const isInsideModal = await page.evaluate(() =>
+      !!document.querySelector('#renameFileModal')?.contains(document.activeElement)
+    );
+    expect(isInsideModal).toBe(true);
+
+    // Close modal
+    await page.locator('#renameFileModal .action-btn.secondary').first().click();
   });
 
   // ── API HEALTH ENDPOINT ───────────────────────────────────────────────────

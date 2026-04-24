@@ -636,6 +636,22 @@
     .action-btn.secondary:hover {
         background: rgba(255,255,255,0.05);
     }
+    .action-btn.danger {
+        background: #c0392b;
+        border-color: #c0392b;
+        color: #fff;
+    }
+    .action-btn.danger:hover {
+        background: #a93226;
+        border-color: #a93226;
+    }
+    .dialog-message {
+        color: var(--text-main);
+        font-size: 13px;
+        line-height: 1.6;
+        word-break: break-word;
+        margin: 0 0 4px 0;
+    }
     .validation-error {
         color: #ff5555;
         font-size: 11px;
@@ -1730,6 +1746,11 @@
     }
 
     function setupEventListeners() {
+      // Prevent browser text-selection flash on double-click inside the file list
+      document.getElementById('fileList').addEventListener('mousedown', (e) => {
+        if (e.detail >= 2) e.preventDefault();
+      });
+
       // Sidebar Toggles
       document.getElementById('collapseSidebar').onclick = () => {
         const s = document.getElementById('sidebar');
@@ -1754,6 +1775,26 @@
       // Actions
       document.getElementById('newBtn').onclick = createFile;
       document.getElementById('downloadBtn').onclick = downloadCurrentFile;
+
+      // Focus trap: Tab cycles within each visible modal, never escaping to the page behind.
+      ['newFileModal', 'renameFileModal', 'uploadModal', 'customDialogOverlay'].forEach(id => {
+        const overlay = document.getElementById(id);
+        if (!overlay) return;
+        overlay.addEventListener('keydown', (e) => {
+          if (e.key !== 'Tab' || !overlay.classList.contains('visible')) return;
+          if (e.defaultPrevented) return; // suggestion-Tab already handled
+          const focusable = Array.from(
+            overlay.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+          ).filter(el => el.offsetParent !== null);
+          if (focusable.length === 0) return;
+          e.preventDefault();
+          const idx = focusable.indexOf(document.activeElement);
+          const next = e.shiftKey
+            ? (idx - 1 + focusable.length) % focusable.length
+            : (idx + 1) % focusable.length;
+          focusable[next].focus();
+        });
+      });
       document.getElementById('uploadBtn').onclick = () => document.getElementById('uploadFileInput').click();
       document.getElementById('uploadFileInput').onchange = uploadFile;
       document.getElementById('saveBtn').onclick = saveCurrentFile;
@@ -1795,8 +1836,16 @@
           if (isModifierPressed && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
               e.preventDefault();
               formatCurrentDocument().catch(err => {
-                  alert('Error formatting file: ' + err);
+                  showAlert('Error formatting file: ' + err);
               });
+          }
+          // Escape – close custom dialog
+          if (e.key === 'Escape') {
+              const overlay = document.getElementById('customDialogOverlay');
+              if (overlay && overlay.classList.contains('visible')) {
+                  e.preventDefault();
+                  customDialogCancel();
+              }
           }
       });
 
@@ -1977,47 +2026,49 @@
       if (idx === -1) return;
       const tab = openTabs[idx];
 
-      if (isTabDirty(tab)) {
-        if (!confirm(`You have unsaved changes in ${tab.path}. Discard changes?`)) {
+      function doClose() {
+        const wasActive = tab.id === activeTabId;
+        const nextActiveId = wasActive
+          ? (openTabs[idx + 1]?.id || openTabs[idx - 1]?.id || null)
+          : activeTabId;
+
+        openTabs.splice(idx, 1);
+
+        if (tab.model) {
+          tab.model.dispose();
+        }
+
+        if (previewTabId === tab.id) previewTabId = null;
+
+        if (openTabs.length === 0) {
+          activeTabId = null;
+          currentFile = null;
+          originalContent = '';
+          saveLastOpenedFile('');
+          saveOpenTabsSession();
+          if (editor) {
+            const oldModel = editor.getModel();
+            const emptyModel = monaco.editor.createModel('', 'plaintext');
+            editor.setModel(emptyModel);
+            if (oldModel) oldModel.dispose();
+          }
+          toggleEmptyState(true);
+          renderTabs();
+          renderFileList();
           return;
         }
-      }
 
-      const wasActive = tab.id === activeTabId;
-      const nextActiveId = wasActive
-        ? (openTabs[idx + 1]?.id || openTabs[idx - 1]?.id || null)
-        : activeTabId;
-
-      openTabs.splice(idx, 1);
-
-      if (tab.model) {
-        tab.model.dispose();
-      }
-
-      if (previewTabId === tab.id) previewTabId = null;
-
-      if (openTabs.length === 0) {
-        activeTabId = null;
-        currentFile = null;
-        originalContent = '';
-        saveLastOpenedFile('');
-        saveOpenTabsSession();
-        if (editor) {
-          const oldModel = editor.getModel();
-          const emptyModel = monaco.editor.createModel('', 'plaintext');
-          editor.setModel(emptyModel);
-          if (oldModel) oldModel.dispose();
-        }
-        toggleEmptyState(true);
-        renderTabs();
+        activeTabId = nextActiveId;
+        activateTab(activeTabId);
         renderFileList();
+        saveOpenTabsSession();
+      }
+
+      if (isTabDirty(tab)) {
+        showConfirm(`You have unsaved changes in ${tab.path}. Discard changes?`, 'Unsaved Changes', doClose);
         return;
       }
-
-      activeTabId = nextActiveId;
-      activateTab(activeTabId);
-      renderFileList();
-      saveOpenTabsSession();
+      doClose();
     }
 
     function openFileInTab(filePath, options = {}) {
@@ -2036,9 +2087,13 @@
       const currentPreview = previewTabId ? getTabById(previewTabId) : null;
       if (currentPreview && !persistent) {
         if (isTabDirty(currentPreview)) {
-          if (!confirm(`You have unsaved changes in ${currentPreview.path}. Discard changes?`)) {
-            return Promise.resolve(null);
-          }
+          showConfirm(`You have unsaved changes in ${currentPreview.path}. Discard changes?`, 'Unsaved Changes', function() {
+            if (currentPreview.model) currentPreview.model.dispose();
+            openTabs = openTabs.filter(t => t.id !== currentPreview.id);
+            previewTabId = null;
+            openFileInTab(filePath, options);
+          });
+          return Promise.resolve(null);
         }
         if (currentPreview.model) currentPreview.model.dispose();
         openTabs = openTabs.filter(t => t.id !== currentPreview.id);
@@ -2112,7 +2167,7 @@
           if (permissionMessage) {
             showPermissionMessageInEditor(err);
           } else {
-            alert('Error loading file content: ' + err);
+            showAlert('Error loading file content: ' + err);
           }
           return null;
         })
@@ -2497,6 +2552,8 @@
              // Double click on folder row → navigate into folder context
              li.ondblclick = (e) => {
                  e.stopPropagation();
+                 e.preventDefault();
+                 window.getSelection()?.removeAllRanges();
                  navigateToFolder(folderPath);
              };
 
@@ -2572,6 +2629,8 @@
              // Double click: open persistent tab
              li.ondblclick = (e) => {
                  e.stopPropagation();
+                 e.preventDefault();
+                 window.getSelection()?.removeAllRanges();
                  onFileSelect(entry.path, true);
              };
 
@@ -2591,9 +2650,10 @@
       }
 
       if (isDirty()) {
-         if (!confirm(`You have unsaved changes in ${currentFile}. Discard changes?`)) {
-             return;
-         }
+        showConfirm(`You have unsaved changes in ${currentFile}. Discard changes?`, 'Unsaved Changes', function() {
+          openFileInTab(fileName, { persistent: !!persistent });
+        });
+        return;
       }
 
       openFileInTab(fileName, { persistent: !!persistent });
@@ -2611,7 +2671,7 @@
       try {
         await formatCurrentDocument();
       } catch (err) {
-        alert('Error formatting before save: ' + err);
+        showAlert('Error formatting before save: ' + err);
         updateToolbarState();
         return;
       }
@@ -2628,12 +2688,12 @@
              originalContent = content;
              updateToolbarState();
           } else {
-             alert('Error saving file');
+             showAlert('Error saving file');
              updateToolbarState();
           }
         })
         .catch(err => {
-            alert('Error saving: ' + err);
+            showAlert('Error saving: ' + err);
             updateToolbarState();
         });
     }
@@ -2648,32 +2708,19 @@
         if (!tab) return;
         const filename = tab.path.split('/').pop() || tab.path;
 
-        function triggerDownload(url, name) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            if (url.startsWith('blob:')) {
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
-            }
-        }
+        // Build the API download URL — the server sets Content-Disposition: attachment
+        // which triggers a proper browser download dialog even inside iFrames.
+        let downloadUrl = buildFileApiUrl(tab.path);
+        downloadUrl += (downloadUrl.includes('?') ? '&' : '?') + 'download=true';
 
-        if (tab.isImage) {
-            fetch(buildFileApiUrl(tab.path))
-                .then(res => {
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    return res.blob();
-                })
-                .then(blob => triggerDownload(URL.createObjectURL(blob), filename))
-                .catch(err => alert('Error downloading file: ' + err));
-        } else {
-            const content = tab.model.getValue();
-            const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
-            triggerDownload(dataUrl, filename);
-        }
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = filename;
+        a.style.display = 'none';
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 
     let pendingUploadContent = null;
@@ -2693,7 +2740,7 @@
 
         file.text().then(content => {
             openUploadModal(suggestedPath, content);
-        }).catch(err => alert('Error reading file: ' + err));
+        }).catch(err => showAlert('Error reading file: ' + err));
     }
 
     function openUploadModal(suggestedPath, content) {
@@ -2743,11 +2790,11 @@
                 setTimeout(() => openFileInTab(cleanPath, { persistent: true }), 300);
             } else {
                 res.json()
-                    .then(data => alert('Error uploading file: ' + (data.error || 'Unknown')))
-                    .catch(() => alert('Error uploading file'));
+                    .then(data => showAlert('Error uploading file: ' + (data.error || 'Unknown')))
+                    .catch(() => showAlert('Error uploading file'));
             }
         })
-        .catch(err => alert('Error uploading: ' + err));
+        .catch(err => showAlert('Error uploading: ' + err));
     }
 
     function populateFolderSelect(selectId) {
@@ -2785,8 +2832,8 @@
              const lastSlash = val.lastIndexOf('/');
              // prefix is everything before last slash
              const prefix = lastSlash === -1 ? "" : val.substring(0, lastSlash);
-             // current token is everything after last slash
-             // const token = val.substring(lastSlash + 1); // Not used for filtering folders strictly but could be
+             // current token is everything after last slash – used to filter suggestions live
+             const token = val.substring(lastSlash + 1).toLowerCase();
              
              // We want to suggest SUB-folders of the prefix.
              // If prefix is "", show top level folders.
@@ -2798,14 +2845,14 @@
              allDirs.forEach(d => {
                  if (prefix === "") {
                      // Top level: taking the first segment
-                     if (!d.includes('/')) matches.add(d);
-                     else matches.add(d.split('/')[0]);
+                     const seg = d.includes('/') ? d.split('/')[0] : d;
+                     if (seg.toLowerCase().startsWith(token)) matches.add(seg);
                  } else {
                      if (d.startsWith(prefix + '/')) {
                          const remainder = d.substring(prefix.length + 1);
                          if(remainder) {
                             const nextSeg = remainder.split('/')[0];
-                            matches.add(nextSeg);
+                            if (nextSeg.toLowerCase().startsWith(token)) matches.add(nextSeg);
                          }
                      }
                  }
@@ -2880,6 +2927,17 @@
                    // Commit form
                    onCommit(); 
                }
+           } else if (e.key === 'Tab') {
+               if(dropdown.style.display === 'block') {
+                   e.preventDefault();
+                   e.stopPropagation();
+                   const idx = activeIndex >= 0 ? activeIndex : 0;
+                   if(dropdown.children.length > 0) {
+                       const text = dropdown.children[idx].textContent.trim();
+                       applySuggestion(text);
+                   }
+               }
+               // No else: let overlay focus-trap handle Tab when no suggestions
            } else if (e.key === 'Escape') {
                if(dropdown.style.display === 'block') {
                    e.preventDefault(); // don't close modal yet
@@ -2898,11 +2956,8 @@
            }
         };
 
-        input.onkeyup = (e) => {
-            // Use keyup for showSuggestions trigger after value update
-             if (e.key === '/' || e.key === 'Backspace' || e.key.length === 1) {
-                  showSuggestions();
-             }
+        input.oninput = () => {
+            showSuggestions();
         };
         
         input.onblur = () => {
@@ -3025,11 +3080,11 @@
           if (res.ok) {
             loadFiles(); 
           } else {
-            res.json().then(data => alert('Error creating file: ' + (data.error || 'Unknown')))
-               .catch(() => alert('Error creating file'));
+            res.json().then(data => showAlert('Error creating file: ' + (data.error || 'Unknown')))
+               .catch(() => showAlert('Error creating file'));
           }
         })
-        .catch(err => alert('Error creating: ' + err));
+        .catch(err => showAlert('Error creating: ' + err));
     }
 
     let fileToRename = null;
@@ -3037,7 +3092,7 @@
 
     function renameFile(oldName) {
         if(oldName === currentFile && isDirty()) {
-            alert("Please save changes before renaming.");
+            showAlert("Please save changes before renaming.", 'Cannot Rename');
             return;
         }
         fileToRename = oldName;
@@ -3158,63 +3213,119 @@
                 renderTabs();
                 loadFiles();
             } else {
-                res.json().then(d => alert("Rename failed: " + d.error)).catch(() => alert("Rename failed"));
+                res.json().then(d => showAlert("Rename failed: " + d.error)).catch(() => showAlert("Rename failed"));
             }
         })
-        .catch(err => alert("Rename error: " + err));
+        .catch(err => showAlert("Rename error: " + err));
+    }
+
+    // ── Custom Dialog (replaces native confirm / alert) ──────────────
+    let _customDialogOnOk = null;
+    let _customDialogOnCancel = null;
+
+    function showConfirm(message, title, onConfirm, onCancel) {
+      _customDialogOnOk = onConfirm || null;
+      _customDialogOnCancel = onCancel || null;
+      document.getElementById('customDialogTitle').textContent = title || 'Confirm';
+      document.getElementById('customDialogMessage').textContent = message;
+      document.getElementById('customDialogCancelBtn').style.display = '';
+      const okBtn = document.getElementById('customDialogOkBtn');
+      okBtn.className = 'action-btn danger';
+      okBtn.textContent = 'OK';
+      document.getElementById('customDialogOverlay').classList.add('visible');
+    }
+
+    function showAlert(message, title) {
+      _customDialogOnOk = null;
+      _customDialogOnCancel = null;
+      document.getElementById('customDialogTitle').textContent = title || 'Error';
+      document.getElementById('customDialogMessage').textContent = message;
+      document.getElementById('customDialogCancelBtn').style.display = 'none';
+      const okBtn = document.getElementById('customDialogOkBtn');
+      okBtn.className = 'action-btn';
+      okBtn.textContent = 'OK';
+      document.getElementById('customDialogOverlay').classList.add('visible');
+    }
+
+    function customDialogOk() {
+      document.getElementById('customDialogOverlay').classList.remove('visible');
+      const cb = _customDialogOnOk;
+      _customDialogOnOk = null;
+      _customDialogOnCancel = null;
+      if (typeof cb === 'function') cb();
+    }
+
+    function customDialogCancel() {
+      document.getElementById('customDialogOverlay').classList.remove('visible');
+      const cb = _customDialogOnCancel;
+      _customDialogOnOk = null;
+      _customDialogOnCancel = null;
+      if (typeof cb === 'function') cb();
     }
 
     function deleteFile(fileName) {
-      if (!confirm("Delete " + fileName + "? This cannot be undone.")) return;
-
-      fetch(buildFileApiUrl(fileName), {
-        method: 'DELETE'
-      })
-        .then(res => {
-          if (res.ok) {
-            const deletedPrefix = fileName.endsWith('/') ? fileName : null;
-
-            const tabsToRemove = openTabs.filter(tab => {
-              if (tab.path === fileName) return true;
-              if (deletedPrefix && tab.path.startsWith(deletedPrefix)) return true;
-              return false;
-            });
-
-            tabsToRemove.forEach(tab => {
-              if (tab.model) tab.model.dispose();
-            });
-
-            openTabs = openTabs.filter(tab => !tabsToRemove.includes(tab));
-
-            if (previewTabId && !getTabById(previewTabId)) {
-              previewTabId = null;
-            }
-
-            if (activeTabId && !getTabById(activeTabId)) {
-              activeTabId = openTabs.length ? openTabs[openTabs.length - 1].id : null;
-            }
-
-            if (activeTabId) {
-              activateTab(activeTabId);
-            } else {
-              currentFile = null;
-              originalContent = '';
-              saveLastOpenedFile('');
-              saveOpenTabsSession();
-              toggleEmptyState(true);
-              renderTabs();
-            }
-
-            loadFiles();
-          } else {
-            res.json().then(data => alert('Error deleting: ' + (data.error || 'Unknown')));
-          }
+      showConfirm("Delete " + fileName + "? This cannot be undone.", 'Delete File', function() {
+        fetch(buildFileApiUrl(fileName), {
+          method: 'DELETE'
         })
-        .catch(err => alert('Error deleting: ' + err));
+          .then(res => {
+            if (res.ok) {
+              const deletedPrefix = fileName.endsWith('/') ? fileName : null;
+
+              const tabsToRemove = openTabs.filter(tab => {
+                if (tab.path === fileName) return true;
+                if (deletedPrefix && tab.path.startsWith(deletedPrefix)) return true;
+                return false;
+              });
+
+              tabsToRemove.forEach(tab => {
+                if (tab.model) tab.model.dispose();
+              });
+
+              openTabs = openTabs.filter(tab => !tabsToRemove.includes(tab));
+
+              if (previewTabId && !getTabById(previewTabId)) {
+                previewTabId = null;
+              }
+
+              if (activeTabId && !getTabById(activeTabId)) {
+                activeTabId = openTabs.length ? openTabs[openTabs.length - 1].id : null;
+              }
+
+              if (activeTabId) {
+                activateTab(activeTabId);
+              } else {
+                currentFile = null;
+                originalContent = '';
+                saveLastOpenedFile('');
+                saveOpenTabsSession();
+                toggleEmptyState(true);
+                renderTabs();
+              }
+
+              loadFiles();
+            } else {
+              res.json().then(data => showAlert('Error deleting: ' + (data.error || 'Unknown')));
+            }
+          })
+          .catch(err => showAlert('Error deleting: ' + err));
+      });
     }
 
 
   </script>
+  <!-- Custom Dialog Modal (replaces native confirm / alert) -->
+  <div id="customDialogOverlay" class="modal-overlay">
+    <div class="modal-content" style="max-width:420px;width:420px;">
+      <h3 id="customDialogTitle">Confirm</h3>
+      <p id="customDialogMessage" class="dialog-message"></p>
+      <div class="modal-actions" style="margin-top:20px;">
+        <button id="customDialogCancelBtn" onclick="customDialogCancel()" class="action-btn secondary">Cancel</button>
+        <button id="customDialogOkBtn" onclick="customDialogOk()" class="action-btn">OK</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New File Modal -->
   <div id="newFileModal" class="modal-overlay">
     <div class="modal-content">
