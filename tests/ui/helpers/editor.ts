@@ -23,8 +23,9 @@ export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<
  */
 export async function openEditor(page: Page, projectId?: string): Promise<void> {
   const url = projectId ? `${EDITOR_URL}?projectId=${encodeURIComponent(projectId)}` : EDITOR_URL;
-  await page.goto(url);
-  await page.waitForLoadState('networkidle');
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  // Do NOT use 'networkidle' – Polarion keeps persistent background requests alive
+  // which can cause networkidle to never fire on CI. Use DOM readiness instead.
   await waitForEditorReady(page);
 }
 

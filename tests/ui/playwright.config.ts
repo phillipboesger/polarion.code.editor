@@ -27,5 +27,14 @@ export default defineConfig({
     // CI runners are often slower than local Docker; use slightly higher limits there.
     navigationTimeout: process.env.CI ? 90_000 : 60_000,
     actionTimeout: process.env.CI ? 45_000 : 30_000,
+    // On GitHub Actions (Linux) /dev/shm is only 64 MB; Chromium can crash without these flags.
+    // --no-sandbox is required when running as root (default in GitHub Actions).
+    launchOptions: {
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+      ],
+    },
   },
 });

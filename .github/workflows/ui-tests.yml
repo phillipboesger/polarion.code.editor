@@ -85,14 +85,18 @@ jobs:
 
       - name: Start Polarion container
         run: |
+          # GitHub Actions ubuntu-latest has ~7 GB RAM.
+          # Reduce JVM heap so there is headroom for Chromium (~500 MB) and Node.js.
+          # --shm-size=256m avoids /dev/shm exhaustion inside the container.
           docker run -d \
             --name polarion \
             --platform linux/amd64 \
             --memory 6g \
+            --shm-size=256m \
             -p 80:80 \
             -p 5433:5433 \
             -p 5005:5005 \
-            -e JAVA_OPTS="-Xmx5g -Xms2g" \
+            -e JAVA_OPTS="-Xmx3g -Xms1g" \
             -e JDWP_ENABLED=false \
             --volume polarion_repo:/opt/polarion/data/svn \
             --volume polarion_extensions:/opt/polarion/polarion/extensions \
