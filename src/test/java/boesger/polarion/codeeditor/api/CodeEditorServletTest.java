@@ -192,15 +192,15 @@ public class CodeEditorServletTest {
 		// Expect an exception from the missing Polarion platform — that is expected in unit tests
 		try {
 			servlet.doGet(request, response);
-		} catch (Throwable e) { // NOSONAR: intentionally catching Error from missing Polarion platform
+		}
+		catch(Throwable e) { // NOSONAR: intentionally catching Error from missing Polarion platform
 			// Expected: PlatformContext not initialized in unit test environment
 		}
 		// The test verifies only that the download parameter is accepted without HTTP 4xx before service call
 		// A 500 from missing Polarion platform is acceptable here
 		verify(response, org.mockito.Mockito.never()).sendError(
-			org.mockito.ArgumentMatchers.eq(HttpServletResponse.SC_NOT_FOUND),
-			org.mockito.ArgumentMatchers.anyString()
-		);
+				org.mockito.ArgumentMatchers.eq(HttpServletResponse.SC_NOT_FOUND),
+				org.mockito.ArgumentMatchers.anyString());
 	}
 
 	@Test
@@ -217,8 +217,8 @@ public class CodeEditorServletTest {
 		// Simulates how the servlet extracts the filename from a path
 		String fullPath = "subfolder/my-config.json";
 		String baseName = fullPath.contains("/")
-			? fullPath.substring(fullPath.lastIndexOf('/') + 1)
-			: fullPath;
+				? fullPath.substring(fullPath.lastIndexOf('/') + 1)
+				: fullPath;
 		org.junit.Assert.assertEquals("my-config.json", baseName);
 	}
 
