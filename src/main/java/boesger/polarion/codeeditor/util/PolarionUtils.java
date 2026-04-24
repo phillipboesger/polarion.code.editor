@@ -23,11 +23,26 @@ public class PolarionUtils {
 
 	private static final Logger log = Logger.getLogger(PolarionUtils.class.getName());
 
-	private static final ITrackerService trackerService = PlatformContext.getPlatform().lookupService(ITrackerService.class);
-	private static final ITransactionService transactionService = PlatformContext.getPlatform()
+	private static ITrackerService trackerService = PlatformContext.getPlatform().lookupService(ITrackerService.class);
+	private static ITransactionService transactionService = PlatformContext.getPlatform()
 			.lookupService(ITransactionService.class);
-	private static final IRepositoryService repositoryService = PlatformContext.getPlatform()
+	private static IRepositoryService repositoryService = PlatformContext.getPlatform()
 			.lookupService(IRepositoryService.class);
+
+	/** For testing only. Replaces the tracker service with a test double. */
+	static void setTrackerService(ITrackerService service) {
+		trackerService = service;
+	}
+
+	/** For testing only. Replaces the transaction service with a test double. */
+	static void setTransactionService(ITransactionService service) {
+		transactionService = service;
+	}
+
+	/** For testing only. Replaces the repository service with a test double. */
+	static void setRepositoryService(IRepositoryService service) {
+		repositoryService = service;
+	}
 
 	public interface RunnableWEx<T> {
 		T run() throws Exception; // NOSONAR: Generisches Functional Interface — Implementierungen können beliebige Exceptions werfen

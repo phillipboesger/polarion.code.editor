@@ -1,0 +1,111 @@
+import { Page, BrowserContext } from '@playwright/test';
+
+const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+
+export const BASE_URL = env.POLARION_URL ?? 'http://localhost';
+export const ADMIN_USER = env.POLARION_USER ?? 'admin';
+export const ADMIN_PASS = env.POLARION_PASS ?? 'admin';
+
+const USERNAME_SELECTORS = ['#j_username', 'input[name="j_username"]', 'input.j_username'];
+const PASSWORD_SELECTORS = ['#j_password', 'input[name="j_password"]', 'input.j_password'];
+const SUBMIT_SELECTORS = ['#submitButton', 'button[type="submit"]', 'input[type="submit"]'];
+
+async function firstVisibleSelector(page: Page, selectors: string[]): Promise<string | null> {
+  for (const selector of selectors) {
+    const visible = await page
+      .locator(selector)
+      .first()
+      .isVisible({ timeout: 1_000 })
+      .catch(() => false);
+    if (visible) {
+      return selector;
+    }
+  }
+  return null;
+}
+
+async function waitForLoginForm(page: Page, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const userSelector = await firstVisibleSelector(page, USERNAME_SELECTORS);
+    const hasUserInput = userSelector !== null;
+
+    if (hasUserInput) {
+      return true;
+    }
+
+    // If we are already past login, treat as authenticated session.
+    if (!/\/polarion\/login/i.test(page.url())) {
+      return false;
+    }
+
+    await page.waitForTimeout(1_000);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  }
+
+  return false;
+}
+
+/** Logs in to Polarion via the standard login form and waits for redirect. */
+export async function loginAsPolarionAdmin(page: Page): Promise<void> {
+  await page.goto(`${BASE_URL}/polarion/login`, { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
+
+  const formReady = await waitForLoginForm(page, 20_000);
+
+  // Some Polarion environments may already carry an authenticated session.
+  if (!formReady) {
+    if (!/\/polarion\/login/i.test(page.url())) {
+      return;
+    }
+    throw new Error(`Polarion login form not available (url: ${page.url()})`);
+  }
+
+  const userSelector = await firstVisibleSelector(page, USERNAME_SELECTORS);
+  const passSelector = await firstVisibleSelector(page, PASSWORD_SELECTORS);
+  const submitSelector = await firstVisibleSelector(page, SUBMIT_SELECTORS);
+
+  if (!userSelector || !passSelector || !submitSelector) {
+    throw new Error(`Polarion login controls not found (url: ${page.url()})`);
+  }
+
+  await page.fill(userSelector, ADMIN_USER);
+  await page.fill(passSelector, ADMIN_PASS);
+  await page.click(submitSelector);
+
+  // Polarion's login page contains a JS refresh() function that redirects to the target
+  // after detecting an authenticated session. In headless mode document.visibilityState
+  // is 'hidden', so that function exits early and the URL stays on /polarion/login even
+  // after a successful login. Instead of waiting for a URL change, we wait for the form
+  // submission to complete (login form disappears or new session cookie arrives) and then
+  // navigate explicitly to /polarion/.
+  await page.waitForTimeout(1_500);
+
+  // If the login form is still visible the credentials were rejected.
+  const formStillVisible = await firstVisibleSelector(page, USERNAME_SELECTORS);
+  if (formStillVisible !== null) {
+    // Retry once with Enter key in case the button click was missed.
+    await page.locator(passSelector).press('Enter').catch(() => {});
+    await page.waitForTimeout(1_500);
+    const stillFailing = await firstVisibleSelector(page, USERNAME_SELECTORS);
+    if (stillFailing !== null) {
+      throw new Error(`Polarion login failed – credentials rejected (url: ${page.url()})`);
+    }
+  }
+
+  // Navigate away from the login page explicitly (headless visibility workaround).
+  await page.goto(`${BASE_URL}/polarion/`, { waitUntil: 'domcontentloaded' });
+  if (page.url().includes('/polarion/login')) {
+    throw new Error(`Polarion login failed or stuck on login page (url: ${page.url()})`);
+  }
+}
+
+/**
+ * Stores the authenticated Polarion session cookies into the given context so
+ * subsequent pages do not need to re-login.
+ */
+export async function saveSession(context: BrowserContext, page: Page): Promise<void> {
+  await loginAsPolarionAdmin(page);
+  // Cookies are automatically stored in the context – nothing extra to do.
+}
