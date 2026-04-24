@@ -24,6 +24,9 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
+import javax.transaction.Transaction;
+import javax.transaction.UserTransaction;
+
 import com.polarion.alm.tracker.ITrackerService;
 import com.polarion.alm.tracker.model.ITrackerProject;
 import com.polarion.platform.ITransactionService;
@@ -66,6 +69,41 @@ public class PolarionUtilsTest {
 		public void endTx(boolean rollback) {
 			endTxCallCount.incrementAndGet();
 			endTxRollbackArg.set(rollback);
+		}
+
+		@Override
+		public void commitTx() throws Exception {
+			// not called directly in PolarionUtils
+		}
+
+		@Override
+		public void rollbackTx() {
+			// not called directly in PolarionUtils
+		}
+
+		@Override
+		public boolean txExists() {
+			return false;
+		}
+
+		@Override
+		public UserTransaction getUserTransaction() {
+			return null;
+		}
+
+		@Override
+		public Transaction getTransaction() {
+			return null;
+		}
+
+		@Override
+		public void setRollbackOnly(String message) {
+			// no-op
+		}
+
+		@Override
+		public void setRollbackOnly(Throwable t) {
+			// no-op
 		}
 
 		@Override

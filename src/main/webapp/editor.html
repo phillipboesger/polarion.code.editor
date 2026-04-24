@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <title>File Editor</title>
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com data:;">
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com data:;">
   <style>
     :root {
       --bg-dark: #1e1e1e;
@@ -235,6 +235,11 @@
     .icon-btn:hover {
       background: rgba(255,255,255,0.1);
       color: var(--text-light);
+    }
+    .icon-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+      pointer-events: none;
     }
 
     .editor-toolbar-divider {
@@ -795,9 +800,18 @@
       <div class="sidebar-header">
         <span class="sidebar-title">EXPLORER</span>
          <div class="sidebar-header-actions">
-           <button id="newBtn" class="action-btn">New File</button>
+           <button id="downloadBtn" class="icon-btn" title="Download current file" disabled>
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+           </button>
+           <button id="uploadBtn" class="icon-btn" title="Upload file">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+           </button>
+           <button id="newBtn" class="icon-btn" title="New File">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+           </button>
            <button class="icon-btn" id="collapseSidebar" title="Collapse Sidebar">«</button>
           </div>
+          <input type="file" id="uploadFileInput" style="display:none;">
       </div>
       <div class="sidebar-content">
         <ul class="file-list" id="fileList">
@@ -1739,6 +1753,9 @@
 
       // Actions
       document.getElementById('newBtn').onclick = createFile;
+      document.getElementById('downloadBtn').onclick = downloadCurrentFile;
+      document.getElementById('uploadBtn').onclick = () => document.getElementById('uploadFileInput').click();
+      document.getElementById('uploadFileInput').onchange = uploadFile;
       document.getElementById('saveBtn').onclick = saveCurrentFile;
       document.getElementById('fontSizeDecreaseBtn').onclick = () => adjustEditorFontSize(-1);
       document.getElementById('fontSizeIncreaseBtn').onclick = () => adjustEditorFontSize(1);
@@ -1824,10 +1841,12 @@
 
     function updateToolbarState() {
       const saveBtn = document.getElementById('saveBtn');
+      const downloadBtn = document.getElementById('downloadBtn');
       const tab = getActiveTab();
       if (tab && tab.isImage) {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Save';
+        downloadBtn.disabled = false;
         document.getElementById('currentFileLabel').textContent = tab.path + ' (View only)';
         renderTabs();
         return;
@@ -1839,6 +1858,7 @@
         saveBtn.disabled = true;
         saveBtn.textContent = 'Save';
       }
+      downloadBtn.disabled = !tab;
       renderTabs();
     }
 
@@ -1858,6 +1878,7 @@
         }
         document.getElementById('currentFileLabel').textContent = 'No File Selected';
         document.getElementById('saveBtn').disabled = true;
+        document.getElementById('downloadBtn').disabled = true;
       } else {
         emptyState.classList.add('hidden');
         const tab = getActiveTab();
@@ -2622,6 +2643,113 @@
         openNewFileModal();
     }
 
+    function downloadCurrentFile() {
+        const tab = getActiveTab();
+        if (!tab) return;
+        const filename = tab.path.split('/').pop() || tab.path;
+
+        function triggerDownload(url, name) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            if (url.startsWith('blob:')) {
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+        }
+
+        if (tab.isImage) {
+            fetch(buildFileApiUrl(tab.path))
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.blob();
+                })
+                .then(blob => triggerDownload(URL.createObjectURL(blob), filename))
+                .catch(err => alert('Error downloading file: ' + err));
+        } else {
+            const content = tab.model.getValue();
+            const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+            triggerDownload(dataUrl, filename);
+        }
+    }
+
+    let pendingUploadContent = null;
+
+    function uploadFile() {
+        const input = document.getElementById('uploadFileInput');
+        const file = input.files[0];
+        if (!file) return;
+        input.value = '';
+
+        let suggestedPath = file.name;
+        if (currentFile) {
+            const lastSlash = currentFile.lastIndexOf('/');
+            const dir = lastSlash >= 0 ? currentFile.substring(0, lastSlash + 1) : '';
+            suggestedPath = dir + file.name;
+        }
+
+        file.text().then(content => {
+            openUploadModal(suggestedPath, content);
+        }).catch(err => alert('Error reading file: ' + err));
+    }
+
+    function openUploadModal(suggestedPath, content) {
+        pendingUploadContent = content;
+        const input = document.getElementById('uploadPathInput');
+        const errorDiv = document.getElementById('uploadPathError');
+        input.value = suggestedPath;
+        errorDiv.textContent = '';
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); confirmUploadFile(); }
+            if (e.key === 'Escape') { e.preventDefault(); closeUploadModal(); }
+        };
+        document.getElementById('uploadModal').classList.add('visible');
+        setTimeout(() => { input.focus(); input.select(); }, 50);
+    }
+
+    function closeUploadModal() {
+        document.getElementById('uploadModal').classList.remove('visible');
+        pendingUploadContent = null;
+    }
+
+    function confirmUploadFile() {
+        const input = document.getElementById('uploadPathInput');
+        const errorDiv = document.getElementById('uploadPathError');
+        const cleanPath = (input.value || '').trim().replace(/^\/+/, '');
+
+        if (!cleanPath) {
+            errorDiv.textContent = 'Please enter a file path';
+            return;
+        }
+        const validationError = validatePathInput(cleanPath, false);
+        if (validationError) {
+            errorDiv.textContent = validationError;
+            return;
+        }
+
+        const content = pendingUploadContent;
+        closeUploadModal();
+
+        fetch(buildFileApiUrl(cleanPath), {
+            method: 'PUT',
+            body: content
+        })
+        .then(res => {
+            if (res.ok) {
+                loadFiles();
+                setTimeout(() => openFileInTab(cleanPath, { persistent: true }), 300);
+            } else {
+                res.json()
+                    .then(data => alert('Error uploading file: ' + (data.error || 'Unknown')))
+                    .catch(() => alert('Error uploading file'));
+            }
+        })
+        .catch(err => alert('Error uploading: ' + err));
+    }
+
     function populateFolderSelect(selectId) {
         // Deprecated/Removed - logic moved to input suggestions
     }
@@ -3113,6 +3241,26 @@
     </div>
   </div>
   
+  <!-- Upload Modal -->
+  <div id="uploadModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Upload File</h3>
+        <div class="modal-field">
+            <label>Save as</label>
+            <div class="path-container" style="position:relative;">
+                <input type="text" id="uploadPathInput" class="path-input"
+                       autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off"
+                       placeholder="folder/filename.yaml" style="flex:1;">
+            </div>
+            <div id="uploadPathError" class="validation-error"></div>
+        </div>
+        <div class="modal-actions">
+            <button onclick="closeUploadModal()" class="action-btn secondary">Cancel</button>
+            <button onclick="confirmUploadFile()" class="action-btn">Upload</button>
+        </div>
+    </div>
+  </div>
+
   <!-- Rename File Modal -->
   <div id="renameFileModal" class="modal-overlay">
     <div class="modal-content">
