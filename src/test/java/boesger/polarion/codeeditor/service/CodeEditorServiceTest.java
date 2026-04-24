@@ -1,18 +1,5 @@
 package boesger.polarion.codeeditor.service;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,11 +8,22 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.After;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import com.polarion.alm.tracker.model.ITrackerProject;
@@ -41,13 +39,20 @@ import boesger.polarion.codeeditor.util.PolarionUtils;
 
 public class CodeEditorServiceTest {
 
-	@Mock private IRepositoryService mockRepoService;
-	@Mock private IRepositoryReadOnlyConnection mockRepoConn;
-	@Mock private ITrackerProject mockProject;
-	@Mock private ILocation mockProjectLoc;
-	@Mock private ILocation mockGlobalRoot;
-	@Mock private ILocation mockChildLoc;
-	@Mock private IRevisionMetaData mockRevision;
+	@Mock
+	private IRepositoryService mockRepoService;
+	@Mock
+	private IRepositoryReadOnlyConnection mockRepoConn;
+	@Mock
+	private ITrackerProject mockProject;
+	@Mock
+	private ILocation mockProjectLoc;
+	@Mock
+	private ILocation mockGlobalRoot;
+	@Mock
+	private ILocation mockChildLoc;
+	@Mock
+	private IRevisionMetaData mockRevision;
 
 	private MockedStatic<PolarionUtils> utilsMock;
 	private MockedStatic<Location> locationMock;

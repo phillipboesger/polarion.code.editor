@@ -6,13 +6,12 @@ import java.nio.charset.StandardCharsets;
 
 import com.polarion.alm.tracker.ITrackerService;
 import com.polarion.alm.tracker.model.ITrackerProject;
+import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.ITransactionService;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.persistence.UnresolvableObjectException;
 import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
-
-import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 

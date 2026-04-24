@@ -38,9 +38,12 @@ public class PolarionUtilsTest {
 
 	private static MockedStatic<PlatformContext> platformContextMock;
 
-	@Mock private ITrackerService mockTrackerService;
-	@Mock private IRepositoryService mockRepositoryService;
-	@Mock private ITrackerProject mockProject;
+	@Mock
+	private ITrackerService mockTrackerService;
+	@Mock
+	private IRepositoryService mockRepositoryService;
+	@Mock
+	private ITrackerProject mockProject;
 
 	// Manual transaction service implementation to avoid Mockito inline-mock limitation
 	private static final AtomicBoolean canBeginTx = new AtomicBoolean(true);
