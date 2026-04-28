@@ -29,3 +29,5 @@ README.pdf
 tests/ui/node_modules/
 tests/ui/playwright-report/
 tests/ui/test-results/
+playwright-report/
+test-results/

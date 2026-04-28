@@ -4,7 +4,7 @@
  *  - Resizer: drag to change sidebar width (persisted to localStorage)
  *  - Sidebar scrollbar appears when file list overflows
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, reloadEditor, clearEditorStorage } from '../helpers/editor';
 

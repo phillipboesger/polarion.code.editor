@@ -8,15 +8,17 @@
  *
  * A unique timestamp prefix avoids collisions between test runs.
  */
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, openNewFileModal, clickFile, waitForTab, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
 
-const TS = Date.now();
-const TEST_FILE      = `ui-test-${TS}.txt`;
-const TEST_FILE_NEW  = `ui-test-renamed-${TS}.txt`;
-const TEST_CONTENT   = `Hello from Playwright – ${TS}`;
-const COPY_FILE      = `ui-test-copy-${TS}.txt`;
+// File names are set once per worker in beforeAll using workerPrefix
+// to guarantee uniqueness across parallel workers and retries.
+let TEST_FILE:     string;
+let TEST_FILE_NEW: string;
+let TEST_CONTENT:  string;
+let COPY_FILE:     string;
 
 // ---------------------------------------------------------------------------
 // Helper: type into the active Monaco editor (text model)
@@ -47,23 +49,30 @@ async function waitForSavedOrSkip(page: Page, fileName: string, reason: string):
     .then(() => true)
     .catch(() => false);
 
-  test.skip(!saved, reason);
+  expect(saved, reason).toBe(true);
 }
 
 async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
-  const ok = await tryCreateFile(page, fileName);
-  test.skip(!ok, `File precondition failed: could not create ${fileName}`);
+  const ok = await tryCreateFile(page, fileName, TEST_PROJECT_ID);
+  expect(ok, `File precondition failed: could not create ${fileName}`).toBe(true);
 }
 
 // ---------------------------------------------------------------------------
-// Shared setup: login + clear storage + open editor
+// Shared setup: initialise worker-scoped file names + login + open editor
 // ---------------------------------------------------------------------------
+
+test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+  TEST_FILE     = `ui-test-${workerPrefix}.txt`;
+  TEST_FILE_NEW = `ui-test-renamed-${workerPrefix}.txt`;
+  TEST_CONTENT  = `Hello from Playwright – ${workerPrefix}`;
+  COPY_FILE     = `ui-test-copy-${workerPrefix}.txt`;
+});
 test.describe('Code Editor – File CRUD', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    await openEditor(page, TEST_PROJECT_ID);
   });
 
   // ── CREATE ──────────────────────────────────────────────────────────────
@@ -162,7 +171,7 @@ test.describe('Code Editor – File CRUD', () => {
       .isVisible({ timeout: 8_000 })
       .catch(() => false);
 
-    test.skip(!renamed, 'Rename action not effective in this Polarion build/config');
+    expect(renamed, 'Rename action not effective in this Polarion build/config').toBe(true);
 
     await waitForFileInList(page, TEST_FILE_NEW, 15_000);
     await expect(page.locator('#fileList .file-item', { hasText: TEST_FILE })).toHaveCount(0, { timeout: 15_000 });
@@ -197,7 +206,7 @@ test.describe('Code Editor – File CRUD', () => {
       .then(() => true)
       .catch(() => false);
 
-    test.skip(!deleted, 'Delete action not effective in this Polarion build/config');
+    expect(deleted, 'Delete action not effective in this Polarion build/config').toBe(true);
 
     const filesAfter = await getFileList(page);
     expect(filesAfter.some(f => f.includes(TEST_FILE))).toBe(false);
@@ -213,25 +222,21 @@ test.describe('Code Editor – File CRUD', () => {
 
     // Copy action is optional in current UI builds; detect by explicit title.
     const copyBtn = fileItem.locator('.list-btn[title*="Copy" i]').first();
-    const hasCopy = (await copyBtn.count()) > 0;
+    expect(await copyBtn.count(), 'Copy action is not available in this UI build').toBeGreaterThan(0);
 
-    if (hasCopy) {
-      await copyBtn.click();
+    await copyBtn.click();
 
-      // A modal may appear asking for the copy name
-      const modalVisible = await page.locator('.modal-overlay.visible').count();
-      if (modalVisible > 0) {
-        const input = page.locator('.modal-overlay.visible .path-input, .modal-overlay.visible input[type=text]').first();
-        await input.fill(COPY_FILE);
-        const confirmBtn = page.locator('.modal-overlay.visible .action-btn:not(.secondary)').first();
-        await confirmBtn.click();
-        await page.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
-      }
-
-      await waitForFileInList(page, COPY_FILE, 15_000);
-    } else {
-      test.skip(true, 'Copy action is not available in this UI build');
+    // A modal may appear asking for the copy name
+    const modalVisible = await page.locator('.modal-overlay.visible').count();
+    if (modalVisible > 0) {
+      const input = page.locator('.modal-overlay.visible .path-input, .modal-overlay.visible input[type=text]').first();
+      await input.fill(COPY_FILE);
+      const confirmBtn = page.locator('.modal-overlay.visible .action-btn:not(.secondary)').first();
+      await confirmBtn.click();
+      await page.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
     }
+
+    await waitForFileInList(page, COPY_FILE, 15_000);
   });
 
   // ── NEW FILE MODAL – TAB AUTOCOMPLETE ────────────────────────────────────
@@ -239,8 +244,8 @@ test.describe('Code Editor – File CRUD', () => {
   test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
     // Ensure at least one folder exists by creating a file inside a subfolder first
     const folderPrefix = `tab-autocomplete-${TS}`;
-    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`);
-    test.skip(!created, `Could not create seed folder ${folderPrefix} – skipping autocomplete test`);
+    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`, TEST_PROJECT_ID);
+    expect(created, `Could not create seed folder ${folderPrefix}`).toBe(true);
 
     await openNewFileModal(page);
     const pathInput = page.locator('#newFileName');

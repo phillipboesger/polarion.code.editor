@@ -1,4 +1,9 @@
 {
+	"playwright.reuseBrowser": false,
+	"playwright.showTrace": false,
+	"java.import.exclusions": [
+		"**/target/**"
+	],
 	"java.test.config": [
 		{
 			"vmArgs": [

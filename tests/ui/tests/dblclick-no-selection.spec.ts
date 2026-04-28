@@ -4,21 +4,24 @@
  *  - Double-clicking a file does NOT produce a browser text selection
  *  - Single-click opens a preview tab; double-click promotes it to persistent
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, tryCreateFile, waitForTab } from '../helpers/editor';
+import { openEditor, clearEditorStorage, tryCreateFile, waitForTab, TEST_PROJECT_ID } from '../helpers/editor';
 
-const TS = Date.now();
-const FILE_A = `dblclick-test-a-${TS}.txt`;
+let FILE_A: string;
 
 test.describe('Code Editor – Double-click on file', () => {
+
+  test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+    FILE_A = `dblclick-test-a-${workerPrefix}.txt`;
+  });
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
-    const created = await tryCreateFile(page, FILE_A);
-    test.skip(!created, 'Double-click tests require writable file creation');
+    await openEditor(page, TEST_PROJECT_ID);
+    const created = await tryCreateFile(page, FILE_A, TEST_PROJECT_ID);
+    expect(created, 'Double-click tests require writable file creation').toBe(true);
   });
 
   test('double-clicking a file opens a tab', async ({ page }) => {

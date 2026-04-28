@@ -8,13 +8,13 @@
  *  - Tab close button removes tab
  *  - Tab bar is horizontally scrollable
  */
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab, TEST_PROJECT_ID } from '../helpers/editor';
 
-const TS = Date.now();
-const FILE_A = `ui-tab-a-${TS}.txt`;
-const FILE_B = `ui-tab-b-${TS}.txt`;
+let FILE_A: string;
+let FILE_B: string;
 
 async function typeInMonaco(page: Page, text: string): Promise<void> {
   const editorCanvas = page.locator('#editor-container .monaco-editor').first();
@@ -92,14 +92,19 @@ test.describe('Code Editor – Toolbar & Font Size', () => {
 
 test.describe('Code Editor – Tab Management', () => {
 
+  test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+    FILE_A = `ui-tab-a-${workerPrefix}.txt`;
+    FILE_B = `ui-tab-b-${workerPrefix}.txt`;
+  });
+
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    await openEditor(page, TEST_PROJECT_ID);
     // Create two test files
-    const createdA = await tryCreateFile(page, FILE_A);
-    const createdB = await tryCreateFile(page, FILE_B);
-    test.skip(!(createdA && createdB), 'Tab tests require writable file creation in current Polarion build/config');
+    const createdA = await tryCreateFile(page, FILE_A, TEST_PROJECT_ID);
+    const createdB = await tryCreateFile(page, FILE_B, TEST_PROJECT_ID);
+    expect(createdA && createdB, 'Tab tests require writable file creation in current Polarion build/config').toBe(true);
   });
 
   test('clicking a file opens a tab in the tab bar', async ({ page }) => {
@@ -114,7 +119,7 @@ test.describe('Code Editor – Tab Management', () => {
     await clickFile(page, FILE_B);
 
     const hasTabB = await hasTab(page, FILE_B, 8_000);
-    test.skip(!hasTabB, 'Editor instance currently keeps a single active tab');
+    expect(hasTabB, 'Editor instance currently keeps a single active tab').toBe(true);
 
     const tabs = page.locator('#editorTabs .editor-tab');
     const tabCount = await tabs.count();
@@ -171,10 +176,10 @@ test.describe('Code Editor – Tab Management', () => {
     await clickFile(page, FILE_B);
 
     const hasTabB = await hasTab(page, FILE_B, 8_000);
-    test.skip(!hasTabB, 'Editor instance currently keeps a single active tab');
+    expect(hasTabB, 'Editor instance currently keeps a single active tab').toBe(true);
 
     const tabCount = await page.locator('#editorTabs .editor-tab').count();
-    test.skip(tabCount < 2, 'Editor instance currently keeps a single active tab');
+    expect(tabCount, 'Editor instance currently keeps a single active tab').toBeGreaterThanOrEqual(2);
 
     // Switch back to FILE_A
     await page.locator('#editorTabs .editor-tab', { hasText: FILE_A }).click();

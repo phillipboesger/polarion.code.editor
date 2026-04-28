@@ -9,12 +9,22 @@ export default defineConfig({
   // Retry once on CI to tolerate transient slowness
   retries: process.env.CI ? 1 : 0,
 
-  // Run fully sequential to avoid load-related interference on the shared Polarion instance.
-  workers: 1,
+  // 3 parallel workers on CI (each with its own Polarion admin user),
+  // 1 worker locally to keep the dev loop simple.
+  // Worker 0 → admin, Worker 1 → playwright_w1, Worker 2 → playwright_w2.
+  // All users are Polarion admins; see global-setup.ts for user provisioning.
+  workers: process.env.CI ? 3 : 1,
+
+  // Creates test users + saves per-worker auth states before the suite runs.
+  globalSetup:    './global-setup.ts',
+  // Deletes test users after the suite finishes.
+  globalTeardown: './global-teardown.ts',
 
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['junit', { outputFile: 'test-results/junit.xml' }],
+    ...(process.env.CI ? [['github'] as ['github']] : []),
   ],
 
   use: {

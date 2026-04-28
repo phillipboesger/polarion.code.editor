@@ -5,7 +5,7 @@
  *  - Both links open in a new tab (target="_blank")
  *  - Both links have rel="noopener noreferrer" (security)
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor } from '../helpers/editor';
 

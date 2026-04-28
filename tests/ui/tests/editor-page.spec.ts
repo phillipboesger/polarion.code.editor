@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, EDITOR_URL } from '../helpers/editor';
 

@@ -8,29 +8,34 @@
  *  - Per-project storage isolation (different projectIds = different keys)
  *  - Clearing storage resets state to defaults
  */
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, TEST_PROJECT_ID } from '../helpers/editor';
 
-const TS = Date.now();
-const SESSION_FILE_A = `ui-session-a-${TS}.txt`;
-const SESSION_FILE_B = `ui-session-b-${TS}.txt`;
+let SESSION_FILE_A: string;
+let SESSION_FILE_B: string;
 
 async function reloadAndWaitForBoot(page: Page): Promise<void> {
   await reloadEditor(page);
 }
 
 async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
-  const ok = await tryCreateFile(page, fileName);
-  test.skip(!ok, `File precondition failed: could not create ${fileName}`);
+  const ok = await tryCreateFile(page, fileName, TEST_PROJECT_ID);
+  expect(ok, `File precondition failed: could not create ${fileName}`).toBe(true);
 }
 
 test.describe('Code Editor – Session & Cache Persistence', () => {
 
+  test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+    SESSION_FILE_A = `ui-session-a-${workerPrefix}.txt`;
+    SESSION_FILE_B = `ui-session-b-${workerPrefix}.txt`;
+  });
+
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    await openEditor(page, TEST_PROJECT_ID);
   });
 
   // ── LAST OPENED FILE ──────────────────────────────────────────────────────
@@ -70,7 +75,7 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
       .first()
       .isVisible({ timeout: 3_000 })
       .catch(() => false);
-    test.skip(!hasTabA, 'This build restores only the last active tab');
+    expect(hasTabA, 'This build restores only the last active tab').toBe(true);
 
     await expect(
       page.locator('#editorTabs .editor-tab', { hasText: SESSION_FILE_A })
@@ -114,10 +119,8 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
     // Drag sidebar to a wider position
     const resizer = page.locator('#resizer');
     const resizerBox = await resizer.boundingBox();
-    if (!resizerBox) {
-      test.skip(true, 'Resizer bounding box unavailable in current browser state');
-      return;
-    }
+    expect(resizerBox, 'Resizer bounding box unavailable in current browser state').not.toBeNull();
+    if (!resizerBox) return;
 
     const startX = resizerBox.x + resizerBox.width / 2;
     await page.mouse.move(startX, resizerBox.y + 10);

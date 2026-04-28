@@ -7,20 +7,24 @@
  *  - Upload modal has correct pre-filled path and can be cancelled
  *  - New File button is an icon-only button (no text label)
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile } from '../helpers/editor';
+import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile, TEST_PROJECT_ID } from '../helpers/editor';
 
-const TS = Date.now();
-const TEST_FILE = `ui-download-test-${TS}.txt`;
-const UPLOAD_FILE = `ui-upload-test-${TS}.txt`;
+let TEST_FILE:   string;
+let UPLOAD_FILE: string;
 
 test.describe('Code Editor – Download & Upload', () => {
+
+  test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+    TEST_FILE   = `ui-download-test-${workerPrefix}.txt`;
+    UPLOAD_FILE = `ui-upload-test-${workerPrefix}.txt`;
+  });
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    await openEditor(page, TEST_PROJECT_ID);
   });
 
   // ── ICONS / LAYOUT ──────────────────────────────────────────────────────
@@ -55,8 +59,8 @@ test.describe('Code Editor – Download & Upload', () => {
   });
 
   test('Download button is enabled after opening a file', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE);
-    test.skip(!created, `Could not create ${TEST_FILE}`);
+    const created = await tryCreateFile(page, TEST_FILE, TEST_PROJECT_ID);
+    expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
     await waitForFileInList(page, TEST_FILE);
     await clickFile(page, TEST_FILE);
@@ -68,8 +72,8 @@ test.describe('Code Editor – Download & Upload', () => {
   // ── DOWNLOAD NAVIGATION ─────────────────────────────────────────────────
 
   test('Download button triggers navigation to the API download URL', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE);
-    test.skip(!created, `Could not create ${TEST_FILE}`);
+    const created = await tryCreateFile(page, TEST_FILE, TEST_PROJECT_ID);
+    expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
     await waitForFileInList(page, TEST_FILE);
     await clickFile(page, TEST_FILE);

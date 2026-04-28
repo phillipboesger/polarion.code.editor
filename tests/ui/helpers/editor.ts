@@ -3,6 +3,9 @@ import { BASE_URL } from './auth';
 
 export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
 
+/** Default project used by tests that need write access to a Polarion project repository. */
+export const TEST_PROJECT_ID = 'drivePilot';
+
 /** Waits until the editor boot overlay and bootstrap blur are cleared. */
 export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<void> {
   await page.waitForFunction(
@@ -97,7 +100,7 @@ export async function openNewFileModal(page: Page): Promise<void> {
 }
 
 /** Types a filename into the new-file modal's path input and confirms. */
-export async function createFile(page: Page, fileName: string): Promise<void> {
+export async function createFile(page: Page, fileName: string, projectId?: string): Promise<void> {
   await openNewFileModal(page);
   const pathInput = page.locator('.path-input').first();
   await pathInput.fill(fileName);
@@ -112,8 +115,9 @@ export async function createFile(page: Page, fileName: string): Promise<void> {
 
   if (!appearedViaUi) {
     // Fallback for builds where the UI dialog occasionally fails silently.
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
     const response = await page.request.put(
-      `/polarion/code-editor/api/config/file/${encodeURIComponent(fileName)}`,
+      `/polarion/code-editor/api/config/file/${encodeURIComponent(fileName)}${query}`,
       {
         data: ''
       }
@@ -128,9 +132,9 @@ export async function createFile(page: Page, fileName: string): Promise<void> {
 }
 
 /** Best-effort file creation helper for environments with intermittent write restrictions. */
-export async function tryCreateFile(page: Page, fileName: string): Promise<boolean> {
+export async function tryCreateFile(page: Page, fileName: string, projectId?: string): Promise<boolean> {
   try {
-    await createFile(page, fileName);
+    await createFile(page, fileName, projectId);
     return true;
   } catch {
     // createFile may have left a modal open (e.g. if confirm failed); close it so
