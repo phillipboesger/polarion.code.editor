@@ -7,7 +7,7 @@
 import { test, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, clearEditorStorage, TEST_PROJECT_ID } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, clearEditorStorage } from '../helpers/editor';
 
 // Set once per worker in beforeAll; used as file-name prefix to avoid cross-worker conflicts.
 let TS: string;
@@ -103,10 +103,10 @@ test.describe('Code Editor – Syntax Highlighting', () => {
       await clearEditorStorage(page);
 
       const file = ext === 'pagexml' ? 'page.xml' : `hl-${workerPrefix}.${ext}`;
-      const ok = await apiCreateFile(page, file, TEST_PROJECT_ID);
+      const ok = await apiCreateFile(page, file);
       expect(ok, `Cannot create "${file}" – environment may be read-only`).toBe(true);
 
-      await openEditor(page, TEST_PROJECT_ID);
+      await openEditor(page);
       await clickFile(page, file);
       await waitForTab(page, file);
 
@@ -132,10 +132,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json-${TS}.json`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -159,10 +159,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json2-${TS}.json`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -185,10 +185,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json3-${TS}.json`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -211,10 +211,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-xml-${TS}.xml`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -236,10 +236,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-xml2-${TS}.xml`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -264,10 +264,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -290,10 +290,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm2-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -317,10 +317,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm3-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -339,10 +339,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm4-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -367,10 +367,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm5-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -388,10 +388,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
 
-    const ok = await apiCreateFile(page, 'page.xml', TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, 'page.xml');
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, 'page.xml');
     await waitForTab(page, 'page.xml');
 
@@ -415,10 +415,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vtl-${TS}.vtl`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -435,10 +435,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-fhtml-${TS}.fhtml`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -457,10 +457,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-shortcut-${TS}.json`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 
@@ -481,10 +481,10 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-shortcut-vm-${TS}.vm`;
-    const ok = await apiCreateFile(page, FILE, TEST_PROJECT_ID);
+    const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     await clickFile(page, FILE);
     await waitForTab(page, FILE);
 

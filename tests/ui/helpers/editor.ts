@@ -3,8 +3,13 @@ import { BASE_URL } from './auth';
 
 export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
 
-/** Default project used by tests that need write access to a Polarion project repository. */
-export const TEST_PROJECT_ID = 'drivePilot';
+/** Hash-route URLs – used to navigate through the Polarion SPA so the project
+ *  context is established before the editor iframe is loaded. */
+const spaEditorUrl = `${BASE_URL}/polarion/#/administration/code-editor`;
+function projectEditorSpaUrl(projectId: string): string {
+  return `${BASE_URL}/polarion/#/project/${encodeURIComponent(projectId)}/administration/code-editor`;
+}
+
 
 /** Waits until the editor boot overlay and bootstrap blur are cleared. */
 export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<void> {
@@ -24,15 +29,34 @@ export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<
 }
 
 /**
- * Navigates to the Code Editor and waits until the Monaco boot loader is gone
- * (i.e. the #globalBootLoader is no longer visible).
+ * Navigates to the Code Editor and waits until #fileList is in the DOM.
+ *
+ * Strategy:
+ *  - No projectId  → direct URL to editor.html (Default Repository context).
+ *  - With projectId → SPA hash-route so Polarion sets the project context,
+ *    then click the "Code Editor" nav-item if the page doesn't render the
+ *    editor directly.
+ *
+ * All editor DOM elements (#fileList, #editorTabs, …) live in the top-level
+ * document – no iframe extraction required.
  */
 export async function openEditor(page: Page, projectId?: string): Promise<void> {
-  const url = projectId ? `${EDITOR_URL}?projectId=${encodeURIComponent(projectId)}` : EDITOR_URL;
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-  // Do NOT use 'networkidle' – Polarion keeps persistent background requests alive
-  // which can cause networkidle to never fire on CI. Use DOM readiness instead.
-  await waitForEditorReady(page);
+  if (!projectId) {
+    // Global (Default Repository) context: direct URL works immediately.
+    await page.goto(EDITOR_URL, { waitUntil: 'domcontentloaded' });
+  } else {
+    // Project context: navigate via SPA hash-route so Polarion knows the project.
+    await page.goto(projectEditorSpaUrl(projectId), { waitUntil: 'domcontentloaded' });
+    // The SPA may render an admin overview first; if so, click "Code Editor".
+    const fileListVisible = await page.waitForSelector('#fileList', {
+      state: 'attached',
+      timeout: 5_000,
+    }).then(() => true).catch(() => false);
+    if (!fileListVisible) {
+      await page.locator('text=Code Editor').first().click();
+    }
+  }
+  await page.waitForSelector('#fileList', { state: 'attached', timeout: 30_000 });
 }
 
 /** Reloads the editor page and waits until it is ready for interactions. */

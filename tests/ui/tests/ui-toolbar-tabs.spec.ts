@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab, TEST_PROJECT_ID } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
 
 let FILE_A: string;
 let FILE_B: string;
@@ -100,10 +100,10 @@ test.describe('Code Editor – Tab Management', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
     // Create two test files
-    const createdA = await tryCreateFile(page, FILE_A, TEST_PROJECT_ID);
-    const createdB = await tryCreateFile(page, FILE_B, TEST_PROJECT_ID);
+    const createdA = await tryCreateFile(page, FILE_A);
+    const createdB = await tryCreateFile(page, FILE_B);
     expect(createdA && createdB, 'Tab tests require writable file creation in current Polarion build/config').toBe(true);
   });
 

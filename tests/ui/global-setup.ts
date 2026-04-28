@@ -154,10 +154,23 @@ async function loginAndSave(
 export default async function globalSetup(): Promise<void> {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-  // --- 1. Create test users + assign admin role via REST API ---
+  // --- 1. Login as admin first so we have a valid session cookie ---
+  // Polarion REST API does not accept HTTP Basic auth in newer versions
+  // (returns 401 "No access token"). We use the browser session instead.
+  const browser = await chromium.launch();
+  const worker0Path = path.join(AUTH_DIR, 'worker0.json');
+  try {
+    await loginAndSave(browser, ADMIN_USER, ADMIN_PASS, worker0Path);
+  } finally {
+    await browser.close();
+  }
+
+  // --- 2. Create test users + assign admin role via REST API ---
+  // Re-use the admin session cookie (storageState) so the request is
+  // authenticated without relying on Basic auth.
   const apiCtx = await pwRequest.newContext({
+    storageState: worker0Path,
     extraHTTPHeaders: {
-      Authorization: `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64')}`,
       'Content-Type': 'application/json',
       Accept:         'application/json',
     },
@@ -172,16 +185,14 @@ export default async function globalSetup(): Promise<void> {
     await apiCtx.dispose();
   }
 
-  // --- 2. Login as each worker's user and save browser storage state ---
-  const browser = await chromium.launch();
+  // --- 3. Login as each worker's user and save browser storage state ---
+  const browser2 = await chromium.launch();
   try {
-    // Worker 0 → built-in admin
-    await loginAndSave(browser, ADMIN_USER, ADMIN_PASS, path.join(AUTH_DIR, 'worker0.json'));
     // Worker 1 → playwright_w1
-    await loginAndSave(browser, TEST_USERS[0].id, TEST_USERS[0].password, path.join(AUTH_DIR, 'worker1.json'));
+    await loginAndSave(browser2, TEST_USERS[0].id, TEST_USERS[0].password, path.join(AUTH_DIR, 'worker1.json'));
     // Worker 2 → playwright_w2
-    await loginAndSave(browser, TEST_USERS[1].id, TEST_USERS[1].password, path.join(AUTH_DIR, 'worker2.json'));
+    await loginAndSave(browser2, TEST_USERS[1].id, TEST_USERS[1].password, path.join(AUTH_DIR, 'worker2.json'));
   } finally {
-    await browser.close();
+    await browser2.close();
   }
 }

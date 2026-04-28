@@ -6,7 +6,7 @@
  */
 import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, tryCreateFile, waitForTab, TEST_PROJECT_ID } from '../helpers/editor';
+import { openEditor, clearEditorStorage, tryCreateFile, waitForTab } from '../helpers/editor';
 
 let FILE_A: string;
 
@@ -19,8 +19,8 @@ test.describe('Code Editor – Double-click on file', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page, TEST_PROJECT_ID);
-    const created = await tryCreateFile(page, FILE_A, TEST_PROJECT_ID);
+    await openEditor(page);
+    const created = await tryCreateFile(page, FILE_A);
     expect(created, 'Double-click tests require writable file creation').toBe(true);
   });
 

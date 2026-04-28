@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, TEST_PROJECT_ID } from '../helpers/editor';
+import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile } from '../helpers/editor';
 
 let SESSION_FILE_A: string;
 let SESSION_FILE_B: string;
@@ -21,7 +21,7 @@ async function reloadAndWaitForBoot(page: Page): Promise<void> {
 }
 
 async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
-  const ok = await tryCreateFile(page, fileName, TEST_PROJECT_ID);
+  const ok = await tryCreateFile(page, fileName);
   expect(ok, `File precondition failed: could not create ${fileName}`).toBe(true);
 }
 
@@ -35,7 +35,7 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
   });
 
   // ── LAST OPENED FILE ──────────────────────────────────────────────────────

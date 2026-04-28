@@ -53,7 +53,7 @@ async function waitForSavedOrSkip(page: Page, fileName: string, reason: string):
 }
 
 async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
-  const ok = await tryCreateFile(page, fileName, TEST_PROJECT_ID);
+  const ok = await tryCreateFile(page, fileName);
   expect(ok, `File precondition failed: could not create ${fileName}`).toBe(true);
 }
 
@@ -72,7 +72,7 @@ test.describe('Code Editor – File CRUD', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
   });
 
   // ── CREATE ──────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ test.describe('Code Editor – File CRUD', () => {
   test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
     // Ensure at least one folder exists by creating a file inside a subfolder first
     const folderPrefix = `tab-autocomplete-${TS}`;
-    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`, TEST_PROJECT_ID);
+    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`);
     expect(created, `Could not create seed folder ${folderPrefix}`).toBe(true);
 
     await openNewFileModal(page);

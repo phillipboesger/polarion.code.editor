@@ -13,14 +13,24 @@ const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
 const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
 
 export default async function globalTeardown(): Promise<void> {
+  // Polarion REST API does not accept HTTP Basic auth in newer versions.
+  // Authenticate via form login to obtain a session cookie first.
   const apiCtx = await pwRequest.newContext({
-    extraHTTPHeaders: {
-      Authorization: `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64')}`,
-      Accept: 'application/json',
-    },
+    extraHTTPHeaders: { Accept: 'application/json' },
   });
 
   try {
+    // Establish a session cookie via form POST
+    await apiCtx.post(`${BASE_URL}/polarion/j_spring_security_check`, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: new URLSearchParams({
+        j_username: ADMIN_USER,
+        j_password: ADMIN_PASS,
+        submit: 'Login',
+      }).toString(),
+      maxRedirects: 10,
+    });
+
     for (const user of TEST_USERS) {
       const resp = await apiCtx.delete(`${BASE_URL}/polarion/rest/v1/users/${user.id}`);
       if (resp.status() === 404) {

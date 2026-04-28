@@ -9,7 +9,7 @@
  */
 import { test, expect } from '../fixtures';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile, TEST_PROJECT_ID } from '../helpers/editor';
+import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile } from '../helpers/editor';
 
 let TEST_FILE:   string;
 let UPLOAD_FILE: string;
@@ -24,7 +24,7 @@ test.describe('Code Editor – Download & Upload', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page, TEST_PROJECT_ID);
+    await openEditor(page);
   });
 
   // ── ICONS / LAYOUT ──────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ test.describe('Code Editor – Download & Upload', () => {
   });
 
   test('Download button is enabled after opening a file', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE, TEST_PROJECT_ID);
+    const created = await tryCreateFile(page, TEST_FILE);
     expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
     await waitForFileInList(page, TEST_FILE);
@@ -72,7 +72,7 @@ test.describe('Code Editor – Download & Upload', () => {
   // ── DOWNLOAD NAVIGATION ─────────────────────────────────────────────────
 
   test('Download button triggers navigation to the API download URL', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE, TEST_PROJECT_ID);
+    const created = await tryCreateFile(page, TEST_FILE);
     expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
     await waitForFileInList(page, TEST_FILE);
