@@ -16,9 +16,11 @@ export default defineConfig({
   workers: process.env.CI ? 3 : 1,
 
   // Creates test users + saves per-worker auth states before the suite runs.
-  globalSetup:    './global-setup.ts',
-  // Deletes test users after the suite finishes.
-  globalTeardown: './global-teardown.ts',
+  // Only needed on CI where 3 workers run in parallel.
+  ...(process.env.CI ? {
+    globalSetup:    './global-setup.ts',
+    globalTeardown: './global-teardown.ts',
+  } : {}),
 
   reporter: [
     ['list'],

@@ -26,6 +26,7 @@
 
 import { test as base, type TestType, type PlaywrightTestArgs, type PlaywrightTestOptions, type PlaywrightWorkerArgs, type PlaywrightWorkerOptions } from '@playwright/test';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { AUTH_DIR } from '../global-setup';
 
 // ── Worker-fixture types ──────────────────────────────────────────────────────
@@ -65,11 +66,14 @@ export const test = (base.extend as any)<Record<string, never>, WorkerFixtures>(
 
   // Override the built-in storageState option so every browser context created
   // in this worker is pre-authenticated with the worker's own session.
+  // Locally (no CI), the auth file may not exist – in that case we skip the
+  // override so tests fall back to their own loginAsPolarionAdmin() calls.
   storageState: async (
     { workerStorageState }: { workerStorageState: string },
-    use: (s: string) => Promise<void>,
+    use: (s: string | undefined) => Promise<void>,
   ) => {
-    await use(workerStorageState);
+    const stateExists = fs.existsSync(workerStorageState);
+    await use(stateExists ? workerStorageState : undefined);
   },
 }) as TestType<
   PlaywrightTestArgs & PlaywrightTestOptions,
