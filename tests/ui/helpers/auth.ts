@@ -55,6 +55,14 @@ export async function loginAsPolarionAdmin(page: Page): Promise<void> {
   // The Polarion login page lives at /polarion (not /polarion/login)
   await page.goto(`${BASE_URL}/polarion`, { waitUntil: 'domcontentloaded' });
 
+  // Fresh Polarion instances (e.g. in CI) show a trial-activation screen first.
+  // Click "Start 30-Day Trial" so the login form becomes available.
+  const trialButton = page.getByRole('button', { name: 'Start 30-Day Trial' });
+  if (await trialButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    await trialButton.click();
+    await page.waitForLoadState('domcontentloaded');
+  }
+
   // If the login form is not visible, we may already be authenticated.
   if (!await isLoginFormVisible(page)) {
     return;
