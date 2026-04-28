@@ -3,9 +3,12 @@ import { BASE_URL } from './auth';
 
 export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
 
-/** Hash-route URLs – used to navigate through the Polarion SPA so the project
- *  context is established before the editor iframe is loaded. */
-const spaEditorUrl = `${BASE_URL}/polarion/#/administration/code-editor`;
+/** Default project used when openEditor() is called without a projectId.
+ *  The global /#/administration/code-editor route never sets working_area.src
+ *  and loads editor.html without ?projectId, so a project-specific route is
+ *  always required. */
+const DEFAULT_PROJECT_ID = process.env.POLARION_PROJECT_ID ?? 'drivePilot';
+
 function projectEditorSpaUrl(projectId: string): string {
   return `${BASE_URL}/polarion/#/project/${encodeURIComponent(projectId)}/administration/code-editor`;
 }
@@ -29,33 +32,49 @@ export async function waitForEditorReady(page: Page, timeout = 30_000): Promise<
 }
 
 /**
- * Navigates to the Code Editor and waits until #fileList is in the DOM.
+ * Navigates to the Code Editor via the Polarion SPA hash-route so that the
+ * full Polarion project-context is established before the editor loads.
  *
- * Strategy:
- *  - No projectId  → direct URL to editor.html (Default Repository context).
- *  - With projectId → SPA hash-route so Polarion sets the project context,
- *    then click the "Code Editor" nav-item if the page doesn't render the
- *    editor directly.
- *
- * All editor DOM elements (#fileList, #editorTabs, …) live in the top-level
- * document – no iframe extraction required.
+ * How it works:
+ *  1. Navigate to the SPA hash-route (with or without a projectId).
+ *  2. Polarion renders the editor inside an <iframe>.  Wait until the SPA
+ *     replaces the "javascript:''" placeholder with a real HTTP src.
+ *  3. If the SPA shows a nav-overview first (no iframe within 5 s), click the
+ *     "Code Editor" navigation item to trigger the iframe load.
+ *  4. Navigate the Playwright page directly to the extracted iframe src so all
+ *     #fileList / #editorTabs / … selectors work at the top-level DOM level.
  */
 export async function openEditor(page: Page, projectId?: string): Promise<void> {
-  if (!projectId) {
-    // Global (Default Repository) context: direct URL works immediately.
-    await page.goto(EDITOR_URL, { waitUntil: 'domcontentloaded' });
-  } else {
-    // Project context: navigate via SPA hash-route so Polarion knows the project.
-    await page.goto(projectEditorSpaUrl(projectId), { waitUntil: 'domcontentloaded' });
-    // The SPA may render an admin overview first; if so, click "Code Editor".
-    const fileListVisible = await page.waitForSelector('#fileList', {
-      state: 'attached',
-      timeout: 5_000,
-    }).then(() => true).catch(() => false);
-    if (!fileListVisible) {
-      await page.locator('text=Code Editor').first().click();
-    }
-  }
+  // Always use a project-specific SPA route.  The global admin route
+  // (/#/administration/code-editor) never sets working_area.src and loads
+  // editor.html without ?projectId, so every API call would fail.
+  const spaUrl = projectEditorSpaUrl(projectId ?? DEFAULT_PROJECT_ID);
+
+  // IMPORTANT: register the framenavigated listener BEFORE page.goto() so
+  // the event cannot be missed by a race between navigation and listener setup.
+  //
+  // IMPORTANT: use the { predicate, timeout } options-object form.  In
+  // Playwright ≤1.44 the signature is waitForEvent(event, optionsOrPredicate)
+  // – passing a plain function as second arg and options as a *third* arg is
+  // NOT supported; the third arg is silently ignored and actionTimeout (30 s)
+  // is used instead.
+  //
+  // GWT navigates working_area's contentWindow directly without setting the
+  // HTML src attribute, so waitForSelector('[src*="code-editor"]') never
+  // fires – framenavigated is the correct hook.
+  const editorFramePromise = page.waitForEvent('framenavigated', {
+    predicate: frame => frame.name() === 'working_area' && frame.url().includes('code-editor'),
+    timeout: 60_000,
+  });
+
+  await page.goto(spaUrl, { waitUntil: 'domcontentloaded' });
+
+  const editorFrame = await editorFramePromise;
+  const editorSrc = editorFrame.url();
+
+  // Navigate directly to the editor page so all #fileList / #editorTabs
+  // selectors work at the top-level DOM (no frameLocator needed).
+  await page.goto(editorSrc, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#fileList', { state: 'attached', timeout: 30_000 });
 }
 
@@ -105,7 +124,7 @@ export async function clickFile(page: Page, fileName: string): Promise<void> {
 
 /** Waits until the editor tab bar shows a tab for the given filename. */
 export async function waitForTab(page: Page, fileName: string): Promise<void> {
-  await expect(page.locator('#editorTabs .editor-tab', { hasText: fileName })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('#editorTabs .editor-tab', { hasText: fileName }).first()).toBeVisible({ timeout: 15_000 });
 }
 
 /** Best-effort tab visibility check without failing the test flow. */
@@ -126,10 +145,11 @@ export async function openNewFileModal(page: Page): Promise<void> {
 /** Types a filename into the new-file modal's path input and confirms. */
 export async function createFile(page: Page, fileName: string, projectId?: string): Promise<void> {
   await openNewFileModal(page);
-  const pathInput = page.locator('.path-input').first();
+  const pathInput = page.locator('#newFileName');
   await pathInput.fill(fileName);
-  // Confirm – look for the primary action button (not "Cancel")
-  const confirmBtn = page.locator('.modal-actions .action-btn:not(.secondary)').first();
+  // Confirm – use the specific button ID to avoid accidentally clicking
+  // #customDialogOkBtn which is the first .action-btn:not(.secondary) in the DOM.
+  const confirmBtn = page.locator('#btnConfirmCreate');
   await confirmBtn.click();
   await page.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
 

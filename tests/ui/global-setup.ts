@@ -2,10 +2,14 @@
  * Playwright Global Setup
  *
  * Runs ONCE before the full test suite:
- *  1. Creates 2 Polarion admin test users via REST API (idempotent – 409 is OK).
- *  2. Assigns both users to the built-in "Administrators" group.
- *  3. Logs in as each user (+ the built-in admin) and saves auth state to
- *     .auth/worker{0,1,2}.json so each parallel worker starts pre-authenticated.
+ *  1. Logs in as admin via browser and saves auth state (.auth/worker0.json).
+ *  2. Creates a temporary Personal Access Token (PAT) for the admin via REST.
+ *     Strategy A: Basic auth on the token-bootstrap endpoint.
+ *     Strategy B: (future) UI-based token creation if A is blocked.
+ *     The PAT is persisted to .auth/.ci-token.json for teardown cleanup.
+ *  3. Uses the PAT (Bearer token) to create 2 Polarion test users via REST API.
+ *  4. Logs in as each user and saves auth state (worker1.json, worker2.json).
+ *     Falls back to copying worker0.json if user creation is not possible.
  *
  * Worker ↔ credentials mapping:
  *   workerIndex % 3 === 0  →  admin / admin          (.auth/worker0.json)
@@ -25,6 +29,9 @@ const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
 /** Directory where auth-state JSON files are stored. */
 export const AUTH_DIR = path.join(__dirname, '.auth');
 
+/** File used to persist the CI access token between setup and teardown. */
+export const CI_TOKEN_FILE = path.join(AUTH_DIR, '.ci-token.json');
+
 /** The two extra test users created for parallel workers 1 & 2. */
 export const TEST_USERS = [
   { id: 'playwright_w1', name: 'Playwright Worker 1', password: 'Playwright@W1!' },
@@ -33,11 +40,72 @@ export const TEST_USERS = [
 
 // ── REST helpers ──────────────────────────────────────────────────────────────
 
-/** Creates a Polarion user via REST API v1 (JSON:API). */
+/**
+ * Acquires a Personal Access Token (PAT) for the admin user.
+ *
+ * Polarion REST API v1 requires a Bearer token for all resource endpoints.
+ * The token-creation endpoint itself accepts HTTP Basic auth as a bootstrap
+ * mechanism – this is the standard way to get the first token for a user.
+ *
+ * The token id + secret are persisted to CI_TOKEN_FILE so that globalTeardown
+ * can delete the token after the test suite completes.
+ *
+ * Returns the Bearer token string on success, or null if all strategies fail.
+ */
+async function acquireAdminBearerToken(): Promise<string | null> {
+  const tokenName = `playwright-ci-${Date.now()}`;
+
+  // Bootstrap: use Basic auth to create the initial PAT.
+  // The Polarion accesstokens endpoint is the one endpoint that accepts Basic auth.
+  const bootstrapCtx = await pwRequest.newContext({
+    extraHTTPHeaders: {
+      Authorization: `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64')}`,
+      'Content-Type': 'application/json',
+      Accept:         'application/json',
+    },
+  });
+
+  try {
+    const resp = await bootstrapCtx.post(
+      `${BASE_URL}/polarion/rest/v1/users/${ADMIN_USER}/accesstokens`,
+      {
+        data: {
+          data: {
+            type:       'accesstokens',
+            attributes: { name: tokenName },
+          },
+        },
+      },
+    );
+
+    if (resp.ok()) {
+      const body = await resp.json() as Record<string, unknown>;
+      const attrs = (body?.data as Record<string, unknown>)?.attributes as Record<string, unknown> | undefined;
+      // Polarion returns the secret once at creation time – field may be "secret" or "token"
+      const secret = (attrs?.secret ?? attrs?.token) as string | undefined;
+      const id     = (body?.data as Record<string, unknown>)?.id as string | undefined;
+
+      if (secret) {
+        fs.writeFileSync(CI_TOKEN_FILE, JSON.stringify({ id, name: tokenName, secret }), 'utf8');
+        console.log(`[global-setup] Created PAT "${tokenName}" (id: ${id ?? 'unknown'}) – will use as Bearer token.`);
+        return secret;
+      }
+      console.warn('[global-setup] PAT response did not contain a secret field:', JSON.stringify(body));
+    } else {
+      console.warn(`[global-setup] PAT creation via Basic auth returned ${resp.status()}: ${await resp.text()}`);
+    }
+  } finally {
+    await bootstrapCtx.dispose();
+  }
+
+  return null;
+}
+
+
 async function createUser(
   apiCtx: Awaited<ReturnType<typeof pwRequest.newContext>>,
   user: { id: string; name: string; password: string },
-): Promise<void> {
+): Promise<boolean> {
   const resp = await apiCtx.post(`${BASE_URL}/polarion/rest/v1/users`, {
     data: {
       data: {
@@ -56,14 +124,14 @@ async function createUser(
 
   if (resp.status() === 409) {
     console.log(`[global-setup] User "${user.id}" already exists – skipping creation.`);
-    return;
+    return true;
   }
   if (!resp.ok()) {
-    throw new Error(
-      `[global-setup] Failed to create user "${user.id}": ${resp.status()} ${await resp.text()}`,
-    );
+    console.warn(`[global-setup] Could not create user "${user.id}" (${resp.status()}): ${await resp.text()}`);
+    return false;
   }
   console.log(`[global-setup] Created user "${user.id}".`);
+  return true;
 }
 
 /** Adds a user to the built-in Polarion "Administrators" group. */
@@ -154,45 +222,66 @@ async function loginAndSave(
 export default async function globalSetup(): Promise<void> {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-  // --- 1. Login as admin first so we have a valid session cookie ---
-  // Polarion REST API does not accept HTTP Basic auth in newer versions
-  // (returns 401 "No access token"). We use the browser session instead.
-  const browser = await chromium.launch();
   const worker0Path = path.join(AUTH_DIR, 'worker0.json');
+  const worker1Path = path.join(AUTH_DIR, 'worker1.json');
+  const worker2Path = path.join(AUTH_DIR, 'worker2.json');
+
+  // --- 1. Login as admin via browser → worker0.json ---
+  const browser = await chromium.launch();
   try {
     await loginAndSave(browser, ADMIN_USER, ADMIN_PASS, worker0Path);
   } finally {
     await browser.close();
   }
 
-  // --- 2. Create test users + assign admin role via REST API ---
-  // Re-use the admin session cookie (storageState) so the request is
-  // authenticated without relying on Basic auth.
+  // --- 2. Acquire a Personal Access Token (PAT) for REST API calls ---
+  // Polarion REST API v1 requires a Bearer token – Basic auth and session
+  // cookies are rejected with 401 "No access token" on resource endpoints.
+  // The /accesstokens endpoint itself accepts Basic auth as a bootstrap
+  // mechanism so we can obtain the first token without a pre-existing PAT.
+  const bearerToken = await acquireAdminBearerToken();
+
+  if (!bearerToken) {
+    console.warn(
+      '[global-setup] Could not acquire a PAT – all workers will use admin credentials.',
+    );
+    fs.copyFileSync(worker0Path, worker1Path);
+    fs.copyFileSync(worker0Path, worker2Path);
+    return;
+  }
+
+  // --- 3. Use Bearer token to create the parallel test users ---
   const apiCtx = await pwRequest.newContext({
-    storageState: worker0Path,
     extraHTTPHeaders: {
+      Authorization: `Bearer ${bearerToken}`,
       'Content-Type': 'application/json',
       Accept:         'application/json',
     },
   });
 
+  let allCreated = true;
   try {
     for (const user of TEST_USERS) {
-      await createUser(apiCtx, user);
-      await assignAdminRole(apiCtx, user.id);
+      const created = await createUser(apiCtx, user);
+      if (created) await assignAdminRole(apiCtx, user.id);
+      else allCreated = false;
     }
   } finally {
     await apiCtx.dispose();
   }
 
-  // --- 3. Login as each worker's user and save browser storage state ---
-  const browser2 = await chromium.launch();
-  try {
-    // Worker 1 → playwright_w1
-    await loginAndSave(browser2, TEST_USERS[0].id, TEST_USERS[0].password, path.join(AUTH_DIR, 'worker1.json'));
-    // Worker 2 → playwright_w2
-    await loginAndSave(browser2, TEST_USERS[1].id, TEST_USERS[1].password, path.join(AUTH_DIR, 'worker2.json'));
-  } finally {
-    await browser2.close();
+  // --- 4. Login as each worker's user and save browser storage state ---
+  if (allCreated) {
+    const browser2 = await chromium.launch();
+    try {
+      await loginAndSave(browser2, TEST_USERS[0].id, TEST_USERS[0].password, worker1Path);
+      await loginAndSave(browser2, TEST_USERS[1].id, TEST_USERS[1].password, worker2Path);
+    } finally {
+      await browser2.close();
+    }
+  } else {
+    console.warn('[global-setup] Some users could not be created – affected workers will use admin credentials.');
+    fs.copyFileSync(worker0Path, worker1Path);
+    fs.copyFileSync(worker0Path, worker2Path);
   }
 }

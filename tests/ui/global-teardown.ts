@@ -2,46 +2,69 @@
  * Playwright Global Teardown
  *
  * Runs ONCE after the full test suite finishes.
- * Deletes the temporary test users that were created in global-setup.ts.
+ * Reads the PAT that was created in global-setup.ts and uses it to:
+ *   1. Delete the temporary Playwright test users.
+ *   2. Delete the PAT itself (so it doesn't accumulate in Polarion).
+ *
+ * If the CI_TOKEN_FILE does not exist (e.g. users were not created), the
+ * teardown exits silently – nothing to clean up.
  */
 
+import * as fs from 'fs';
 import { request as pwRequest } from '@playwright/test';
-import { TEST_USERS } from './global-setup';
+import { AUTH_DIR, CI_TOKEN_FILE, TEST_USERS } from './global-setup';
 
 const BASE_URL   = process.env.POLARION_URL  ?? 'http://localhost';
 const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
-const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
 
 export default async function globalTeardown(): Promise<void> {
-  // Polarion REST API does not accept HTTP Basic auth in newer versions.
-  // Authenticate via form login to obtain a session cookie first.
+  // Read the persisted PAT created during setup
+  if (!fs.existsSync(CI_TOKEN_FILE)) {
+    console.log('[global-teardown] No CI token file found – assuming no test users were created, nothing to clean up.');
+    return;
+  }
+
+  const { id: tokenId, secret } = JSON.parse(fs.readFileSync(CI_TOKEN_FILE, 'utf8')) as {
+    id: string;
+    name: string;
+    secret: string;
+  };
+
   const apiCtx = await pwRequest.newContext({
-    extraHTTPHeaders: { Accept: 'application/json' },
+    extraHTTPHeaders: {
+      Authorization: `Bearer ${secret}`,
+      'Content-Type': 'application/json',
+      Accept:         'application/json',
+    },
   });
 
   try {
-    // Establish a session cookie via form POST
-    await apiCtx.post(`${BASE_URL}/polarion/j_spring_security_check`, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      data: new URLSearchParams({
-        j_username: ADMIN_USER,
-        j_password: ADMIN_PASS,
-        submit: 'Login',
-      }).toString(),
-      maxRedirects: 10,
-    });
-
+    // 1. Delete test users
     for (const user of TEST_USERS) {
       const resp = await apiCtx.delete(`${BASE_URL}/polarion/rest/v1/users/${user.id}`);
       if (resp.status() === 404) {
-        console.log(`[global-teardown] User "${user.id}" not found – already deleted.`);
+        console.log(`[global-teardown] User "${user.id}" already deleted.`);
       } else if (!resp.ok()) {
-        console.warn(`[global-teardown] Failed to delete user "${user.id}": ${resp.status()}`);
+        console.warn(`[global-teardown] Failed to delete user "${user.id}": ${resp.status()} ${await resp.text()}`);
       } else {
         console.log(`[global-teardown] Deleted user "${user.id}".`);
       }
     }
+
+    // 2. Delete the PAT so it does not accumulate in Polarion
+    if (tokenId) {
+      const tokenResp = await apiCtx.delete(
+        `${BASE_URL}/polarion/rest/v1/users/${ADMIN_USER}/accesstokens/${tokenId}`,
+      );
+      if (tokenResp.ok() || tokenResp.status() === 404) {
+        console.log(`[global-teardown] Deleted CI PAT (id: ${tokenId}).`);
+      } else {
+        console.warn(`[global-teardown] Could not delete PAT (id: ${tokenId}): ${tokenResp.status()}`);
+      }
+    }
   } finally {
     await apiCtx.dispose();
+    // Remove the token file regardless – the secret is no longer valid
+    try { fs.unlinkSync(CI_TOKEN_FILE); } catch { /* ignore */ }
   }
 }

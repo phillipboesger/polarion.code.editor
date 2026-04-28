@@ -18,8 +18,10 @@ test.describe('Code Editor – Double-click on file', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
-    await clearEditorStorage(page);
     await openEditor(page);
+    await clearEditorStorage(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#fileList', { state: 'attached', timeout: 30_000 });
     const created = await tryCreateFile(page, FILE_A);
     expect(created, 'Double-click tests require writable file creation').toBe(true);
   });
@@ -28,7 +30,7 @@ test.describe('Code Editor – Double-click on file', () => {
     const fileItem = page.locator('#fileList .file-item', { hasText: FILE_A });
     await fileItem.dblclick();
     await waitForTab(page, FILE_A);
-    await expect(page.locator('#editorTabs .editor-tab', { hasText: FILE_A })).toBeVisible();
+    await expect(page.locator('#editorTabs .editor-tab', { hasText: FILE_A }).first()).toBeVisible();
   });
 
   test('double-clicking a file does not produce a text selection', async ({ page }) => {
@@ -45,13 +47,13 @@ test.describe('Code Editor – Double-click on file', () => {
     // Single click → preview tab (italic style expected)
     await fileItem.click();
     await waitForTab(page, FILE_A);
-    const tabAfterSingleClick = page.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabAfterSingleClick = page.locator('#editorTabs .editor-tab', { hasText: FILE_A }).first();
     await expect(tabAfterSingleClick).toBeVisible();
 
     // Double click → tab should no longer carry the preview class
     await fileItem.dblclick();
     await waitForTab(page, FILE_A);
-    const tabAfterDblClick = page.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabAfterDblClick = page.locator('#editorTabs .editor-tab', { hasText: FILE_A }).first();
     await expect(tabAfterDblClick).not.toHaveClass(/preview/, { timeout: 5_000 });
   });
 
