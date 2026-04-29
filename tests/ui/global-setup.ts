@@ -3,9 +3,7 @@
  *
  * Runs ONCE before the full test suite:
  *  1. Logs in as admin via browser and saves auth state (.auth/worker0.json).
- *  2. Creates a temporary Personal Access Token (PAT) for the admin via REST.
- *     Strategy A: Basic auth on the token-bootstrap endpoint.
- *     Strategy B: (future) UI-based token creation if A is blocked.
+ *  2. Creates a temporary Personal Access Token (PAT) via the Polarion web UI.
  *     The PAT is persisted to .auth/.ci-token.json for teardown cleanup.
  *  3. Uses the PAT (Bearer token) to create 2 Polarion test users via REST API.
  *  4. Logs in as each user and saves auth state (worker1.json, worker2.json).
@@ -17,7 +15,7 @@
  *   workerIndex % 3 === 2  →  playwright_w2           (.auth/worker2.json)
  */
 
-import { chromium, request as pwRequest } from '@playwright/test';
+import { chromium, Browser, request as pwRequest } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -41,61 +39,102 @@ export const TEST_USERS = [
 // ── REST helpers ──────────────────────────────────────────────────────────────
 
 /**
- * Acquires a Personal Access Token (PAT) for the admin user.
+ * Acquires a Personal Access Token (PAT) for the admin user via the Polarion web UI.
  *
- * Polarion REST API v1 requires a Bearer token for all resource endpoints.
- * The token-creation endpoint itself accepts HTTP Basic auth as a bootstrap
- * mechanism – this is the standard way to get the first token for a user.
+ * This is the reliable approach for CI environments where Basic-auth on the
+ * REST accesstokens endpoint may be blocked or behave unexpectedly.
  *
- * The token id + secret are persisted to CI_TOKEN_FILE so that globalTeardown
- * can delete the token after the test suite completes.
+ * UI flow:
+ *  1. Open a fresh browser context and log in as admin.
+ *  2. Navigate directly to the PAT management page (#/user_tokens?id=admin).
+ *  3. Fill the "Create New Token" form (name + expiry date, max 90 days).
+ *  4. Click "Create Token" and wait for the one-time display banner.
+ *  5. Extract the JWT token value from the page text via regex.
  *
- * Returns the Bearer token string on success, or null if all strategies fail.
+ * The token name and secret are persisted to CI_TOKEN_FILE so that
+ * globalTeardown can use the secret as Bearer auth to delete test users.
+ *
+ * @param browser - A Playwright Browser instance (Chromium).
+ * @returns The Bearer token string on success, or null if acquisition failed.
  */
-async function acquireAdminBearerToken(): Promise<string | null> {
+async function acquireAdminBearerToken(browser: Browser): Promise<string | null> {
   const tokenName = `playwright-ci-${Date.now()}`;
-
-  // Bootstrap: use Basic auth to create the initial PAT.
-  // The Polarion accesstokens endpoint is the one endpoint that accepts Basic auth.
-  const bootstrapCtx = await pwRequest.newContext({
-    extraHTTPHeaders: {
-      Authorization: `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64')}`,
-      'Content-Type': 'application/json',
-      Accept:         'application/json',
-    },
-  });
+  const context   = await browser.newContext();
+  const page      = await context.newPage();
 
   try {
-    const resp = await bootstrapCtx.post(
-      `${BASE_URL}/polarion/rest/v1/users/${ADMIN_USER}/accesstokens`,
-      {
-        data: {
-          data: {
-            type:       'accesstokens',
-            attributes: { name: tokenName },
-          },
-        },
-      },
+    // 1. Login as admin
+    await page.goto(`${BASE_URL}/polarion`, { waitUntil: 'domcontentloaded' });
+
+    // Handle 30-day trial screen on fresh Polarion instances
+    const trialBtn = page.getByRole('button', { name: 'Start 30-Day Trial' });
+    if (await trialBtn.isVisible({ timeout: 8_000 }).catch(() => false)) {
+      await trialBtn.click();
+      await page.waitForLoadState('domcontentloaded');
+    }
+
+    // Fill login form if present
+    const usernameField = page.locator('#j_username, input[name="j_username"]').first();
+    if (await usernameField.isVisible({ timeout: 15_000 }).catch(() => false)) {
+      await usernameField.fill(ADMIN_USER);
+      await page.locator('#j_password, input[name="j_password"]').first().fill(ADMIN_PASS);
+      await page.locator('#submitButton, button[type="submit"], input[type="submit"]').first().click();
+      await page.waitForFunction(
+        () => !document.querySelector('#j_username, input[name="j_username"]'),
+        { timeout: 30_000 },
+      );
+    }
+
+    // 2. Navigate directly to the PAT management page (no need to go via user profile)
+    await page.goto(`${BASE_URL}/polarion/#/user_tokens?id=${ADMIN_USER}`, { waitUntil: 'domcontentloaded' });
+
+    // 3. Wait for GWT to render the "Create New Token" form
+    await page.waitForFunction(
+      () => document.body?.textContent?.includes('Create New Token'),
+      { timeout: 60_000, polling: 2_000 },
     );
 
-    if (resp.ok()) {
-      const body = await resp.json() as Record<string, unknown>;
-      const attrs = (body?.data as Record<string, unknown>)?.attributes as Record<string, unknown> | undefined;
-      // Polarion returns the secret once at creation time – field may be "secret" or "token"
-      const secret = (attrs?.secret ?? attrs?.token) as string | undefined;
-      const id     = (body?.data as Record<string, unknown>)?.id as string | undefined;
+    // 4. Fill the form
+    //    Name field class:    polarion-Personal-Access-Token-input
+    //    Expires on class:    polarion-DateInput-input  (format: YYYY-MM-DD, max 90 days)
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 30);
+    const dateStr = [
+      expires.getFullYear(),
+      String(expires.getMonth() + 1).padStart(2, '0'),
+      String(expires.getDate()).padStart(2, '0'),
+    ].join('-');
 
-      if (secret) {
-        fs.writeFileSync(CI_TOKEN_FILE, JSON.stringify({ id, name: tokenName, secret }), 'utf8');
-        console.log(`[global-setup] Created PAT "${tokenName}" (id: ${id ?? 'unknown'}) – will use as Bearer token.`);
-        return secret;
-      }
-      console.warn('[global-setup] PAT response did not contain a secret field:', JSON.stringify(body));
-    } else {
-      console.warn(`[global-setup] PAT creation via Basic auth returned ${resp.status()}: ${await resp.text()}`);
+    await page.locator('input.polarion-Personal-Access-Token-input').fill(tokenName);
+    await page.locator('input.polarion-DateInput-input').fill(dateStr);
+    await page.locator('input.polarion-DateInput-input').press('Tab');
+
+    // 5. Submit
+    await page.getByRole('button', { name: 'Create Token' }).click();
+
+    // 6. Wait for the one-time token display banner and extract the JWT
+    await page.waitForFunction(
+      () => document.body?.textContent?.includes('Your new Personal Access Token'),
+      { timeout: 10_000, polling: 500 },
+    );
+
+    const secret = await page.evaluate(() => {
+      const bodyText = document.body?.textContent ?? '';
+      const match = /eyJ[A-Za-z0-9+/=._-]{50,}/.exec(bodyText);
+      return match ? match[0] : null;
+    });
+
+    if (secret) {
+      // Persist for cleanup in global-teardown (no REST id – created via UI)
+      fs.writeFileSync(CI_TOKEN_FILE, JSON.stringify({ name: tokenName, secret }), 'utf8');
+      console.log(`[global-setup] Created PAT "${tokenName}" via Polarion UI.`);
+      return secret;
     }
+    console.warn('[global-setup] Token banner appeared but JWT could not be extracted from page text.');
+  } catch (err) {
+    console.warn(`[global-setup] UI-based PAT acquisition failed: ${String(err)}`);
   } finally {
-    await bootstrapCtx.dispose();
+    await context.close();
   }
 
   return null;
@@ -108,17 +147,13 @@ async function createUser(
 ): Promise<boolean> {
   const resp = await apiCtx.post(`${BASE_URL}/polarion/rest/v1/users`, {
     data: {
-      data: {
+      data: [{
         type: 'users',
-        id: user.id,
         attributes: {
-          name:        user.name,
-          password:    user.password,
-          description: 'Playwright parallel test user – auto-created',
-          email:       `${user.id}@playwright.test`,
-          disabled:    false,
+          id:   user.id,
+          name: user.name,
         },
-      },
+      }],
     },
   });
 
@@ -131,6 +166,25 @@ async function createUser(
     return false;
   }
   console.log(`[global-setup] Created user "${user.id}".`);
+
+  // Set password via PATCH (password is not accepted on creation in Polarion REST v1)
+  const patchResp = await apiCtx.patch(`${BASE_URL}/polarion/rest/v1/users/${user.id}`, {
+    data: {
+      data: {
+        type: 'users',
+        id: user.id,
+        attributes: { password: user.password },
+      },
+    },
+  });
+  if (!patchResp.ok()) {
+    // Cannot set password via REST – fall back to admin credentials for this worker
+    console.warn(
+      `[global-setup] Cannot set password for "${user.id}" via REST (${patchResp.status()}). ` +
+      `Worker will fall back to admin credentials.`,
+    );
+    return false;
+  }
   return true;
 }
 
@@ -234,12 +288,13 @@ export default async function globalSetup(): Promise<void> {
     await browser.close();
   }
 
-  // --- 2. Acquire a Personal Access Token (PAT) for REST API calls ---
-  // Polarion REST API v1 requires a Bearer token – Basic auth and session
-  // cookies are rejected with 401 "No access token" on resource endpoints.
-  // The /accesstokens endpoint itself accepts Basic auth as a bootstrap
-  // mechanism so we can obtain the first token without a pre-existing PAT.
-  const bearerToken = await acquireAdminBearerToken();
+  // --- 2. Acquire a Personal Access Token (PAT) via the Polarion web UI ---
+  // Polarion REST API v1 requires a Bearer token for all resource endpoints.
+  // We create the PAT via the browser UI (#/user_tokens page) instead of REST
+  // Basic-auth, which may be blocked in some Polarion configurations / CI setups.
+  const browser2 = await chromium.launch();
+  const bearerToken = await acquireAdminBearerToken(browser2);
+  await browser2.close();
 
   if (!bearerToken) {
     console.warn(
@@ -272,12 +327,12 @@ export default async function globalSetup(): Promise<void> {
 
   // --- 4. Login as each worker's user and save browser storage state ---
   if (allCreated) {
-    const browser2 = await chromium.launch();
+    const browser3 = await chromium.launch();
     try {
-      await loginAndSave(browser2, TEST_USERS[0].id, TEST_USERS[0].password, worker1Path);
-      await loginAndSave(browser2, TEST_USERS[1].id, TEST_USERS[1].password, worker2Path);
+      await loginAndSave(browser3, TEST_USERS[0].id, TEST_USERS[0].password, worker1Path);
+      await loginAndSave(browser3, TEST_USERS[1].id, TEST_USERS[1].password, worker2Path);
     } finally {
-      await browser2.close();
+      await browser3.close();
     }
   } else {
     console.warn('[global-setup] Some users could not be created – affected workers will use admin credentials.');
