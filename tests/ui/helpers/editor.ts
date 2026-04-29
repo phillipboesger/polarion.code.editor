@@ -7,11 +7,13 @@ export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
  *  The global /#/administration/code-editor route never sets working_area.src
  *  and loads editor.html without ?projectId, so a project-specific route is
  *  always required. */
-const DEFAULT_PROJECT_ID = process.env.POLARION_PROJECT_ID ?? 'drivePilot';
+export const DEFAULT_PROJECT_ID = process.env.POLARION_PROJECT_ID ?? 'drivepilot';
 
 function projectEditorSpaUrl(projectId: string): string {
   return `${BASE_URL}/polarion/#/project/${encodeURIComponent(projectId)}/administration/code-editor`;
 }
+
+const GLOBAL_EDITOR_SPA_URL = `${BASE_URL}/polarion/#/administration/code-editor`;
 
 
 /** Waits until the editor boot overlay and bootstrap blur are cleared. */
@@ -64,13 +66,39 @@ export async function openEditor(page: Page, projectId?: string): Promise<Frame>
   // fires – framenavigated is the correct hook.
   const editorFramePromise = page.waitForEvent('framenavigated', {
     predicate: frame => frame.name() === 'working_area' && frame.url().includes('code-editor'),
-    timeout: 60_000,
+    timeout: process.env.CI ? 60_000 : 30_000,
   });
 
   await page.goto(spaUrl, { waitUntil: 'domcontentloaded' });
 
   const editorFrame = await editorFramePromise;
-  await editorFrame.waitForSelector('#fileList', { state: 'attached', timeout: 30_000 });
+  // Wait for Monaco's require() callback to complete – window.editor is set
+  // right before setupResizer() is called, so this guarantees the resizer
+  // (and all other JS initialisation) has run before the test interacts.
+  await editorFrame.waitForFunction(
+    () => !!(globalThis as Record<string, unknown>)['editor'],
+    { timeout: process.env.CI ? 30_000 : 15_000 }
+  );
+  return editorFrame;
+}
+
+/**
+ * Opens the global Code Editor admin page (no project context).
+ * Files must be created without a projectId to be visible here.
+ */
+export async function openGlobalEditor(page: Page): Promise<Frame> {
+  const editorFramePromise = page.waitForEvent('framenavigated', {
+    predicate: frame => frame.name() === 'working_area' && frame.url().includes('code-editor'),
+    timeout: process.env.CI ? 60_000 : 30_000,
+  });
+
+  await page.goto(GLOBAL_EDITOR_SPA_URL, { waitUntil: 'domcontentloaded' });
+
+  const editorFrame = await editorFramePromise;
+  await editorFrame.waitForFunction(
+    () => !!(globalThis as Record<string, unknown>)['editor'],
+    { timeout: process.env.CI ? 30_000 : 15_000 }
+  );
   return editorFrame;
 }
 
@@ -115,9 +143,14 @@ export async function waitForFileInList(frame: Frame, fileName: string, timeout 
     .toBe(true);
 }
 
-/** Clicks on a file in the sidebar. */
+/** Clicks on a file in the sidebar (opens as preview tab). */
 export async function clickFile(frame: Frame, fileName: string): Promise<void> {
   await frame.locator('#fileList .file-item', { hasText: fileName }).click();
+}
+
+/** Double-clicks on a file in the sidebar (pins it as a permanent tab). */
+export async function dblclickFile(frame: Frame, fileName: string): Promise<void> {
+  await frame.locator('#fileList .file-item', { hasText: fileName }).dblclick();
 }
 
 /** Waits until the editor tab bar shows a tab for the given filename. */
@@ -130,7 +163,8 @@ export async function hasTab(frame: Frame, fileName: string, timeout = 5_000): P
   return frame
     .locator('#editorTabs .editor-tab', { hasText: fileName })
     .first()
-    .isVisible({ timeout })
+    .waitFor({ state: 'visible', timeout })
+    .then(() => true)
     .catch(() => false);
 }
 
@@ -157,12 +191,12 @@ export async function createFile(frame: Frame, fileName: string, projectId?: str
 
   if (!appearedViaUi) {
     // Fallback for builds where the UI dialog occasionally fails silently.
-    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    // Extract projectId from frame URL if not explicitly provided (e.g. ?projectId=drivepilot).
+    const frameProjectId = projectId ?? new URL(frame.url()).searchParams.get('projectId') ?? undefined;
+    const query = frameProjectId ? `?projectId=${encodeURIComponent(frameProjectId)}` : '';
     const response = await frame.page().request.put(
       `/polarion/code-editor/api/config/file/${encodeURIComponent(fileName)}${query}`,
-      {
-        data: ''
-      }
+      { data: '' }
     );
     if (!response.ok()) {
       throw new Error(`Could not create file ${fileName} (UI + API fallback failed, status ${response.status()})`);

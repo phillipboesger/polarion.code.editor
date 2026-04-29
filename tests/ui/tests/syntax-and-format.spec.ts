@@ -7,7 +7,7 @@
 import { test, expect } from '../fixtures';
 import type { Page, Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, clearEditorStorage } from '../helpers/editor';
+import { openEditor, openGlobalEditor, clickFile, waitForTab, clearEditorStorage } from '../helpers/editor';
 
 // Set once per worker in beforeAll; used as file-name prefix to avoid cross-worker conflicts.
 let TS: string;
@@ -106,7 +106,7 @@ test.describe('Code Editor – Syntax Highlighting', () => {
       const ok = await apiCreateFile(page, file);
       expect(ok, `Cannot create "${file}" – environment may be read-only`).toBe(true);
 
-      const frame = await openEditor(page);
+      const frame = await openGlobalEditor(page);
       await clickFile(frame, file);
       await waitForTab(frame, file);
 
@@ -135,7 +135,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -162,7 +162,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -188,7 +188,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -214,7 +214,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -239,7 +239,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -267,7 +267,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -293,7 +293,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -320,7 +320,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -342,7 +342,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -370,7 +370,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -391,7 +391,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, 'page.xml');
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, 'page.xml');
     await waitForTab(frame, 'page.xml');
 
@@ -418,7 +418,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -438,7 +438,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -460,7 +460,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 
@@ -484,7 +484,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    const frame = await openEditor(page);
+    const frame = await openGlobalEditor(page);
     await clickFile(frame, FILE);
     await waitForTab(frame, FILE);
 

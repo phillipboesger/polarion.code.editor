@@ -908,6 +908,7 @@
     let activeTabId = null;
     let previewTabId = null;
     let tabIdCounter = 0;
+    const loadingPaths = new Map(); // path -> { persistent: boolean }
     let initialTabRestoreDone = false;
     let isInitialBootstrap = true;
     let initialBootstrapFallbackTimer = null;
@@ -2153,6 +2154,15 @@
         return Promise.resolve(existing.id);
       }
 
+      // Deduplicate concurrent fetches for the same file.
+      // If a dblclick (persistent=true) arrives while the single-click fetch is
+      // already in-flight, upgrade the in-flight request to persistent so the
+      // tab is not created as a preview.
+      if (loadingPaths.has(filePath)) {
+        if (persistent) loadingPaths.get(filePath).persistent = true;
+        return Promise.resolve(null);
+      }
+
       const currentPreview = previewTabId ? getTabById(previewTabId) : null;
       if (currentPreview && !persistent) {
         if (isTabDirty(currentPreview)) {
@@ -2169,6 +2179,7 @@
         previewTabId = null;
       }
 
+      loadingPaths.set(filePath, { persistent });
       const fetchOptions = {};
       let abortTimeout = null;
       if (silentOnError && typeof AbortController !== 'undefined') {
@@ -2210,16 +2221,17 @@
           const lang = getMonacoLanguage(filePath);
           const model = monaco.editor.createModel(content, lang);
 
+          const finalPersistent = loadingPaths.get(filePath)?.persistent ?? persistent;
           const newTab = {
             id: `tab-${++tabIdCounter}`,
             path: filePath,
             model,
             originalContent: content,
-            isPreview: !persistent
+            isPreview: !finalPersistent
           };
 
           openTabs.push(newTab);
-          if (!persistent) previewTabId = newTab.id;
+          if (!finalPersistent) previewTabId = newTab.id;
 
           activateTab(newTab.id);
           renderFileList();
@@ -2241,6 +2253,7 @@
           return null;
         })
         .finally(() => {
+          loadingPaths.delete(filePath);
           if (abortTimeout) {
             clearTimeout(abortTimeout);
           }

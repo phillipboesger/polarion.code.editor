@@ -3,8 +3,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
 
-  // Global timeout per test – Polarion pages can be slow
-  timeout: 120_000,
+  // Global timeout per test – keep lower locally so failures are reported quickly
+  timeout: process.env.CI ? 120_000 : 45_000,
 
   // Retry once on CI to tolerate transient slowness
   retries: process.env.CI ? 1 : 0,
@@ -37,8 +37,8 @@ export default defineConfig({
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
     // CI runners are often slower than local Docker; use slightly higher limits there.
-    navigationTimeout: process.env.CI ? 90_000 : 60_000,
-    actionTimeout: process.env.CI ? 45_000 : 30_000,
+    navigationTimeout: process.env.CI ? 90_000 : 30_000,
+    actionTimeout: process.env.CI ? 45_000 : 15_000,
     // On GitHub Actions (Linux) /dev/shm is only 64 MB; Chromium can crash without these flags.
     // --no-sandbox is required when running as root (default in GitHub Actions).
     launchOptions: {

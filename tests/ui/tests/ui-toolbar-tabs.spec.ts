@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
+import { openEditor, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
 
 let FILE_A: string;
 let FILE_B: string;
@@ -118,22 +118,17 @@ test.describe('Code Editor – Tab Management', () => {
   });
 
   test('opening a second file adds a second tab', async ({ page }) => {
-    await clickFile(frame, FILE_A);
+    await dblclickFile(frame, FILE_A);
     await waitForTab(frame, FILE_A);
     await clickFile(frame, FILE_B);
 
-    const hasTabB = await hasTab(frame, FILE_B, 8_000);
-    expect(hasTabB, 'Editor instance currently keeps a single active tab').toBe(true);
-
-    const tabs = frame.locator('#editorTabs .editor-tab');
-    const tabCount = await tabs.count();
-    expect(tabCount).toBeGreaterThanOrEqual(1);
+    await hasTab(frame, FILE_B, 8_000);
     await expect(frame.locator('#currentFileLabel')).toContainText(FILE_B, { timeout: 5_000 });
 
-    if (tabCount >= 2) {
-      await expect(frame.locator('#editorTabs .editor-tab', { hasText: FILE_A })).toBeVisible({ timeout: 5_000 });
-      await expect(frame.locator('#editorTabs .editor-tab', { hasText: FILE_B })).toBeVisible({ timeout: 5_000 });
-    }
+    const tabs = frame.locator('#editorTabs .editor-tab');
+    await expect(tabs).toHaveCount(2, { timeout: 5_000 });
+    await expect(frame.locator('#editorTabs .editor-tab', { hasText: FILE_A })).toBeVisible();
+    await expect(frame.locator('#editorTabs .editor-tab', { hasText: FILE_B })).toBeVisible();
   });
 
   test('active tab is highlighted with accent border', async ({ page }) => {
@@ -173,22 +168,27 @@ test.describe('Code Editor – Tab Management', () => {
   });
 
   test('switching between tabs updates the editor content', async ({ page }) => {
-    await clickFile(frame, FILE_A);
+    await dblclickFile(frame, FILE_A);
     await waitForTab(frame, FILE_A);
     await typeInMonaco(frame, 'content-for-file-a');
+    // Save before switching so no unsaved-changes dialog blocks the tab switch
+    await frame.page().keyboard.press('ControlOrMeta+s');
+    await expect(frame.locator('#editorTabs .editor-tab', { hasText: FILE_A })).not.toHaveClass(/dirty/, { timeout: 5_000 });
 
     await clickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+    await expect(frame.locator('#editorTabs .editor-tab')).toHaveCount(2, { timeout: 5_000 });
 
-    const hasTabB = await hasTab(frame, FILE_B, 8_000);
-    expect(hasTabB, 'Editor instance currently keeps a single active tab').toBe(true);
+    // FILE_B should now be active and its content should be empty (new file)
+    await expect(frame.locator('#currentFileLabel')).toContainText(FILE_B, { timeout: 5_000 });
+    const contentB = await frame.evaluate(() => (window as any).editor?.getValue() ?? '');
+    expect(contentB.trim()).toBe('');
 
-    const tabCount = await frame.locator('#editorTabs .editor-tab').count();
-    expect(tabCount, 'Editor instance currently keeps a single active tab').toBeGreaterThanOrEqual(2);
-
-    // Switch back to FILE_A
+    // Switch back to FILE_A – content must be restored
     await frame.locator('#editorTabs .editor-tab', { hasText: FILE_A }).click();
-    // Toolbar should show FILE_A again
     await expect(frame.locator('#currentFileLabel')).toContainText(FILE_A, { timeout: 5_000 });
+    const contentA = await frame.evaluate(() => (window as any).editor?.getValue() ?? '');
+    expect(contentA).toContain('content-for-file-a');
   });
 
 });

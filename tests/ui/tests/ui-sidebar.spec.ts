@@ -50,29 +50,27 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     await expect(frame.locator('#resizer')).toBeVisible();
   });
 
-  test('dragging the resizer changes sidebar width and persists to localStorage', async ({ page }) => {
-    const resizer = frame.locator('#resizer');
+  test('dragging the resizer changes sidebar width and persists to localStorage', async ({ page: _ }) => {
     const sidebar = frame.locator('#sidebar');
-
-    const resizerBox = await resizer.boundingBox();
-    expect(resizerBox).not.toBeNull();
-
-    const startX = resizerBox!.x + resizerBox!.width / 2;
-    const startY = resizerBox!.y + resizerBox!.height / 2;
-    const targetX = startX + 150; // drag 150px to the right
-
-    // Move to the resizer first, then mousedown directly on the element
-    await page.mouse.move(startX, startY);
-    // Dispatch mousedown directly on the resizer element to ensure it registers
-    await resizer.dispatchEvent('mousedown', { bubbles: true, cancelable: true });
-    await page.mouse.move(targetX, startY, { steps: 20 });
-    await page.mouse.up();
+    // mousemove/mouseup listeners receive them reliably, and coordinates
+    // are naturally in iframe space (not page space).
+    await frame.evaluate(() => {
+      const resizer = document.getElementById('resizer');
+      if (!resizer) return;
+      const rect = resizer.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const targetX = Math.min(x + 200, 790); // drag right, stay within 800px constraint
+      resizer.dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: targetX, clientY: y, bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mouseup',  { clientX: targetX, clientY: y, bubbles: true }));
+    });
 
     // Allow localStorage write to complete
-    await page.waitForTimeout(200);
+    await frame.page().waitForTimeout(200);
 
-    // Persisted in localStorage
-    const stored = await page.evaluate(() => localStorage.getItem('sidebarWidth'));
+    // Persisted in localStorage (same origin → readable from frame context)
+    const stored = await frame.evaluate(() => localStorage.getItem('sidebarWidth'));
     expect(stored).not.toBeNull();
     expect(Number(stored)).toBeGreaterThan(350);
 
@@ -93,10 +91,11 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     const resizer = frame.locator('#resizer');
     const resizerBox = await resizer.boundingBox();
     expect(resizerBox).not.toBeNull();
+    if (!resizerBox) return;
 
-    await page.mouse.move(resizerBox!.x, resizerBox!.y + resizerBox!.height / 2);
+    await page.mouse.move(resizerBox.x, resizerBox.y + resizerBox.height / 2);
     await page.mouse.down();
-    await page.mouse.move(500, resizerBox!.y + resizerBox!.height / 2, { steps: 15 });
+    await page.mouse.move(500, resizerBox.y + resizerBox.height / 2, { steps: 15 });
     await page.mouse.up();
 
     const widthSet = await frame.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
