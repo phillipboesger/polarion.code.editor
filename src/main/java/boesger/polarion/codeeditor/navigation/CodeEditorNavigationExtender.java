@@ -5,9 +5,8 @@ import java.util.List;
 
 import com.polarion.alm.ui.server.navigation.NavigationExtender;
 import com.polarion.alm.ui.server.navigation.NavigationExtenderNode;
-import com.polarion.subterra.base.data.identification.IContextId;
-
 import com.polarion.core.util.logging.Logger;
+import com.polarion.subterra.base.data.identification.IContextId;
 
 /**
  * Registers the Code Editor as a navigation entry in the Polarion sidebar.
@@ -42,6 +41,10 @@ public class CodeEditorNavigationExtender extends NavigationExtender {
 
 	@Override
 	public String getPageUrl(IContextId contextId) {
+		if(contextId != null) {
+			String projectId = contextId.getContextName();
+			if(projectId != null && !projectId.isEmpty()) { return PAGE_URL + "?projectId=" + java.net.URLEncoder.encode(projectId, java.nio.charset.StandardCharsets.UTF_8); }
+		}
 		return PAGE_URL;
 	}
 

@@ -9,7 +9,7 @@
  *  - Tab bar is horizontally scrollable
  */
 import { test, expect } from '../fixtures';
-import type { Page, Frame } from '@playwright/test';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, clickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
 
