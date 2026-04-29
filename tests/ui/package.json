@@ -4,6 +4,7 @@
   "description": "Playwright UI tests for the Polarion Code Editor plugin",
   "scripts": {
     "test": "./node_modules/.bin/playwright test",
+    "test:ci": "./node_modules/.bin/playwright test --max-failures=3",
     "test:fast": "./node_modules/.bin/playwright test --workers=1 --max-failures=1 --reporter=line",
     "test:debug": "./node_modules/.bin/playwright test --workers=1 --max-failures=1 --trace=on --reporter=line",
     "test:headed": "./node_modules/.bin/playwright test --headed",

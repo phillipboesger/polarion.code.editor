@@ -198,7 +198,7 @@ jobs:
           POLARION_URL: "http://localhost"
           POLARION_USER: "admin"
           POLARION_PASS: "admin"
-        run: npm run test:fast
+        run: npm run test:ci
 
       # ------------------------------------------------------------------
       # 8. Upload artefacts (always, so failures are inspectable)
