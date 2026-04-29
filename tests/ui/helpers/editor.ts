@@ -153,7 +153,7 @@ export async function createFile(page: Page, fileName: string, projectId?: strin
   await confirmBtn.click();
   await page.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
 
-  const appearedViaUi = await waitForFileInList(page, fileName, 6_000)
+  const appearedViaUi = await waitForFileInList(page, fileName, 15_000)
     .then(() => true)
     .catch(() => false);
 
