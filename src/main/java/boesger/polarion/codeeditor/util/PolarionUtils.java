@@ -28,8 +28,7 @@ public class PolarionUtils {
 
 	private static <T> T lookupService(Class<T> serviceClass) {
 		try {
-			com.polarion.platform.core.IPlatform platform = PlatformContext.getPlatform();
-			return platform != null ? platform.lookupService(serviceClass) : null;
+			return PlatformContext.getPlatform().lookupService(serviceClass);
 		}
 		catch(Exception e) {
 			return null;
@@ -97,9 +96,6 @@ public class PolarionUtils {
 		return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
 	}
 
-	/**
-	 * Executes a function within a transaction.
-	 */
 	/**
 	 * Executes a function within a transaction and returns a result.
 	 */

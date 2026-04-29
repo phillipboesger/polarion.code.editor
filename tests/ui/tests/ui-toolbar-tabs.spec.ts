@@ -181,13 +181,13 @@ test.describe('Code Editor – Tab Management', () => {
 
     // FILE_B should now be active and its content should be empty (new file)
     await expect(frame.locator('#currentFileLabel')).toContainText(FILE_B, { timeout: 5_000 });
-    const contentB = await frame.evaluate(() => (window as any).editor?.getValue() ?? '');
+    const contentB = await frame.evaluate(() => (globalThis as any).editor?.getValue() ?? '');
     expect(contentB.trim()).toBe('');
 
     // Switch back to FILE_A – content must be restored
     await frame.locator('#editorTabs .editor-tab', { hasText: FILE_A }).click();
     await expect(frame.locator('#currentFileLabel')).toContainText(FILE_A, { timeout: 5_000 });
-    const contentA = await frame.evaluate(() => (window as any).editor?.getValue() ?? '');
+    const contentA = await frame.evaluate(() => (globalThis as any).editor?.getValue() ?? '');
     expect(contentA).toContain('content-for-file-a');
   });
 

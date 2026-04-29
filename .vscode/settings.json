@@ -1,5 +1,5 @@
 {
-	"playwright.reuseBrowser": true,
+	"playwright.reuseBrowser": false,
 	"playwright.showTrace": false,
 	"java.import.exclusions": [
 		"**/target/**"

@@ -39,7 +39,7 @@ test.describe('Code Editor – Double-click on file', () => {
     const fileItem = frame.locator('#fileList .file-item', { hasText: FILE_A });
     await fileItem.dblclick();
 
-    const selectionText = await frame.evaluate(() => window.getSelection()?.toString() ?? '');
+    const selectionText = await frame.evaluate(() => globalThis.getSelection()?.toString() ?? '');
     expect(selectionText).toBe('');
   });
 
@@ -68,7 +68,7 @@ test.describe('Code Editor – Double-click on file', () => {
     await expect(fileItem).toBeVisible();
 
     const hasSelection = await frame.evaluate(() => {
-      const sel = window.getSelection();
+      const sel = globalThis.getSelection();
       return sel !== null && sel.rangeCount > 0 && sel.toString().length > 0;
     });
     expect(hasSelection).toBe(false);

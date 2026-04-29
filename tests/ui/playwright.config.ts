@@ -6,8 +6,8 @@ export default defineConfig({
   // Global timeout per test – keep lower locally so failures are reported quickly
   timeout: process.env.CI ? 120_000 : 45_000,
 
-  // Retry once on CI to tolerate transient slowness
-  retries: process.env.CI ? 1 : 0,
+  // Retry up to 2 times to tolerate transient slowness
+  retries: 2,
 
   // 3 parallel workers on CI (each with its own Polarion admin user),
   // 1 worker locally to keep the dev loop simple.

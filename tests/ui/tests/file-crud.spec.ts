@@ -265,7 +265,7 @@ test.describe('Code Editor – File CRUD', () => {
 
     // After Tab, the input value should be completed with the folder name + trailing slash
     const value = await pathInput.inputValue();
-    expect(value).toMatch(new RegExp(`^${folderPrefix.substring(0, 4)}.*\\/`));
+    expect(value).toMatch(new RegExp(String.raw`^${folderPrefix.substring(0, 4)}.*/`));
 
     // The suggestions dropdown should be hidden after selection
     await expect(frame.locator('#newFileSuggestions')).toBeHidden();
@@ -287,10 +287,9 @@ test.describe('Code Editor – File CRUD', () => {
 
     // Press Tab – focus must stay inside the modal (on one of the modal buttons)
     await page.keyboard.press('Tab');
-    const activeId = await frame.evaluate(() => document.activeElement?.id ?? '');
     const isInsideModal = await frame.evaluate(
       (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
-                Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
+                Array.from(document.querySelectorAll(sel)).includes(document.activeElement as Element),
       focusableSelector
     );
     expect(isInsideModal).toBe(true);
@@ -299,7 +298,7 @@ test.describe('Code Editor – File CRUD', () => {
     await page.keyboard.press('Shift+Tab');
     const isInsideModalAfterShift = await frame.evaluate(
       (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
-                Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
+                Array.from(document.querySelectorAll(sel)).includes(document.activeElement as Element),
       focusableSelector
     );
     expect(isInsideModalAfterShift).toBe(true);

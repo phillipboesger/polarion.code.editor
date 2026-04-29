@@ -9,7 +9,7 @@
  *  - Clearing storage resets state to defaults
  */
 import { test, expect } from '../fixtures';
-import type { Page, Frame } from '@playwright/test';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, waitForEditorReady, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile } from '../helpers/editor';
 
@@ -120,7 +120,7 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
     const targetWidth = 450;
 
     await frame.evaluate((w: number) => {
-      const sidebar = document.getElementById('sidebar') as HTMLElement;
+      const sidebar = document.getElementById('sidebar');
       if (sidebar) sidebar.style.width = w + 'px';
       localStorage.setItem('sidebarWidth', String(w));
     }, targetWidth);

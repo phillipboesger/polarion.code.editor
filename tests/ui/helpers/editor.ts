@@ -120,7 +120,7 @@ export async function getFileList(frame: Frame): Promise<string[]> {
   const items = frame.locator('#fileList .file-item');
   await items.first().waitFor({ timeout: 15_000 }).catch(() => {/* empty list is fine */});
   const values = await items.allTextContents();
-  return values.map((v) => v.replace(/\s+/g, ' ').trim());
+  return values.map((v) => v.replaceAll(/\s+/g, ' ').trim());
 }
 
 /** Waits until a file with the given name appears in the sidebar list.
