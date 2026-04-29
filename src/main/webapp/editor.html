@@ -547,11 +547,12 @@
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.5);
-      z-index: 100;
-      display: flex;
+      z-index: 1000;
+      display: none;
       align-items: center;
       justify-content: center;
     }
+    .modal-overlay.visible { display: flex; }
     .modal-content {
       background: var(--bg-sidebar);
       border: 1px solid var(--border-color);
@@ -580,14 +581,16 @@
       font-weight: bold;
     }
     .path-container {
+      position: relative;
       display: flex;
       align-items: center;
+      width: 100%;
       background: #333; /* Input bg */
       padding: 0 8px;
       border: 1px solid var(--border-color);
       border-radius: 2px;
       height: 30px;
-    } 
+    }
     .path-prefix {
         color: #888;
         font-family: 'Consolas', monospace;
@@ -604,6 +607,7 @@
         cursor: pointer;
         max-width: 150px;
         -webkit-appearance: none; /* Hide default arrow somewhat if desired, or keep it */
+        appearance: none;
     }
     .folder-select:hover {
         color: white;
@@ -731,12 +735,6 @@
     }
 
     /* Path Suggestions */
-    .path-container {
-        position: relative; 
-        display: flex; 
-        align-items: center; 
-        width: 100%;
-    }
     .suggestions-dropdown {
         position: absolute;
         top: 100%;
@@ -770,12 +768,6 @@
     }
     
     /* Modal Styles */
-    .modal-overlay {
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.5);
-        display: none; align-items: center; justify-content: center; z-index: 1000;
-    }
-    .modal-overlay.visible { display: flex; }
     .modal {
         background: var(--bg-sidebar);
         border: 1px solid var(--border-color);
@@ -810,7 +802,7 @@
             try {
                 var w = localStorage.getItem('sidebarWidth');
                 if(w) document.getElementById('sidebar').style.width = w + 'px';
-            } catch(e) {}
+            } catch(e) { console.warn('localStorage unavailable in sandboxed context:', e); }
         })();
       </script>
       <div class="sidebar-header">
@@ -961,21 +953,21 @@
 
     function escapeHtml(value) {
       return String(value || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
     }
     
     // Attempt to get projectId from query param OR window.top URL (if accessible)
-    let projectId = new URLSearchParams(window.location.search).get('projectId') || '';
+    let projectId = new URLSearchParams(globalThis.location.search).get('projectId') || '';
     
     if (!projectId) {
         try {
             // Polarion URL: #/project/PROJECT_ID/administration/...
             const topHash = window.top.location.hash; // e.g. #/project/avaWorkflowNew/administration/...
-            const match = topHash.match(/\/project\/([^\/]+)\//);
+            const match = topHash.match(/\/project\/([^/]+)\//);
             if (match && match[1]) {
                 projectId = match[1];
                 console.log("Detected projectId from Top URL:", projectId);
@@ -1009,14 +1001,15 @@
       return localStorage.getItem(baseKey);
     }
 
-    window.MonacoEnvironment = {
+    globalThis.MonacoEnvironment = {
       getWorkerUrl: function (workerId, label) {
-        return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
-          self.MonacoEnvironment = {
-            baseUrl: '/polarion/code-editor/resources/lib/monaco-editor/min/'
-          };
-          importScripts('/polarion/code-editor/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');`
-        )}`;
+        const workerScript = [
+          "self.MonacoEnvironment = {",
+          "  baseUrl: '/polarion/code-editor/resources/lib/monaco-editor/min/'",
+          "};",
+          "importScripts('/polarion/code-editor/resources/lib/monaco-editor/min/vs/base/worker/workerMain.js');"
+        ].join('\n');
+        return `data:text/javascript;charset=utf-8,${encodeURIComponent(workerScript)}`;
       }
     };
 
@@ -1037,7 +1030,7 @@
             [/("(?:[^"\\]|\\.)*")/, 'string'],
             [/('(?:[^'\\]|\\.)*')/, 'string'],
             [/<\/?[a-zA-Z][\w-]*(?:\s+[^<>]*?)?>/, 'tag'],
-            [/[{}()\[\]]/, '@brackets']
+            [/[{}()[\]]/, '@brackets']
           ]
         }
       });
@@ -1073,8 +1066,8 @@
       });
 
       // Expose editor instance and key functions globally for testing
-      window.editor = editor;
-      window.formatCurrentDocument = formatCurrentDocument;
+      globalThis.editor = editor;
+      globalThis.formatCurrentDocument = formatCurrentDocument;
 
       // Initialize UI
       updateEditorToolbarState();
@@ -1089,6 +1082,7 @@
       try {
         parsed = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_STORAGE_KEY) || '{}') || {};
       } catch (e) {
+        console.warn('loadEditorUserSettings: JSON.parse failed, using defaults.', e);
         parsed = {};
       }
 
@@ -1197,6 +1191,7 @@
         const activePath = typeof parsed.activePath === 'string' ? parsed.activePath : '';
         return { paths: [...new Set(paths)], activePath };
       } catch (e) {
+        console.warn('getOpenTabsSession: JSON.parse failed, returning empty session.', e);
         return { paths: [], activePath: '' };
       }
     }
@@ -1255,7 +1250,7 @@
                 resizer.classList.remove('resizing');
                 document.body.style.cursor = 'default';
                 // Save width
-                localStorage.setItem('sidebarWidth', parseInt(sidebar.style.width));
+                localStorage.setItem('sidebarWidth', Number.parseInt(sidebar.style.width));
             }
         });
     }
@@ -1378,160 +1373,200 @@
       return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
     }
 
-    function formatVelocityLike(content) {
-      if (!content) return content;
+    // ── HTML tag sets (shared by formatVelocityLike helpers) ────────────────
+    const FMT_VOID_TAGS = new Set([
+      'area','base','br','col','embed','hr','img','input',
+      'link','meta','param','source','track','wbr'
+    ]);
 
-      const normalized = content.replace(/\r\n/g, '\n');
-      const hasTrailingNewline = normalized.endsWith('\n');
-      const indentUnit = '  ';
+    // Block-level HTML tags whose children get indented.
+    const FMT_BLOCK_TAGS = new Set([
+      'html','head','body',
+      'table','thead','tbody','tfoot','tr','colgroup',
+      'ul','ol','dl',
+      'div','section','article','header','footer','main','nav','aside',
+      'form','fieldset','select','datalist','optgroup',
+      'details','summary','blockquote','figure','figcaption'
+    ]);
 
-      // ── HTML tag sets ──────────────────────────────────────────────────────
-      const VOID_TAGS = new Set([
-        'area','base','br','col','embed','hr','img','input',
-        'link','meta','param','source','track','wbr'
-      ]);
+    // Inline container tags: collapse open+content+close to one line when small
+    const FMT_INLINE_COLLAPSIBLE = new Set([
+      'td','th','li','dt','dd',
+      'p','h1','h2','h3','h4','h5','h6',
+      'label','button','caption','title',
+      'span','a','strong','em','i','b','small','code'
+    ]);
 
-      // Block-level HTML tags whose children get indented.
-      // <script> and <style> are NOT listed here – they are handled via embedded-mode logic below.
-      const BLOCK_TAGS = new Set([
-        'html','head','body',
-        'table','thead','tbody','tfoot','tr','colgroup',
-        'ul','ol','dl',
-        'div','section','article','header','footer','main','nav','aside',
-        'form','fieldset','select','datalist','optgroup',
-        'details','summary','blockquote','figure','figcaption'
-      ]);
+    function getSoloOpenTag(line) {
+      const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>$/);
+      if (!m) return null;
+      const tag = m[1].toLowerCase();
+      return FMT_VOID_TAGS.has(tag) ? null : tag;
+    }
 
-      // Inline container tags: collapse open+content+close to one line when small
-      const INLINE_COLLAPSIBLE = new Set([
-        'td','th','li','dt','dd',
-        'p','h1','h2','h3','h4','h5','h6',
-        'label','button','caption','title',
-        'span','a','strong','em','i','b','small','code'
-      ]);
+    function getSoloCloseTag(line) {
+      const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>$/);
+      return m ? m[1].toLowerCase() : null;
+    }
 
-      function getSoloOpenTag(line) {
-        const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>$/);
-        if (!m) return null;
-        const tag = m[1].toLowerCase();
-        return VOID_TAGS.has(tag) ? null : tag;
+    function getBlockOpenTag(line) {
+      const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>/);
+      if (!m) return null;
+      const tag = m[1].toLowerCase();
+      if (!FMT_BLOCK_TAGS.has(tag)) return null;
+      if (new RegExp(String.raw`</${tag}\s*>`, 'i').test(line)) return null;
+      return tag;
+    }
+
+    function getBlockCloseTag(line) {
+      const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>/);
+      if (!m) return null;
+      const tag = m[1].toLowerCase();
+      return FMT_BLOCK_TAGS.has(tag) ? tag : null;
+    }
+
+    // ── Step 0: Expand compact CSS inside <style> blocks ──────────────────
+    // Tokenises on { } ; while preserving Velocity ${...} expressions.
+    function expandCss(cssText) {
+      let result = '';
+      let vDepth = 0;
+      for (let k = 0; k < cssText.length; k++) {
+        const c    = cssText[k];
+        const prev = k > 0 ? cssText[k - 1] : '';
+        if      (c === '{' && prev === '$') { vDepth++; result += c; }
+        else if (c === '}' && vDepth > 0)  { vDepth--; result += c; }
+        else if (vDepth > 0)               { result += c; }
+        else if (c === '{')  { result += ' {\n'; }
+        else if (c === '}')  { result += '\n}\n'; }
+        else if (c === ';')  { result += ';\n'; }
+        else                 { result += c; }
       }
+      return result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    }
 
-      function getSoloCloseTag(line) {
-        const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>$/);
-        return m ? m[1].toLowerCase() : null;
+    function flushCssBuffer(cssBuffer, output) {
+      if (cssBuffer.length > 0) {
+        output.push(...expandCss(cssBuffer.join(' ')));
+        cssBuffer.length = 0;
       }
+    }
 
-      function getBlockOpenTag(line) {
-        const m = line.match(/^<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\s*>/);
-        if (!m) return null;
-        const tag = m[1].toLowerCase();
-        if (!BLOCK_TAGS.has(tag)) return null;
-        if (new RegExp(`</${tag}\\s*>`, 'i').test(line)) return null;
-        return tag;
-      }
-
-      function getBlockCloseTag(line) {
-        const m = line.match(/^<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>/);
-        if (!m) return null;
-        const tag = m[1].toLowerCase();
-        return BLOCK_TAGS.has(tag) ? tag : null;
-      }
-
-      // ── Step 0: Expand compact CSS inside <style> blocks ──────────────────
-      // Tokenises on { } ; while preserving Velocity ${...} expressions.
-      function expandCss(cssText) {
-        let result = '';
-        let vDepth = 0;
-        for (let k = 0; k < cssText.length; k++) {
-          const c    = cssText[k];
-          const prev = k > 0 ? cssText[k - 1] : '';
-          if      (c === '{' && prev === '$') { vDepth++; result += c; }
-          else if (c === '}' && vDepth > 0)  { vDepth--; result += c; }
-          else if (vDepth > 0)               { result += c; }
-          else if (c === '{')  { result += ' {\n'; }
-          else if (c === '}')  { result += '\n}\n'; }
-          else if (c === ';')  { result += ';\n'; }
-          else                 { result += c; }
-        }
-        return result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      }
-
-      function preprocessStyleBlocks(inputLines) {
-        const output = [];
-        let inStyle = false;
-        let cssBuffer = [];
-        for (const line of inputLines) {
-          const t  = line.trim();
-          const tl = t.toLowerCase();
-          if (!inStyle && /^<style(\s[^>]*)?>/.test(tl) && !/<\/style\s*>/.test(tl)) {
-            inStyle = true;
-            output.push(line);
-            continue;
-          }
-          if (inStyle && /^<\/style\s*>/.test(tl)) {
-            if (cssBuffer.length > 0) {
-              output.push(...expandCss(cssBuffer.join(' ')));
-              cssBuffer = [];
-            }
-            inStyle = false;
-            output.push(line);
-            continue;
-          }
-          if (inStyle) { if (t.length > 0) cssBuffer.push(t); continue; }
+    function preprocessStyleBlocks(inputLines) {
+      const output = [];
+      let inStyle = false;
+      const cssBuffer = [];
+      for (const line of inputLines) {
+        const t  = line.trim();
+        const tl = t.toLowerCase();
+        if (!inStyle && /^<style(\s[^>]*)?>/.test(tl) && !/<\/style\s*>/.test(tl)) {
+          inStyle = true;
           output.push(line);
+          continue;
         }
-        if (cssBuffer.length > 0) output.push(...expandCss(cssBuffer.join(' ')));
-        return output;
-      }
-
-      // ── Brace counters for embedded modes ─────────────────────────────────
-      // JS: skip strings ("'`), line comments (//), block comments (/* */)
-      function countJsBraces(line) {
-        let open = 0, close = 0;
-        let inStr = false, strChar = '', inLineCom = false, inBlockCom = false;
-        for (let k = 0; k < line.length; k++) {
-          const c  = line[k];
-          const c2 = k + 1 < line.length ? line[k + 1] : '';
-          if (inLineCom) break;
-          if (inBlockCom) { if (c === '*' && c2 === '/') { inBlockCom = false; k++; } continue; }
-          if (inStr) { if (c === '\\') { k++; continue; } if (c === strChar) inStr = false; continue; }
-          if (c === '/' && c2 === '/') { inLineCom = true; continue; }
-          if (c === '/' && c2 === '*') { inBlockCom = true; k++; continue; }
-          if (c === '"' || c === "'" || c === '`') { inStr = true; strChar = c; continue; }
-          if (c === '{') open++; else if (c === '}') close++;
+        if (inStyle && /^<\/style\s*>/.test(tl)) {
+          flushCssBuffer(cssBuffer, output);
+          inStyle = false;
+          output.push(line);
+          continue;
         }
-        return { open, close };
-      }
-
-      // CSS: skip Velocity ${...} expressions
-      function countCssBraces(line) {
-        let open = 0, close = 0, vDepth = 0;
-        for (let k = 0; k < line.length; k++) {
-          const c    = line[k];
-          const prev = k > 0 ? line[k - 1] : '';
-          if (c === '{' && prev === '$') { vDepth++; }
-          else if (c === '}' && vDepth > 0) { vDepth--; }
-          else if (vDepth === 0) { if (c === '{') open++; else if (c === '}') close++; }
+        if (inStyle) {
+          if (t.length > 0) { cssBuffer.push(t); }
+          continue;
         }
-        return { open, close };
+        output.push(line);
       }
+      flushCssBuffer(cssBuffer, output);
+      return output;
+    }
 
-      // Shared helper: apply pre/post brace logic and write one embedded line
-      function pushEmbedded(trimmed, indentLevel, embeddedDelta, braces) {
-        const preClose = Math.min(braces.close, (trimmed.match(/^}+/) || [''])[0].length);
-        const delta    = Math.max(0, embeddedDelta - preClose);
-        const netPost  = braces.open - (braces.close - preClose);
-        return {
-          line:         indentUnit.repeat(indentLevel + delta) + trimmed,
-          embeddedDelta: Math.max(0, delta + netPost)
-        };
+    // ── Brace counters for embedded modes ─────────────────────────────────
+    // JS: skip strings ("'`), line comments (//), block comments (/* */)
+    // Returns {skip, inStr, strChar, inLineCom, inBlockCom, brace}
+    // brace: +1 open, -1 close, 0 none
+    function jsBraceScanInStr(c, state) {
+      if (c === '\\') { return { ...state, skip: 1, brace: 0 }; }
+      if (c === state.strChar) { return { ...state, inStr: false, skip: 0, brace: 0 }; }
+      return { ...state, skip: 0, brace: 0 };
+    }
+
+    function jsBraceScanStep(c, c2, state) {
+      if (state.inLineCom) { return { ...state, skip: 0, brace: 0 }; }
+      if (state.inBlockCom) {
+        if (c === '*' && c2 === '/') { return { ...state, inBlockCom: false, skip: 1, brace: 0 }; }
+        return { ...state, skip: 0, brace: 0 };
       }
+      if (state.inStr) { return jsBraceScanInStr(c, state); }
+      if (c === '/' && c2 === '/') { return { ...state, inLineCom: true, skip: 0, brace: 0 }; }
+      if (c === '/' && c2 === '*') { return { ...state, inBlockCom: true, skip: 1, brace: 0 }; }
+      if (c === '"' || c === "'" || c === '`') { return { ...state, inStr: true, strChar: c, skip: 0, brace: 0 }; }
+      let brace = 0;
+      if (c === '{') { brace = 1; }
+      else if (c === '}') { brace = -1; }
+      return { ...state, skip: 0, brace };
+    }
 
-      // ── Step 0 apply ───────────────────────────────────────────────────────
-      let lines = preprocessStyleBlocks(normalized.split('\n'));
+    function countJsBraces(line) {
+      let open = 0, close = 0;
+      let state = { inStr: false, strChar: '', inLineCom: false, inBlockCom: false, skip: 0, brace: 0 };
+      for (let k = 0; k < line.length; k++) {
+        if (state.inLineCom) break;
+        const c  = line[k];
+        const c2 = k + 1 < line.length ? line[k + 1] : '';
+        state = jsBraceScanStep(c, c2, state);
+        k += state.skip;
+        if (state.brace > 0) open++;
+        else if (state.brace < 0) close++;
+        state = { ...state, brace: 0 };
+      }
+      return { open, close };
+    }
 
-      // ── Step 1: Collapse tall inline tags to one line ──────────────────────
+    // CSS: skip Velocity ${...} expressions
+    function countCssBraces(line) {
+      let open = 0, close = 0, vDepth = 0;
+      for (let k = 0; k < line.length; k++) {
+        const c    = line[k];
+        const prev = k > 0 ? line[k - 1] : '';
+        if (c === '{' && prev === '$') { vDepth++; }
+        else if (c === '}' && vDepth > 0) { vDepth--; }
+        else if (vDepth === 0) { if (c === '{') open++; else if (c === '}') close++; }
+      }
+      return { open, close };
+    }
+
+    function pushEmbedded(trimmed, indentLevel, embeddedDelta, braces, indentUnit) {
+      const preClose = Math.min(braces.close, (trimmed.match(/^}+/) || [''])[0].length);
+      const delta    = Math.max(0, embeddedDelta - preClose);
+      const netPost  = braces.open - (braces.close - preClose);
+      return {
+        line:         indentUnit.repeat(indentLevel + delta) + trimmed,
+        embeddedDelta: Math.max(0, delta + netPost)
+      };
+    }
+
+    function startsDirective(line, name) {
+      return new RegExp(String.raw`^#${name}(?:\b|\s*\()`, 'i').test(line);
+    }
+
+    function normalizeDirectiveParens(trimmedLine) {
+      const directiveMatch = trimmedLine.match(/^(#\w+)\s*\(/);
+      if (!directiveMatch) return trimmedLine;
+      const parenStart = trimmedLine.indexOf('(', directiveMatch[1].length);
+      if (parenStart === -1) return trimmedLine;
+      let depth = 0, parenEnd = -1;
+      for (let j = parenStart; j < trimmedLine.length; j++) {
+        if (trimmedLine[j] === '(') depth++;
+        else if (trimmedLine[j] === ')') { depth--; if (depth === 0) { parenEnd = j; break; } }
+      }
+      if (parenEnd === -1) return trimmedLine;
+      const directive = trimmedLine.substring(0, parenStart);
+      let inner = trimmedLine.substring(parenStart + 1, parenEnd);
+      const suffix = trimmedLine.substring(parenEnd + 1);
+      inner = inner.replaceAll(/(?<![=!<>])\s*=\s*(?!=)/g, ' = ').trim();
+      return `${directive}( ${inner} )${suffix}`;
+    }
+
+    function collapseInlineTags(lines) {
       const MAX_INLINE_CONTENT = 80;
       const collapsed = [];
       let i = 0;
@@ -1543,7 +1578,7 @@
           const openTag  = getSoloOpenTag(t0);
           const closeTag = getSoloCloseTag(t2);
           if (
-            openTag && INLINE_COLLAPSIBLE.has(openTag) && closeTag === openTag &&
+            openTag && FMT_INLINE_COLLAPSIBLE.has(openTag) && closeTag === openTag &&
             t1.length > 0 && t1.length <= MAX_INLINE_CONTENT && !/<[a-zA-Z]/.test(t1)
           ) {
             const originalIndent = (lines[i].match(/^(\s*)/) || ['', ''])[1];
@@ -1555,109 +1590,135 @@
         collapsed.push(lines[i]);
         i++;
       }
-      lines = collapsed;
+      return collapsed;
+    }
 
-      // ── Step 2: Indentation pass ───────────────────────────────────────────
-      let indentLevel    = 0;   // Velocity / HTML structural level
-      let embeddedDelta  = 0;   // extra CSS / JS brace-based level inside <style>/<script>
-      let inBlockComment = false;
-      let inStyleBlock   = false;
-      let inScriptBlock  = false;
+    function applyPreIndentDecrement(trimmed, isDirectiveOnly, inBlockComment, indentLevel) {
+      if (isDirectiveOnly && !inBlockComment) {
+        if (startsDirective(trimmed, 'end') || startsDirective(trimmed, 'else') || startsDirective(trimmed, 'elseif')) {
+          return Math.max(0, indentLevel - 1);
+        }
+      }
+      return indentLevel;
+    }
+
+    function applyPreIndentDecrementHtml(trimmed, inBlockComment, indentLevel, leaveStyle, leaveScript) {
+      if (!inBlockComment) {
+        if (leaveStyle || leaveScript) { return Math.max(0, indentLevel - 1); }
+        if (getBlockCloseTag(trimmed))  { return Math.max(0, indentLevel - 1); }
+      }
+      return indentLevel;
+    }
+
+    function applyPostIndentIncrement(trimmed, isDirectiveOnly, inBlockComment, state) {
+      if (isDirectiveOnly && !inBlockComment) {
+        if (
+          startsDirective(trimmed, 'if') || startsDirective(trimmed, 'foreach') ||
+          startsDirective(trimmed, 'macro') || startsDirective(trimmed, 'define') ||
+          startsDirective(trimmed, 'try') || startsDirective(trimmed, 'else') ||
+          startsDirective(trimmed, 'elseif')
+        ) {
+          return { ...state, indentLevel: state.indentLevel + 1 };
+        }
+      } else if (!inBlockComment) {
+        if (state.enterStyle)  { return { ...state, indentLevel: state.indentLevel + 1, inStyleBlock: true }; }
+        if (state.enterScript) { return { ...state, indentLevel: state.indentLevel + 1, inScriptBlock: true }; }
+        if (getBlockOpenTag(trimmed)) { return { ...state, indentLevel: state.indentLevel + 1 }; }
+      }
+      return state;
+    }
+
+    function processEmbeddedLine(trimmed, ctx, indentUnit) {
+      const tl = trimmed.toLowerCase();
+      const leaveBlockComment = trimmed.includes('*#');
+      const leaveStyle  = /^<\/style\s*>/.test(tl);
+      const leaveScript = /^<\/script\s*>/.test(tl);
+
+      if (ctx.inStyleBlock && !leaveStyle) {
+        const r = pushEmbedded(trimmed, ctx.indentLevel, ctx.embeddedDelta, countCssBraces(trimmed), indentUnit);
+        if (leaveBlockComment) ctx.inBlockComment = false;
+        return { ...ctx, embeddedDelta: r.embeddedDelta, output: r.line };
+      }
+      if (ctx.inScriptBlock && !leaveScript) {
+        const r = pushEmbedded(trimmed, ctx.indentLevel, ctx.embeddedDelta, countJsBraces(trimmed), indentUnit);
+        if (leaveBlockComment) ctx.inBlockComment = false;
+        return { ...ctx, embeddedDelta: r.embeddedDelta, output: r.line };
+      }
+      return null;
+    }
+
+    function classifyLine(trimmed, tl) {
+      return {
+        isLineComment:   trimmed.startsWith('##'),
+        isDirectiveOnly: trimmed.startsWith('#') && !trimmed.startsWith('##'),
+        enterStyle:  /^<style(\s[^>]*)?>/.test(tl)  && !/<\/style\s*>/.test(tl),
+        leaveStyle:  /^<\/style\s*>/.test(tl),
+        enterScript: /^<script(\s[^>]*)?>/.test(tl) && !/src\s*=/.test(tl) && !/<\/script\s*>/.test(tl),
+        leaveScript: /^<\/script\s*>/.test(tl)
+      };
+    }
+
+    function processNonEmbeddedLine(trimmed, cls, ctx, indentUnit) {
+      let { indentLevel, inStyleBlock, inScriptBlock, embeddedDelta, inBlockComment } = ctx;
+      indentLevel = applyPreIndentDecrement(trimmed, cls.isDirectiveOnly, inBlockComment, indentLevel);
+      if (!cls.isDirectiveOnly) {
+        if (cls.leaveStyle || cls.leaveScript) { inStyleBlock = false; inScriptBlock = false; embeddedDelta = 0; }
+        indentLevel = applyPreIndentDecrementHtml(trimmed, inBlockComment, indentLevel, cls.leaveStyle, cls.leaveScript);
+      }
+      const outputLine = (cls.isDirectiveOnly && !inBlockComment && !cls.isLineComment)
+        ? normalizeDirectiveParens(trimmed) : trimmed;
+      const postState = applyPostIndentIncrement(trimmed, cls.isDirectiveOnly, inBlockComment, {
+        indentLevel, inStyleBlock, inScriptBlock, enterStyle: cls.enterStyle, enterScript: cls.enterScript
+      });
+      return {
+        output: indentUnit.repeat(Math.max(0, indentLevel)) + outputLine,
+        newCtx: { ...ctx, embeddedDelta, indentLevel: postState.indentLevel, inStyleBlock: postState.inStyleBlock, inScriptBlock: postState.inScriptBlock }
+      };
+    }
+
+    function runIndentationPass(lines, indentUnit) {
+      let ctx = { indentLevel: 0, embeddedDelta: 0, inBlockComment: false, inStyleBlock: false, inScriptBlock: false };
       const out = [];
 
-      function startsDirective(line, name) {
-        return new RegExp(`^#${name}(?:\\b|\\s*\\()`, 'i').test(line);
-      }
-
-      function normalizeDirectiveParens(trimmedLine) {
-        const directiveMatch = trimmedLine.match(/^(#\w+)\s*\(/);
-        if (!directiveMatch) return trimmedLine;
-        const parenStart = trimmedLine.indexOf('(', directiveMatch[1].length);
-        if (parenStart === -1) return trimmedLine;
-        let depth = 0, parenEnd = -1;
-        for (let j = parenStart; j < trimmedLine.length; j++) {
-          if (trimmedLine[j] === '(') depth++;
-          else if (trimmedLine[j] === ')') { depth--; if (depth === 0) { parenEnd = j; break; } }
-        }
-        if (parenEnd === -1) return trimmedLine;
-        const directive = trimmedLine.substring(0, parenStart);
-        let inner = trimmedLine.substring(parenStart + 1, parenEnd);
-        const suffix = trimmedLine.substring(parenEnd + 1);
-        inner = inner.replace(/(?<![=!<>])\s*=\s*(?!=)/g, ' = ').trim();
-        return `${directive}( ${inner} )${suffix}`;
-      }
-
       for (const rawLine of lines) {
-        const rightTrimmed = rawLine.replace(/\s+$/g, '');
-        const trimmed      = rightTrimmed.trim();
-
+        const trimmed = rawLine.replaceAll(/\s+$/g, '').trim();
         if (trimmed.length === 0) { out.push(''); continue; }
 
-        const tl              = trimmed.toLowerCase();
-        const isLineComment   = trimmed.startsWith('##');
-        const isDirectiveOnly = trimmed.startsWith('#') && !trimmed.startsWith('##');
-
-        if (trimmed.includes('#*')) inBlockComment = true;
+        if (trimmed.includes('#*')) ctx.inBlockComment = true;
         const leaveBlockComment = trimmed.includes('*#');
 
-        // Detect embedded block boundaries
-        const enterStyle  = /^<style(\s[^>]*)?>/.test(tl)  && !/<\/style\s*>/.test(tl);
-        const leaveStyle  = /^<\/style\s*>/.test(tl);
-        const enterScript = /^<script(\s[^>]*)?>/.test(tl) && !/src\s*=/.test(tl) && !/<\/script\s*>/.test(tl);
-        const leaveScript = /^<\/script\s*>/.test(tl);
-
-        // ── Embedded CSS mode ────────────────────────────────────────────────
-        if (inStyleBlock && !leaveStyle) {
-          const r = pushEmbedded(trimmed, indentLevel, embeddedDelta, countCssBraces(trimmed));
-          out.push(r.line);
-          embeddedDelta = r.embeddedDelta;
-          if (leaveBlockComment) inBlockComment = false;
+        const embedded = processEmbeddedLine(trimmed, { ...ctx }, indentUnit);
+        if (embedded) {
+          out.push(embedded.output);
+          ctx = { ...ctx, embeddedDelta: embedded.embeddedDelta, inBlockComment: embedded.inBlockComment };
           continue;
         }
 
-        // ── Embedded JS mode ─────────────────────────────────────────────────
-        if (inScriptBlock && !leaveScript) {
-          const r = pushEmbedded(trimmed, indentLevel, embeddedDelta, countJsBraces(trimmed));
-          out.push(r.line);
-          embeddedDelta = r.embeddedDelta;
-          if (leaveBlockComment) inBlockComment = false;
-          continue;
-        }
-
-        // ── Normal HTML / Velocity mode ──────────────────────────────────────
-        if (isDirectiveOnly && !inBlockComment) {
-          if (startsDirective(trimmed, 'end') || startsDirective(trimmed, 'else') || startsDirective(trimmed, 'elseif'))
-            indentLevel = Math.max(0, indentLevel - 1);
-        } else if (!inBlockComment) {
-          if (leaveStyle || leaveScript) {
-            inStyleBlock = false; inScriptBlock = false; embeddedDelta = 0;
-            indentLevel = Math.max(0, indentLevel - 1);
-          } else if (getBlockCloseTag(trimmed)) {
-            indentLevel = Math.max(0, indentLevel - 1);
-          }
-        }
-
-        const currentIndent = indentUnit.repeat(Math.max(0, indentLevel));
-        const outputLine    = (isDirectiveOnly && !inBlockComment && !isLineComment)
-          ? normalizeDirectiveParens(trimmed) : trimmed;
-
-        out.push(currentIndent + outputLine);
-
-        if (isDirectiveOnly && !inBlockComment) {
-          if (
-            startsDirective(trimmed, 'if') || startsDirective(trimmed, 'foreach') ||
-            startsDirective(trimmed, 'macro') || startsDirective(trimmed, 'define') ||
-            startsDirective(trimmed, 'try') || startsDirective(trimmed, 'else') ||
-            startsDirective(trimmed, 'elseif')
-          ) indentLevel += 1;
-        } else if (!inBlockComment) {
-          if (enterStyle)  { indentLevel += 1; inStyleBlock  = true; }
-          else if (enterScript) { indentLevel += 1; inScriptBlock = true; }
-          else if (getBlockOpenTag(trimmed)) { indentLevel += 1; }
-        }
-
-        if (leaveBlockComment) inBlockComment = false;
+        const cls = classifyLine(trimmed, trimmed.toLowerCase());
+        const result = processNonEmbeddedLine(trimmed, cls, { ...ctx }, indentUnit);
+        out.push(result.output);
+        ctx = { ...result.newCtx, inBlockComment: ctx.inBlockComment };
+        if (leaveBlockComment) ctx.inBlockComment = false;
       }
+
+      return out;
+    }
+
+    function formatVelocityLike(content) {
+      if (!content) return content;
+
+      const normalized = content.replaceAll('\r\n', '\n');
+      const hasTrailingNewline = normalized.endsWith('\n');
+      const indentUnit = '  ';
+
+      // ── Step 0 apply ───────────────────────────────────────────────────────
+      let lines = preprocessStyleBlocks(normalized.split('\n'));
+
+      // ── Step 1: Collapse tall inline tags to one line ──────────────────────
+      lines = collapseInlineTags(lines);
+
+      // ── Step 2: Indentation pass ───────────────────────────────────────────
+      const out = runIndentationPass(lines, indentUnit);
 
       const joined = out.join('\n');
       return hasTrailingNewline ? joined + '\n' : joined;
@@ -1673,7 +1734,7 @@
           const pad = '  '.repeat(depth);
           if (node.nodeType === 3 /* TEXT_NODE */) {
             const t = node.textContent.trim();
-            return t ? t : null;
+            return t || null;
           }
           if (node.nodeType === 8 /* COMMENT_NODE */) {
             return pad + '<!--' + node.textContent + '-->';
@@ -1707,6 +1768,7 @@
           .filter(s => s !== null && s.trim() !== '');
         return lines.join('\n').trim();
       } catch (_) {
+        console.warn('formatXml: parse/serialization failed, returning original.', _);
         return xmlStr;
       }
     }
@@ -1809,6 +1871,45 @@
       return iconMap[ext] || '📄';
     }
 
+    function handleModifierKeys(e, isEditorFocused) {
+      if (!isEditorFocused) return;
+      if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+        e.preventDefault(); adjustEditorFontSize(1); return;
+      }
+      if (e.key === '-' || e.code === 'NumpadSubtract') {
+        e.preventDefault(); adjustEditorFontSize(-1); return;
+      }
+      if (e.key === '0' || e.code === 'Numpad0') {
+        e.preventDefault(); resetEditorFontSize();
+      }
+    }
+
+    function handleEscapeKey(e) {
+      const uploadModalEl = document.getElementById('uploadModal');
+      if (uploadModalEl && uploadModalEl.classList.contains('visible')) {
+        e.preventDefault(); closeUploadModal(); return;
+      }
+      const overlay = document.getElementById('customDialogOverlay');
+      if (overlay && overlay.classList.contains('visible')) {
+        e.preventDefault(); customDialogCancel();
+      }
+    }
+
+    function handleKeyboardShortcut(e) {
+      const isModifierPressed = e.ctrlKey || e.metaKey;
+      const isEditorFocused = !!editor && editor.hasTextFocus();
+      if (isModifierPressed) { handleModifierKeys(e, isEditorFocused); }
+      if (isModifierPressed && e.key === 's') {
+        e.preventDefault();
+        if (currentFile && !document.getElementById('saveBtn').disabled) { saveCurrentFile(); }
+      }
+      if (isModifierPressed && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        formatCurrentDocument().catch(err => { showAlert('Error formatting file: ' + err); });
+      }
+      if (e.key === 'Escape') { handleEscapeKey(e); }
+    }
+
     function setupEventListeners() {
       // Prevent browser text-selection flash on double-click inside the file list
       document.getElementById('fileList').addEventListener('mousedown', (e) => {
@@ -1818,8 +1919,7 @@
       // Sidebar Toggles
       document.getElementById('collapseSidebar').onclick = () => {
         const s = document.getElementById('sidebar');
-        s.classList.add('animating');
-        s.classList.add('collapsed');
+        s.classList.add('animating', 'collapsed');
         document.getElementById('expandSidebar').style.display = 'flex';
         // Remove class after animation to be clean (optional, keeping it is fine too if we toggle it)
       };
@@ -1867,57 +1967,8 @@
       document.getElementById('fontSizeResetBtn').onclick = () => resetEditorFontSize();
       
       // Keyboard Shortcuts
-      document.addEventListener('keydown', (e) => {
-          const isModifierPressed = e.ctrlKey || e.metaKey;
-          const isEditorFocused = !!editor && editor.hasTextFocus();
-          if (isModifierPressed) {
-              if (!isEditorFocused) {
-                  return;
-              }
-              if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
-                  e.preventDefault();
-                  adjustEditorFontSize(1);
-                  return;
-              }
-              if (e.key === '-' || e.code === 'NumpadSubtract') {
-                  e.preventDefault();
-                  adjustEditorFontSize(-1);
-                  return;
-              }
-              if (e.key === '0' || e.code === 'Numpad0') {
-                  e.preventDefault();
-                  resetEditorFontSize();
-                  return;
-              }
-          }
-          // Ctrl+S / Cmd+S
-          if (isModifierPressed && e.key === 's') {
-              e.preventDefault();
-              if (currentFile && !document.getElementById('saveBtn').disabled) {
-                  saveCurrentFile();
-              }
-          }
-          if (isModifierPressed && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
-              e.preventDefault();
-              formatCurrentDocument().catch(err => {
-                  showAlert('Error formatting file: ' + err);
-              });
-          }
-          // Escape – close any visible modal
-          if (e.key === 'Escape') {
-              const uploadModalEl = document.getElementById('uploadModal');
-              if (uploadModalEl && uploadModalEl.classList.contains('visible')) {
-                  e.preventDefault();
-                  closeUploadModal();
-                  return;
-              }
-              const overlay = document.getElementById('customDialogOverlay');
-              if (overlay && overlay.classList.contains('visible')) {
-                  e.preventDefault();
-                  customDialogCancel();
-              }
-          }
-      });
+      document.addEventListener('keydown', handleKeyboardShortcut);
+      
 
       // Unsaved Changes Warning
       window.onbeforeunload = function(e) {
@@ -2141,45 +2192,53 @@
       doClose();
     }
 
-    function openFileInTab(filePath, options = {}) {
-      const { persistent = false, silentOnError = false } = options;
+    function openImageTab(filePath, persistent) {
+      const imageUrl = buildFileApiUrl(filePath);
+      const newTab = {
+        id: `tab-${++tabIdCounter}`,
+        path: filePath,
+        model: null,
+        originalContent: '',
+        isPreview: !persistent,
+        isImage: true,
+        imageUrl
+      };
+      openTabs.push(newTab);
+      if (!persistent) previewTabId = newTab.id;
+      activateTab(newTab.id);
+      renderFileList();
+      renderTabs();
+      return Promise.resolve(newTab.id);
+    }
 
+    function discardPreviewTab(previewTab, filePath, options) {
+      if (isTabDirty(previewTab)) {
+        showConfirm(`You have unsaved changes in ${previewTab.path}. Discard changes?`, 'Unsaved Changes', function() {
+          if (previewTab.model) previewTab.model.dispose();
+          openTabs = openTabs.filter(t => t.id !== previewTab.id);
+          previewTabId = null;
+          openFileInTab(filePath, options);
+        });
+        return true; // handled (async)
+      }
+      if (previewTab.model) previewTab.model.dispose();
+      openTabs = openTabs.filter(t => t.id !== previewTab.id);
+      previewTabId = null;
+      return false;
+    }
+
+    function tryActivateExistingTab(filePath, persistent) {
       const existing = openTabs.find(t => t.path === filePath);
-      if (existing) {
-        if (persistent && existing.isPreview) {
-          existing.isPreview = false;
-          if (previewTabId === existing.id) previewTabId = null;
-        }
-        activateTab(existing.id);
-        return Promise.resolve(existing.id);
+      if (!existing) return null;
+      if (persistent && existing.isPreview) {
+        existing.isPreview = false;
+        if (previewTabId === existing.id) previewTabId = null;
       }
+      activateTab(existing.id);
+      return existing.id;
+    }
 
-      // Deduplicate concurrent fetches for the same file.
-      // If a dblclick (persistent=true) arrives while the single-click fetch is
-      // already in-flight, upgrade the in-flight request to persistent so the
-      // tab is not created as a preview.
-      if (loadingPaths.has(filePath)) {
-        if (persistent) loadingPaths.get(filePath).persistent = true;
-        return Promise.resolve(null);
-      }
-
-      const currentPreview = previewTabId ? getTabById(previewTabId) : null;
-      if (currentPreview && !persistent) {
-        if (isTabDirty(currentPreview)) {
-          showConfirm(`You have unsaved changes in ${currentPreview.path}. Discard changes?`, 'Unsaved Changes', function() {
-            if (currentPreview.model) currentPreview.model.dispose();
-            openTabs = openTabs.filter(t => t.id !== currentPreview.id);
-            previewTabId = null;
-            openFileInTab(filePath, options);
-          });
-          return Promise.resolve(null);
-        }
-        if (currentPreview.model) currentPreview.model.dispose();
-        openTabs = openTabs.filter(t => t.id !== currentPreview.id);
-        previewTabId = null;
-      }
-
-      loadingPaths.set(filePath, { persistent });
+    function buildFileFetchOptions(silentOnError) {
       const fetchOptions = {};
       let abortTimeout = null;
       if (silentOnError && typeof AbortController !== 'undefined') {
@@ -2187,77 +2246,66 @@
         fetchOptions.signal = controller.signal;
         abortTimeout = setTimeout(() => controller.abort(), 8000);
       }
+      return { fetchOptions, abortTimeout };
+    }
 
-      // Image files: use the API URL directly as img.src to avoid blob: URLs
-      // which are blocked by Polarion's Content Security Policy.
+    function openFileInTab(filePath, options = {}) {
+      const { persistent = false, silentOnError = false } = options;
+
+      const existingId = tryActivateExistingTab(filePath, persistent);
+      if (existingId !== null) return Promise.resolve(existingId);
+
+      if (loadingPaths.has(filePath)) {
+        if (persistent) loadingPaths.get(filePath).persistent = true;
+        return Promise.resolve(null);
+      }
+
+      const currentPreview = previewTabId ? getTabById(previewTabId) : null;
+      if (currentPreview && !persistent) {
+        const handled = discardPreviewTab(currentPreview, filePath, options);
+        if (handled) return Promise.resolve(null);
+      }
+
+      loadingPaths.set(filePath, { persistent });
+      const { fetchOptions, abortTimeout } = buildFileFetchOptions(silentOnError);
+
       if (isImageFile(filePath)) {
         if (abortTimeout) clearTimeout(abortTimeout);
-        const imageUrl = buildFileApiUrl(filePath);
-        const newTab = {
-          id: `tab-${++tabIdCounter}`,
-          path: filePath,
-          model: null,
-          originalContent: '',
-          isPreview: !persistent,
-          isImage: true,
-          imageUrl
-        };
-
-        openTabs.push(newTab);
-        if (!persistent) previewTabId = newTab.id;
-
-        activateTab(newTab.id);
-        renderFileList();
-        renderTabs();
-        return Promise.resolve(newTab.id);
+        loadingPaths.delete(filePath);
+        return openImageTab(filePath, persistent);
       }
 
       return fetch(buildFileApiUrl(filePath), fetchOptions)
         .then(res => {
-          if (!res.ok) return throwHttpError(res);
+          if (!res.ok) { return throwHttpError(res); }
           return res.text();
         })
-        .then(content => {
-          const lang = getMonacoLanguage(filePath);
-          const model = monaco.editor.createModel(content, lang);
+        .then(content => onFileContentLoaded(filePath, content, persistent))
+        .catch(err => onOpenFileError(filePath, err, silentOnError))
+        .finally(() => { loadingPaths.delete(filePath); if (abortTimeout) clearTimeout(abortTimeout); });
+    }
 
-          const finalPersistent = loadingPaths.get(filePath)?.persistent ?? persistent;
-          const newTab = {
-            id: `tab-${++tabIdCounter}`,
-            path: filePath,
-            model,
-            originalContent: content,
-            isPreview: !finalPersistent
-          };
+    function onFileContentLoaded(filePath, content, persistent) {
+      const lang = getMonacoLanguage(filePath);
+      const model = monaco.editor.createModel(content, lang);
+      const finalPersistent = loadingPaths.get(filePath)?.persistent ?? persistent;
+      const newTab = { id: `tab-${++tabIdCounter}`, path: filePath, model, originalContent: content, isPreview: !finalPersistent };
+      openTabs.push(newTab);
+      if (!finalPersistent) previewTabId = newTab.id;
+      activateTab(newTab.id);
+      renderFileList();
+      renderTabs();
+      return newTab.id;
+    }
 
-          openTabs.push(newTab);
-          if (!finalPersistent) previewTabId = newTab.id;
-
-          activateTab(newTab.id);
-          renderFileList();
-          renderTabs();
-          return newTab.id;
-        })
-        .catch(err => {
-          if (silentOnError) {
-            console.warn('Could not restore last opened file:', filePath, err);
-            saveLastOpenedFile('');
-            return null;
-          }
-          const permissionMessage = getPermissionGuidanceMessage(err);
-          if (permissionMessage) {
-            showPermissionMessageInEditor(err);
-          } else {
-            showAlert('Error loading file content: ' + err);
-          }
-          return null;
-        })
-        .finally(() => {
-          loadingPaths.delete(filePath);
-          if (abortTimeout) {
-            clearTimeout(abortTimeout);
-          }
-        });
+    function onOpenFileError(filePath, err, silentOnError) {
+      if (silentOnError) {
+        console.warn('Could not restore last opened file:', filePath, err);
+        saveLastOpenedFile(''); return null;
+      }
+      const permissionMessage = getPermissionGuidanceMessage(err);
+      if (permissionMessage) { showPermissionMessageInEditor(err); } else { showAlert('Error loading file content: ' + err); }
+      return null;
     }
 
 
@@ -2382,6 +2430,7 @@
           expandedFolders: [...new Set(expandedFolders)]
         };
       } catch (e) {
+        console.warn('loadTreeViewState: JSON.parse failed, returning defaults.', e);
         return { currentTreeRoot: '', expandedFolders: [] };
       }
     }
@@ -2435,7 +2484,7 @@
               return restoreOpenTabsSession();
             }
           }
-          return Promise.resolve();
+          return undefined;
         })
         .then(() => {
           bar.classList.remove('visible');
@@ -2635,7 +2684,7 @@
              li.ondblclick = (e) => {
                  e.stopPropagation();
                  e.preventDefault();
-                 window.getSelection()?.removeAllRanges();
+                 globalThis.getSelection()?.removeAllRanges();
                  navigateToFolder(folderPath);
              };
 
@@ -2712,7 +2761,7 @@
              li.ondblclick = (e) => {
                  e.stopPropagation();
                  e.preventDefault();
-                 window.getSelection()?.removeAllRanges();
+                 globalThis.getSelection()?.removeAllRanges();
                  onFileSelect(entry.path, true);
              };
 
@@ -2802,7 +2851,7 @@
         a.target = '_blank';
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
+        a.remove();
     }
 
     let pendingUploadContent = null;
@@ -2933,13 +2982,11 @@
                      // Top level: taking the first segment
                      const seg = d.includes('/') ? d.split('/')[0] : d;
                      if (seg.toLowerCase().startsWith(token)) matches.add(seg);
-                 } else {
-                     if (d.startsWith(prefix + '/')) {
-                         const remainder = d.substring(prefix.length + 1);
-                         if(remainder) {
-                            const nextSeg = remainder.split('/')[0];
-                            if (nextSeg.toLowerCase().startsWith(token)) matches.add(nextSeg);
-                         }
+                 } else if (d.startsWith(prefix + '/')) {
+                     const remainder = d.substring(prefix.length + 1);
+                     if(remainder) {
+                        const nextSeg = remainder.split('/')[0];
+                        if (nextSeg.toLowerCase().startsWith(token)) matches.add(nextSeg);
                      }
                  }
              });
@@ -2979,67 +3026,59 @@
 
         const updateActiveItem = () => {
             const items = dropdown.children;
-            for(let i=0; i<items.length; i++) items[i].classList.remove('active');
+            for (const item of items) { item.classList.remove('active'); }
             if(activeIndex >= 0 && activeIndex < items.length) {
                 items[activeIndex].classList.add('active');
                 items[activeIndex].scrollIntoView({block: 'nearest'});
             }
         };
 
+        const handleArrowKey = (e, direction) => {
+            e.preventDefault();
+            if (dropdown.style.display !== 'block') showSuggestions();
+            const max = dropdown.children.length;
+            if (max > 0) {
+                activeIndex = direction === 'down' ? (activeIndex + 1) % max : (activeIndex - 1 + max) % max;
+                updateActiveItem();
+            }
+        };
+
+        const handleEnterKey = (e) => {
+            if (dropdown.style.display === 'block' && activeIndex >= 0) {
+                e.preventDefault();
+                const text = dropdown.children[activeIndex].textContent.trim();
+                applySuggestion(text);
+            } else {
+                onCommit();
+            }
+        };
+
+        const handleTabKey = (e) => {
+            if (dropdown.style.display === 'block') {
+                e.preventDefault();
+                e.stopPropagation();
+                const idx = Math.max(0, activeIndex);
+                if (dropdown.children.length > 0) {
+                    const text = dropdown.children[idx].textContent.trim();
+                    applySuggestion(text);
+                }
+            }
+        };
+
+        const handleEscapeKey = (e) => {
+            if (dropdown.style.display === 'block') {
+                e.preventDefault();
+                dropdown.style.display = 'none';
+                e.stopPropagation();
+            }
+        };
+
         input.onkeydown = (e) => {
-           if(e.key === 'ArrowDown') {
-               e.preventDefault();
-               if(dropdown.style.display !== 'block') showSuggestions();
-               const max = dropdown.children.length;
-               if(max > 0) {
-                   activeIndex = (activeIndex + 1) % max;
-                   updateActiveItem();
-               }
-           } else if (e.key === 'ArrowUp') {
-               e.preventDefault();
-               if(dropdown.style.display !== 'block') showSuggestions();
-               const max = dropdown.children.length;
-               if(max > 0) {
-                   activeIndex = (activeIndex - 1 + max) % max;
-                   updateActiveItem();
-               }
-           } else if (e.key === 'Enter') {
-               if(dropdown.style.display === 'block' && activeIndex >= 0) {
-                   e.preventDefault();
-                   // Select item text from active div (careful with icon span)
-                   const text = dropdown.children[activeIndex].textContent.trim();
-                   applySuggestion(text);
-               } else {
-                   // Commit form
-                   onCommit(); 
-               }
-           } else if (e.key === 'Tab') {
-               if(dropdown.style.display === 'block') {
-                   e.preventDefault();
-                   e.stopPropagation();
-                   const idx = activeIndex >= 0 ? activeIndex : 0;
-                   if(dropdown.children.length > 0) {
-                       const text = dropdown.children[idx].textContent.trim();
-                       applySuggestion(text);
-                   }
-               }
-               // No else: let overlay focus-trap handle Tab when no suggestions
-           } else if (e.key === 'Escape') {
-               if(dropdown.style.display === 'block') {
-                   e.preventDefault(); // don't close modal yet
-                   dropdown.style.display = 'none';
-                   // Stop propagation to prevent modal closing immediately? 
-                   // The outer handler might catch it. 
-                   e.stopPropagation();
-               } else {
-                   // let modal close handle it in main function
-               }
-           } else if (e.key === '/' || e.key === ' ' || e.key.length === 1 || e.key === 'Backspace') {
-              // keydown for typing is fine, logic runs on input/keyup usually? 
-              // Actually showSuggestions logic depends on value. 
-              // Value isn't updated on keydown yet.
-              // We should call showSuggestions separately or use oninput for showing.
-           }
+           if (e.key === 'ArrowDown') { handleArrowKey(e, 'down'); }
+           else if (e.key === 'ArrowUp') { handleArrowKey(e, 'up'); }
+           else if (e.key === 'Enter') { handleEnterKey(e); }
+           else if (e.key === 'Tab') { handleTabKey(e); }
+           else if (e.key === 'Escape') { handleEscapeKey(e); }
         };
 
         input.oninput = () => {
@@ -3062,8 +3101,11 @@
             let dir = currentFile;
             // Remove filename
             const lastSlash = dir.lastIndexOf('/');
-            if(lastSlash !== -1) dir = dir.substring(0, lastSlash);
-            else dir = ""; // root
+            if(lastSlash >= 0) {
+              dir = dir.substring(0, lastSlash);
+            } else {
+              dir = ""; // root
+            }
             
             if(dir) initialPath = dir + "/";
         }
@@ -3349,51 +3391,31 @@
       if (typeof cb === 'function') cb();
     }
 
+    function applyFileDeletion(fileName, res) {
+      if (!res.ok) { res.json().then(data => showAlert('Error deleting: ' + (data.error || 'Unknown'))); return; }
+      const deletedPrefix = fileName.endsWith('/') ? fileName : null;
+      const tabsToRemove = openTabs.filter(tab =>
+        tab.path === fileName || (deletedPrefix && tab.path.startsWith(deletedPrefix))
+      );
+      tabsToRemove.forEach(tab => { if (tab.model) tab.model.dispose(); });
+      openTabs = openTabs.filter(tab => !tabsToRemove.includes(tab));
+      if (previewTabId && !getTabById(previewTabId)) previewTabId = null;
+      if (activeTabId && !getTabById(activeTabId)) {
+        activeTabId = openTabs.length ? openTabs[openTabs.length - 1].id : null;
+      }
+      if (activeTabId) {
+        activateTab(activeTabId);
+      } else {
+        currentFile = null; originalContent = ''; saveLastOpenedFile('');
+        saveOpenTabsSession(); toggleEmptyState(true); renderTabs();
+      }
+      loadFiles();
+    }
+
     function deleteFile(fileName) {
       showConfirm("Delete " + fileName + "? This cannot be undone.", 'Delete File', function() {
-        fetch(buildFileApiUrl(fileName), {
-          method: 'DELETE'
-        })
-          .then(res => {
-            if (res.ok) {
-              const deletedPrefix = fileName.endsWith('/') ? fileName : null;
-
-              const tabsToRemove = openTabs.filter(tab => {
-                if (tab.path === fileName) return true;
-                if (deletedPrefix && tab.path.startsWith(deletedPrefix)) return true;
-                return false;
-              });
-
-              tabsToRemove.forEach(tab => {
-                if (tab.model) tab.model.dispose();
-              });
-
-              openTabs = openTabs.filter(tab => !tabsToRemove.includes(tab));
-
-              if (previewTabId && !getTabById(previewTabId)) {
-                previewTabId = null;
-              }
-
-              if (activeTabId && !getTabById(activeTabId)) {
-                activeTabId = openTabs.length ? openTabs[openTabs.length - 1].id : null;
-              }
-
-              if (activeTabId) {
-                activateTab(activeTabId);
-              } else {
-                currentFile = null;
-                originalContent = '';
-                saveLastOpenedFile('');
-                saveOpenTabsSession();
-                toggleEmptyState(true);
-                renderTabs();
-              }
-
-              loadFiles();
-            } else {
-              res.json().then(data => showAlert('Error deleting: ' + (data.error || 'Unknown')));
-            }
-          })
+        fetch(buildFileApiUrl(fileName), { method: 'DELETE' })
+          .then(res => applyFileDeletion(fileName, res))
           .catch(err => showAlert('Error deleting: ' + err));
       });
     }
@@ -3417,7 +3439,7 @@
     <div class="modal-content">
         <h3>Create New File</h3>
         <div class="modal-field">
-            <label>Location</label>
+            <label for="newFileName">Location</label>
             <div class="path-container" style="position:relative;">
                 <span class="path-prefix" style="min-width:0;"></span>
                 <input type="text" id="newFileName" name="polarion_file_editor_abs_path_field_xyz" class="path-input" 
@@ -3443,7 +3465,7 @@
     <div class="modal-content">
         <h3>Upload File</h3>
         <div class="modal-field">
-            <label>Save as</label>
+            <label for="uploadPathInput">Save as</label>
             <div class="path-container" style="position:relative;">
                 <input type="text" id="uploadPathInput" class="path-input"
                        autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off"
@@ -3463,7 +3485,7 @@
     <div class="modal-content">
         <h3 id="renameModalTitle">Rename</h3>
         <div class="modal-field">
-            <label>New name</label>
+            <label for="renameFileName">New name</label>
             <div class="path-container" style="position:relative;">
                 <span id="renamePrefixSpan" class="path-prefix"></span>
                 <input type="text" id="renameFileName" name="polarion_file_editor_rename_field_xyz" class="path-input" 

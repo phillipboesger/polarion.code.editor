@@ -1,11 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "CommonJS",
-    "strict": true,
-    "esModuleInterop": true,
-    "types": ["node", "@playwright/test"]
-  },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules"]
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "CommonJS",
+		"strict": true,
+		"esModuleInterop": true,
+		"types": [
+			"node",
+			"@playwright/test"
+		]
+	},
+	"include": [
+		"**/*.ts"
+	],
+	"exclude": [
+		"node_modules"
+	]
 }
