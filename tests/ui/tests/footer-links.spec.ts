@@ -6,47 +6,50 @@
  *  - Both links have rel="noopener noreferrer" (security)
  */
 import { test, expect } from '../fixtures';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor } from '../helpers/editor';
 
 test.describe('Code Editor – Footer Hyperlinks', () => {
 
+  let frame: Frame;
+
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
-    await openEditor(page);
+    frame = await openEditor(page);
   });
 
-  test('footer contains "Boesger Digital" link', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Boesger Digital' });
+  test('footer contains "Boesger Digital" link', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Boesger Digital' });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute('href', 'https://digital.boesger.com');
   });
 
-  test('"Boesger Digital" link opens in a new tab', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Boesger Digital' });
+  test('"Boesger Digital" link opens in a new tab', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Boesger Digital' });
     await expect(link).toHaveAttribute('target', '_blank');
   });
 
-  test('"Boesger Digital" link has rel="noopener noreferrer" (security)', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Boesger Digital' });
+  test('"Boesger Digital" link has rel="noopener noreferrer" (security)', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Boesger Digital' });
     const rel = await link.getAttribute('rel');
     expect(rel).toContain('noopener');
     expect(rel).toContain('noreferrer');
   });
 
-  test('footer contains "Legal Notice" link', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Legal Notice' });
+  test('footer contains "Legal Notice" link', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Legal Notice' });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute('href', 'https://digital.boesger.com/imprint/');
   });
 
-  test('"Legal Notice" link opens in a new tab', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Legal Notice' });
+  test('"Legal Notice" link opens in a new tab', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Legal Notice' });
     await expect(link).toHaveAttribute('target', '_blank');
   });
 
-  test('"Legal Notice" link has rel="noopener noreferrer" (security)', async ({ page }) => {
-    const link = page.locator('.editor-footer a', { hasText: 'Legal Notice' });
+  test('"Legal Notice" link has rel="noopener noreferrer" (security)', async ({ page: _ }) => {
+    const link = frame.locator('.editor-footer a', { hasText: 'Legal Notice' });
     const rel = await link.getAttribute('rel');
     expect(rel).toContain('noopener');
     expect(rel).toContain('noreferrer');
@@ -66,8 +69,8 @@ test.describe('Code Editor – Footer Hyperlinks', () => {
     expect(response.status()).toBeLessThan(400);
   });
 
-  test('footer shows "Code Editor is available for free." text', async ({ page }) => {
-    await expect(page.locator('.editor-footer')).toContainText('Code Editor is available for free.');
+  test('footer shows "Code Editor is available for free." text', async ({ page: _ }) => {
+    await expect(frame.locator('.editor-footer')).toContainText('Code Editor is available for free.');
   });
 
 });

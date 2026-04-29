@@ -5,22 +5,25 @@
  *  - Sidebar scrollbar appears when file list overflows
  */
 import { test, expect } from '../fixtures';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, reloadEditor, clearEditorStorage } from '../helpers/editor';
 
 test.describe('Code Editor – Sidebar & Resizer', () => {
 
+  let frame: Frame;
+
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    frame = await openEditor(page);
   });
 
   // ── COLLAPSE / EXPAND ────────────────────────────────────────────────────
 
-  test('sidebar collapses when the « button is clicked', async ({ page }) => {
-    const sidebar = page.locator('#sidebar');
-    const collapseBtn = page.locator('#collapseSidebar');
+  test('sidebar collapses when the « button is clicked', async ({ page: _ }) => {
+    const sidebar = frame.locator('#sidebar');
+    const collapseBtn = frame.locator('#collapseSidebar');
 
     await expect(sidebar).toBeVisible();
     await collapseBtn.click();
@@ -28,28 +31,28 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     // After collapse the sidebar width should be 0 (hidden)
     await expect(sidebar).toHaveClass(/collapsed/, { timeout: 3_000 });
     // The expand button (☰) becomes visible
-    await expect(page.locator('#expandSidebar')).toBeVisible({ timeout: 3_000 });
+    await expect(frame.locator('#expandSidebar')).toBeVisible({ timeout: 3_000 });
   });
 
-  test('sidebar expands again after being collapsed', async ({ page }) => {
-    await page.locator('#collapseSidebar').click();
-    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/, { timeout: 3_000 });
+  test('sidebar expands again after being collapsed', async ({ page: _ }) => {
+    await frame.locator('#collapseSidebar').click();
+    await expect(frame.locator('#sidebar')).toHaveClass(/collapsed/, { timeout: 3_000 });
 
     // Click expand
-    await page.locator('#expandSidebar').click();
-    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/, { timeout: 3_000 });
-    await expect(page.locator('#expandSidebar')).not.toBeVisible({ timeout: 3_000 });
+    await frame.locator('#expandSidebar').click();
+    await expect(frame.locator('#sidebar')).not.toHaveClass(/collapsed/, { timeout: 3_000 });
+    await expect(frame.locator('#expandSidebar')).not.toBeVisible({ timeout: 3_000 });
   });
 
   // ── RESIZER ──────────────────────────────────────────────────────────────
 
-  test('resizer element is visible between sidebar and editor', async ({ page }) => {
-    await expect(page.locator('#resizer')).toBeVisible();
+  test('resizer element is visible between sidebar and editor', async ({ page: _ }) => {
+    await expect(frame.locator('#resizer')).toBeVisible();
   });
 
   test('dragging the resizer changes sidebar width and persists to localStorage', async ({ page }) => {
-    const resizer = page.locator('#resizer');
-    const sidebar = page.locator('#sidebar');
+    const resizer = frame.locator('#resizer');
+    const sidebar = frame.locator('#sidebar');
 
     const resizerBox = await resizer.boundingBox();
     expect(resizerBox).not.toBeNull();
@@ -78,8 +81,8 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     expect(widthAfter).toBeGreaterThan(350); // default is 350px
   });
 
-  test('resizer highlights on hover', async ({ page }) => {
-    const resizer = page.locator('#resizer');
+  test('resizer highlights on hover', async ({ page: _ }) => {
+    const resizer = frame.locator('#resizer');
     await resizer.hover();
     // The CSS adds a blue accent background on hover; we just assert the element responds
     await expect(resizer).toBeVisible();
@@ -87,7 +90,7 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
 
   test('saved sidebar width is restored on page reload', async ({ page }) => {
     // Drag sidebar to 500px
-    const resizer = page.locator('#resizer');
+    const resizer = frame.locator('#resizer');
     const resizerBox = await resizer.boundingBox();
     expect(resizerBox).not.toBeNull();
 
@@ -96,20 +99,20 @@ test.describe('Code Editor – Sidebar & Resizer', () => {
     await page.mouse.move(500, resizerBox!.y + resizerBox!.height / 2, { steps: 15 });
     await page.mouse.up();
 
-    const widthSet = await page.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
+    const widthSet = await frame.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
 
     // Reload
-    await reloadEditor(page);
+    await reloadEditor(frame);
 
-    const widthAfterReload = await page.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
+    const widthAfterReload = await frame.locator('#sidebar').evaluate((el: HTMLElement) => el.offsetWidth);
     // Should be close to the dragged value (within a few px tolerance)
     expect(Math.abs(widthAfterReload - widthSet)).toBeLessThan(20);
   });
 
   // ── SIDEBAR SCROLL ───────────────────────────────────────────────────────
 
-  test('sidebar content area has overflow-y: auto (scrollable)', async ({ page }) => {
-    const overflow = await page.locator('.sidebar-content').evaluate(
+  test('sidebar content area has overflow-y: auto (scrollable)', async ({ page: _ }) => {
+    const overflow = await frame.locator('.sidebar-content').evaluate(
       (el: HTMLElement) => getComputedStyle(el).overflowY
     );
     expect(['auto', 'scroll']).toContain(overflow);

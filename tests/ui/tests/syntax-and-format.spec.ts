@@ -5,7 +5,7 @@
  *  - Auto-formatting via Shift+Mod+F: JSON, XML, Velocity (#if, #foreach, #set)
  */
 import { test, expect } from '../fixtures';
-import type { Page } from '@playwright/test';
+import type { Page, Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, clickFile, waitForTab, clearEditorStorage } from '../helpers/editor';
 
@@ -15,21 +15,21 @@ let TS: string;
 // ── Low-level Monaco helpers ───────────────────────────────────────────────────
 
 /** Returns the language id of the currently active Monaco model, or null. */
-async function getActiveLanguage(page: Page): Promise<string | null> {
-  return page.evaluate(() => (globalThis as any).editor?.getModel()?.getLanguageId() ?? null);
+async function getActiveLanguage(frame: Frame): Promise<string | null> {
+  return frame.evaluate(() => (globalThis as any).editor?.getModel()?.getLanguageId() ?? null);
 }
 
 /** Returns the full text content of the currently active Monaco model. */
-async function getEditorContent(page: Page): Promise<string> {
-  return page.evaluate(() => (globalThis as any).editor?.getModel()?.getValue() ?? '');
+async function getEditorContent(frame: Frame): Promise<string> {
+  return frame.evaluate(() => (globalThis as any).editor?.getModel()?.getValue() ?? '');
 }
 
 /**
  * Replaces the entire content of the active Monaco model directly via JS.
  * Equivalent to selecting all and typing, but without keyboard focus requirements.
  */
-async function setEditorContent(page: Page, content: string): Promise<void> {
-  await page.evaluate((text) => {
+async function setEditorContent(frame: Frame, content: string): Promise<void> {
+  await frame.evaluate((text) => {
     const w = globalThis as any;
     w.editor?.getModel()?.setValue(text);
     w.editor?.focus();
@@ -37,23 +37,23 @@ async function setEditorContent(page: Page, content: string): Promise<void> {
 }
 
 /** Focuses the Monaco editor so keyboard shortcuts reach it. */
-async function focusEditor(page: Page): Promise<void> {
-  await page.locator('.monaco-editor').first().click();
+async function focusEditor(frame: Frame): Promise<void> {
+  await frame.locator('.monaco-editor').first().click();
 }
 
 /**
  * Invokes the editor's internal formatCurrentDocument() function directly.
  * This tests the formatter logic without relying on keyboard-focus behaviour.
  */
-async function formatViaJs(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+async function formatViaJs(frame: Frame): Promise<void> {
+  await frame.evaluate(async () => {
     const w = globalThis as any;
     if (typeof w.formatCurrentDocument === 'function') {
       await w.formatCurrentDocument();
     }
   });
   // Small delay to allow synchronous formatters (Velocity) to commit their edit.
-  await page.waitForTimeout(200);
+  await frame.page().waitForTimeout(200);
 }
 
 /**
@@ -106,12 +106,12 @@ test.describe('Code Editor – Syntax Highlighting', () => {
       const ok = await apiCreateFile(page, file);
       expect(ok, `Cannot create "${file}" – environment may be read-only`).toBe(true);
 
-      await openEditor(page);
-      await clickFile(page, file);
-      await waitForTab(page, file);
+      const frame = await openEditor(page);
+      await clickFile(frame, file);
+      await waitForTab(frame, file);
 
       await expect
-        .poll(() => getActiveLanguage(page), { timeout: 5_000 })
+        .poll(() => getActiveLanguage(frame), { timeout: 5_000 })
         .toBe(lang);
     });
   }
@@ -135,20 +135,20 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const compact = '{"z":3,"a":1,"m":2}';
-    await setEditorContent(page, compact);
+    await setEditorContent(frame, compact);
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     // Monaco JSON worker formats asynchronously – poll until content changes.
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(compact);
 
-    const formatted = await getEditorContent(page);
+    const formatted = await getEditorContent(frame);
     expect(formatted).toContain('\n');
     expect(formatted).toContain('"z"');
     expect(formatted).toContain('"a"');
@@ -162,19 +162,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const compact = '{"root":{"nested":{"deep":true}}}';
-    await setEditorContent(page, compact);
+    await setEditorContent(frame, compact);
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(compact);
 
-    const formatted = await getEditorContent(page);
+    const formatted = await getEditorContent(frame);
     // Expect at least 5 lines (opening + 3 nesting levels + closing)
     expect(formatted.split('\n').length).toBeGreaterThanOrEqual(5);
     expect(formatted).toContain('"deep"');
@@ -188,19 +188,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const compact = '[{"id":1},{"id":2},{"id":3}]';
-    await setEditorContent(page, compact);
+    await setEditorContent(frame, compact);
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(compact);
 
-    const formatted = await getEditorContent(page);
+    const formatted = await getEditorContent(frame);
     expect(formatted).toContain('\n');
   });
 
@@ -214,19 +214,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const oneLiner = '<root><child>hello</child></root>';
-    await setEditorContent(page, oneLiner);
+    await setEditorContent(frame, oneLiner);
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(oneLiner);
 
-    const formatted = await getEditorContent(page);
+    const formatted = await getEditorContent(frame);
     expect(formatted).toContain('\n');
     expect(formatted).toContain('<child>');
   });
@@ -239,20 +239,20 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const xml = '<config version="1.0"><entry key="foo" value="bar"/></config>';
-    await setEditorContent(page, xml);
+    await setEditorContent(frame, xml);
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     // Wait for format to complete
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(xml);
 
-    const formatted = await getEditorContent(page);
+    const formatted = await getEditorContent(frame);
     expect(formatted).toContain('version="1.0"');
     expect(formatted).toContain('key="foo"');
   });
@@ -267,19 +267,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     // Unindented input – formatter should indent the body
-    await setEditorContent(page, '#if($x)\ncontent\n#end');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#if($x)\ncontent\n#end');
+    await formatViaJs(frame);
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('  content');
 
-    const result = await getEditorContent(page);
+    const result = await getEditorContent(frame);
     // #if and #end stay at column 0
     expect(result).toMatch(/^#if/m);
     expect(result).toMatch(/^#end/m);
@@ -293,19 +293,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const raw = '#foreach($item in $list)\n#if($item.active)\n$item.name\n#end\n#end';
-    await setEditorContent(page, raw);
-    await formatViaJs(page);
+    await setEditorContent(frame, raw);
+    await formatViaJs(frame);
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('    $item.name'); // 4 spaces = 2 nesting levels
 
-    const result = await getEditorContent(page);
+    const result = await getEditorContent(frame);
     expect(result).toContain('  #if');          // #if at 1st level (2 spaces)
     expect(result).toContain('  #end');          // closing #end at 1st level
     expect(result).toMatch(/^#foreach/m);        // #foreach at column 0
@@ -320,17 +320,17 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     // No spaces around = sign in raw template
-    await setEditorContent(page, '#set($var=$value)');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#set($var=$value)');
+    await formatViaJs(frame);
 
     // Formatter normalises to #set( $var = $value )
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('#set( $var = $value )');
   });
 
@@ -342,15 +342,15 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const raw = '#if($a)\nyes\n#elseif($b)\nmaybe\n#else\nno\n#end';
-    await setEditorContent(page, raw);
-    await formatViaJs(page);
+    await setEditorContent(frame, raw);
+    await formatViaJs(frame);
 
-    const result = await getEditorContent(page);
+    const result = await getEditorContent(frame);
     // #if, #elseif, #else, #end must all start at column 0
     expect(result).toMatch(/^#if/m);
     expect(result).toMatch(/^#elseif/m);
@@ -370,14 +370,14 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
-    await setEditorContent(page, '#*\n  Block comment\n*#\n$result');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#*\n  Block comment\n*#\n$result');
+    await formatViaJs(frame);
 
-    const result = await getEditorContent(page);
+    const result = await getEditorContent(frame);
     expect(result).toContain('Block comment');
     expect(result).toContain('$result');
   });
@@ -391,20 +391,20 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, 'page.xml');
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, 'page.xml');
-    await waitForTab(page, 'page.xml');
+    const frame = await openEditor(page);
+    await clickFile(frame, 'page.xml');
+    await waitForTab(frame, 'page.xml');
 
     // page.xml is treated as velocity regardless of the .xml extension
     await expect
-      .poll(() => getActiveLanguage(page), { timeout: 5_000 })
+      .poll(() => getActiveLanguage(frame), { timeout: 5_000 })
       .toBe('velocity');
 
-    await setEditorContent(page, '#if($x)\ncontent\n#end');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#if($x)\ncontent\n#end');
+    await formatViaJs(frame);
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('  content');
   });
 
@@ -418,15 +418,15 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
-    await setEditorContent(page, '#foreach($x in $list)\n$x\n#end');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#foreach($x in $list)\n$x\n#end');
+    await formatViaJs(frame);
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('  $x');
   });
 
@@ -438,15 +438,15 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
-    await setEditorContent(page, '#if($show)\n<p>Hello</p>\n#end');
-    await formatViaJs(page);
+    await setEditorContent(frame, '#if($show)\n<p>Hello</p>\n#end');
+    await formatViaJs(frame);
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('  <p>Hello</p>');
   });
 
@@ -460,19 +460,19 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
     const compact = '{"shortcut":true}';
-    await setEditorContent(page, compact);
+    await setEditorContent(frame, compact);
 
     // Focus the editor pane so the shortcut reaches the document handler
-    await page.locator('#editor-container').click();
+    await frame.locator('#editor-container').click();
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
       .not.toBe(compact);
   });
 
@@ -484,17 +484,17 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
-    await openEditor(page);
-    await clickFile(page, FILE);
-    await waitForTab(page, FILE);
+    const frame = await openEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
 
-    await setEditorContent(page, '#if($x)\nbody\n#end');
+    await setEditorContent(frame, '#if($x)\nbody\n#end');
 
-    await page.locator('#editor-container').click();
+    await frame.locator('#editor-container').click();
     await page.keyboard.press('ControlOrMeta+Shift+F');
 
     await expect
-      .poll(() => getEditorContent(page), { timeout: 5_000 })
+      .poll(() => getEditorContent(frame), { timeout: 5_000 })
       .toContain('  body');
   });
 

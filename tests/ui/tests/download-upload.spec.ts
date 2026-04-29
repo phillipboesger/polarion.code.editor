@@ -8,15 +8,20 @@
  *  - New File button is an icon-only button (no text label)
  */
 import { test, expect } from '../fixtures';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile } from '../helpers/editor';
 
 let TEST_FILE:   string;
 let UPLOAD_FILE: string;
+let TS:          string;
 
 test.describe('Code Editor – Download & Upload', () => {
 
+  let frame: Frame;
+
   test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
+    TS          = workerPrefix;
     TEST_FILE   = `ui-download-test-${workerPrefix}.txt`;
     UPLOAD_FILE = `ui-upload-test-${workerPrefix}.txt`;
   });
@@ -24,13 +29,13 @@ test.describe('Code Editor – Download & Upload', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    frame = await openEditor(page);
   });
 
   // ── ICONS / LAYOUT ──────────────────────────────────────────────────────
 
-  test('New File button shows only an icon (no visible text)', async ({ page }) => {
-    const newBtn = page.locator('#newBtn');
+  test('New File button shows only an icon (no visible text)', async ({ page: _ }) => {
+    const newBtn = frame.locator('#newBtn');
     await expect(newBtn).toBeVisible();
     // Button should contain an SVG icon, not plain text
     await expect(newBtn.locator('svg')).toBeVisible();
@@ -38,15 +43,15 @@ test.describe('Code Editor – Download & Upload', () => {
     expect(text).toBe('');
   });
 
-  test('Download button exists with correct tooltip', async ({ page }) => {
-    const downloadBtn = page.locator('#downloadBtn');
+  test('Download button exists with correct tooltip', async ({ page: _ }) => {
+    const downloadBtn = frame.locator('#downloadBtn');
     await expect(downloadBtn).toBeVisible();
     await expect(downloadBtn).toHaveAttribute('title', 'Download current file');
     await expect(downloadBtn.locator('svg')).toBeVisible();
   });
 
-  test('Upload button exists with correct tooltip', async ({ page }) => {
-    const uploadBtn = page.locator('#uploadBtn');
+  test('Upload button exists with correct tooltip', async ({ page: _ }) => {
+    const uploadBtn = frame.locator('#uploadBtn');
     await expect(uploadBtn).toBeVisible();
     await expect(uploadBtn).toHaveAttribute('title', 'Upload file');
     await expect(uploadBtn.locator('svg')).toBeVisible();
@@ -54,122 +59,127 @@ test.describe('Code Editor – Download & Upload', () => {
 
   // ── DOWNLOAD BUTTON STATE ───────────────────────────────────────────────
 
-  test('Download button is disabled when no file is open', async ({ page }) => {
-    await expect(page.locator('#downloadBtn')).toBeDisabled();
+  test('Download button is disabled when no file is open', async ({ page: _ }) => {
+    await expect(frame.locator('#downloadBtn')).toBeDisabled();
   });
 
   test('Download button is enabled after opening a file', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE);
+    const created = await tryCreateFile(frame, TEST_FILE);
     expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
-    await waitForFileInList(page, TEST_FILE);
-    await clickFile(page, TEST_FILE);
-    await waitForTab(page, TEST_FILE);
+    await waitForFileInList(frame, TEST_FILE);
+    await clickFile(frame, TEST_FILE);
+    await waitForTab(frame, TEST_FILE);
 
-    await expect(page.locator('#downloadBtn')).toBeEnabled({ timeout: 5_000 });
+    await expect(frame.locator('#downloadBtn')).toBeEnabled({ timeout: 5_000 });
   });
 
   // ── DOWNLOAD NAVIGATION ─────────────────────────────────────────────────
 
   test('Download button triggers navigation to the API download URL', async ({ page }) => {
-    const created = await tryCreateFile(page, TEST_FILE);
+    const created = await tryCreateFile(frame, TEST_FILE);
     expect(created, `Could not create ${TEST_FILE}`).toBe(true);
 
-    await waitForFileInList(page, TEST_FILE);
-    await clickFile(page, TEST_FILE);
-    await waitForTab(page, TEST_FILE);
+    await waitForFileInList(frame, TEST_FILE);
+    await clickFile(frame, TEST_FILE);
+    await waitForTab(frame, TEST_FILE);
 
-    // Intercept navigations to the download endpoint
-    let downloadUrl: string | null = null;
-    page.on('request', req => {
-      if (req.url().includes('download=true')) {
-        downloadUrl = req.url();
-      }
-    });
-
-    // Also listen for popup (target=_blank opens new tab)
-    const [popup] = await Promise.all([
-      page.waitForEvent('popup', { timeout: 5_000 }).catch(() => null),
-      page.locator('#downloadBtn').click(),
+    // <a download="..."> triggers a Playwright download event — not a navigation or popup
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 10_000 }),
+      frame.locator('#downloadBtn').click(),
     ]);
 
-    if (popup) {
-      expect(popup.url()).toContain('download=true');
-      await popup.close();
-    } else {
-      // Some browsers handle content-disposition inline — just check the request was made
-      await page.waitForTimeout(1_000);
-      expect(downloadUrl).toContain('download=true');
-    }
+    expect(download.suggestedFilename()).toBe(TEST_FILE);
+    expect(download.url()).toContain('download=true');
   });
 
   // ── UPLOAD MODAL ────────────────────────────────────────────────────────
 
   test('Upload button opens the upload modal', async ({ page }) => {
-    // Attach a fake file before clicking (input[type=file] is hidden)
-    await page.locator('#uploadFileInput').setInputFiles({
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
       name: UPLOAD_FILE,
       mimeType: 'text/plain',
       buffer: Buffer.from('uploaded content'),
     });
 
-    await expect(page.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
   });
 
   test('Upload modal pre-fills filename from selected file', async ({ page }) => {
-    await page.locator('#uploadFileInput').setInputFiles({
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
       name: UPLOAD_FILE,
       mimeType: 'text/plain',
       buffer: Buffer.from('test'),
     });
 
-    await expect(page.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
 
-    const inputValue = await page.locator('#uploadPathInput').inputValue();
+    const inputValue = await frame.locator('#uploadPathInput').inputValue();
     expect(inputValue).toContain(UPLOAD_FILE);
   });
 
   test('Upload modal can be cancelled without uploading', async ({ page }) => {
-    await page.locator('#uploadFileInput').setInputFiles({
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
       name: UPLOAD_FILE,
       mimeType: 'text/plain',
       buffer: Buffer.from('test'),
     });
 
-    await expect(page.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
-    await page.locator('#uploadModal .action-btn.secondary').click();
-    await expect(page.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await frame.locator('#uploadModal .action-btn.secondary').click();
+    await expect(frame.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
   });
 
   test('Escape key closes the upload modal', async ({ page }) => {
-    await page.locator('#uploadFileInput').setInputFiles({
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
       name: UPLOAD_FILE,
       mimeType: 'text/plain',
       buffer: Buffer.from('test'),
     });
 
-    await expect(page.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
     await page.keyboard.press('Escape');
-    await expect(page.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
+    await expect(frame.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
   });
 
   test('Upload creates a new file and opens it in a tab', async ({ page }) => {
     const content = `uploaded-${TS}`;
 
-    await page.locator('#uploadFileInput').setInputFiles({
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
       name: UPLOAD_FILE,
       mimeType: 'text/plain',
       buffer: Buffer.from(content),
     });
 
-    await expect(page.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
 
     // Clear path and set the upload target
-    await page.locator('#uploadPathInput').fill(UPLOAD_FILE);
-    await page.locator('#uploadModal .action-btn:not(.secondary)').click();
+    await frame.locator('#uploadPathInput').fill(UPLOAD_FILE);
+    await frame.locator('#uploadModal .action-btn:not(.secondary)').click();
 
-    await expect(page.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
-    await waitForTab(page, UPLOAD_FILE);
+    await expect(frame.locator('#uploadModal')).not.toHaveClass(/visible/, { timeout: 3_000 });
+    await waitForTab(frame, UPLOAD_FILE);
 
     // Cleanup
     await page.request.delete(

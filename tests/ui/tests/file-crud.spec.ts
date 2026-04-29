@@ -9,7 +9,7 @@
  * A unique timestamp prefix avoids collisions between test runs.
  */
 import { test, expect } from '../fixtures';
-import type { Page } from '@playwright/test';
+import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 import { openEditor, openNewFileModal, clickFile, waitForTab, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
 
@@ -23,17 +23,17 @@ let COPY_FILE:     string;
 // ---------------------------------------------------------------------------
 // Helper: type into the active Monaco editor (text model)
 // ---------------------------------------------------------------------------
-async function typeIntoMonaco(page: Page, text: string): Promise<void> {
+async function typeIntoMonaco(frame: Frame, text: string): Promise<void> {
   // Click the editor canvas to focus, then use keyboard
-  const editorCanvas = page.locator('#editor-container .monaco-editor').first();
+  const editorCanvas = frame.locator('#editor-container .monaco-editor').first();
   await editorCanvas.click();
   // Select all & replace
-  await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.type(text);
+  await frame.page().keyboard.press('ControlOrMeta+a');
+  await frame.page().keyboard.type(text);
 }
 
-async function waitForSavedOrSkip(page: Page, fileName: string, reason: string): Promise<void> {
-  const saved = await page
+async function waitForSavedOrSkip(frame: Frame, fileName: string, reason: string): Promise<void> {
+  const saved = await frame
     .waitForFunction(
       (name) => {
         const tabs = Array.from(document.querySelectorAll('#editorTabs .editor-tab'));
@@ -52,8 +52,8 @@ async function waitForSavedOrSkip(page: Page, fileName: string, reason: string):
   expect(saved, reason).toBe(true);
 }
 
-async function createRequiredFileOrSkip(page: Page, fileName: string): Promise<void> {
-  const ok = await tryCreateFile(page, fileName);
+async function createRequiredFileOrSkip(frame: Frame, fileName: string): Promise<void> {
+  const ok = await tryCreateFile(frame, fileName);
   expect(ok, `File precondition failed: could not create ${fileName}`).toBe(true);
 }
 
@@ -69,85 +69,87 @@ test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
 });
 test.describe('Code Editor – File CRUD', () => {
 
+  let frame: Frame;
+
   test.beforeEach(async ({ page }) => {
     await loginAsPolarionAdmin(page);
     await clearEditorStorage(page);
-    await openEditor(page);
+    frame = await openEditor(page);
   });
 
   // ── CREATE ──────────────────────────────────────────────────────────────
 
-  test('create a new file via the New File modal', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
+  test('create a new file via the New File modal', async ({ page: _ }) => {
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
     // File should appear in the sidebar list
-    const files = await getFileList(page);
+    const files = await getFileList(frame);
     expect(files.some(f => f.includes(TEST_FILE))).toBe(true);
   });
 
   // ── READ / OPEN ──────────────────────────────────────────────────────────
 
-  test('open a file and verify it loads in the editor', async ({ page }) => {
+  test('open a file and verify it loads in the editor', async ({ page: _ }) => {
     // Ensure the file exists first
-    await createRequiredFileOrSkip(page, TEST_FILE);
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
-    await clickFile(page, TEST_FILE);
-    await waitForTab(page, TEST_FILE);
+    await clickFile(frame, TEST_FILE);
+    await waitForTab(frame, TEST_FILE);
 
     // Empty state should disappear
-    await expect(page.locator('#emptyState')).not.toBeVisible({ timeout: 10_000 });
+    await expect(frame.locator('#emptyState')).not.toBeVisible({ timeout: 10_000 });
     // Toolbar label should reflect the file name
-    await expect(page.locator('#currentFileLabel')).toContainText(TEST_FILE, { timeout: 10_000 });
+    await expect(frame.locator('#currentFileLabel')).toContainText(TEST_FILE, { timeout: 10_000 });
     // Save is enabled only after a content change.
-    await expect(page.locator('#saveBtn')).toBeDisabled({ timeout: 10_000 });
+    await expect(frame.locator('#saveBtn')).toBeDisabled({ timeout: 10_000 });
   });
 
   // ── UPDATE / SAVE ────────────────────────────────────────────────────────
 
   test('edit file content and save', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
-    await clickFile(page, TEST_FILE);
-    await waitForTab(page, TEST_FILE);
+    await createRequiredFileOrSkip(frame, TEST_FILE);
+    await clickFile(frame, TEST_FILE);
+    await waitForTab(frame, TEST_FILE);
 
     // Type new content into the Monaco editor
-    await typeIntoMonaco(page, TEST_CONTENT);
+    await typeIntoMonaco(frame, TEST_CONTENT);
 
     // Tab title should show dirty indicator ( * )
-    const tab = page.locator('#editorTabs .editor-tab', { hasText: TEST_FILE });
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: TEST_FILE });
     await expect(tab).toHaveClass(/dirty/, { timeout: 5_000 });
 
     // Click Save
-    await page.locator('#saveBtn').click();
+    await frame.locator('#saveBtn').click();
 
     // After save, dirty indicator should be gone
-    await waitForSavedOrSkip(page, TEST_FILE, 'Save action not effective in this Polarion build/config');
+    await waitForSavedOrSkip(frame, TEST_FILE, 'Save action not effective in this Polarion build/config');
     await expect(tab).not.toHaveClass(/dirty/, { timeout: 5_000 });
   });
 
   test('save is triggered via Ctrl+S / Cmd+S shortcut', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
-    await clickFile(page, TEST_FILE);
-    await waitForTab(page, TEST_FILE);
-    await typeIntoMonaco(page, TEST_CONTENT + '-shortcut');
+    await createRequiredFileOrSkip(frame, TEST_FILE);
+    await clickFile(frame, TEST_FILE);
+    await waitForTab(frame, TEST_FILE);
+    await typeIntoMonaco(frame, TEST_CONTENT + '-shortcut');
 
-    const tab = page.locator('#editorTabs .editor-tab', { hasText: TEST_FILE });
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: TEST_FILE });
     await expect(tab).toHaveClass(/dirty/, { timeout: 5_000 });
 
     // Use the keyboard shortcut
-    await page.locator('#editor-container .monaco-editor').first().click();
+    await frame.locator('#editor-container .monaco-editor').first().click();
     await page.keyboard.press('Control+s');
 
-    await waitForSavedOrSkip(page, TEST_FILE, 'Save shortcut is not handled in this Polarion/browser build');
+    await waitForSavedOrSkip(frame, TEST_FILE, 'Save shortcut is not handled in this Polarion/browser build');
     await expect(tab).not.toHaveClass(/dirty/, { timeout: 5_000 });
   });
 
   // ── RENAME ───────────────────────────────────────────────────────────────
 
-  test('rename a file via the file-item action button', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
+  test('rename a file via the file-item action button', async ({ page: _ }) => {
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
     // Hover the file item to reveal action buttons
-    const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
+    const fileItem = frame.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
 
     // Click the rename button by its title attribute to avoid mixing with copy/delete.
@@ -155,17 +157,17 @@ test.describe('Code Editor – File CRUD', () => {
     await renameBtn.click();
 
     // A modal should appear – clear the input and type the new name
-    await page.waitForSelector('#renameFileModal.visible', { timeout: 5_000 });
-    const input = page.locator('#renameFileName');
+    await frame.waitForSelector('#renameFileModal.visible', { timeout: 5_000 });
+    const input = frame.locator('#renameFileName');
     await input.fill(TEST_FILE_NEW);
 
-    const confirmBtn = page.locator('#btnConfirmRename');
+    const confirmBtn = frame.locator('#btnConfirmRename');
     await confirmBtn.click();
-    await page.waitForSelector('#renameFileModal.visible', { state: 'hidden', timeout: 5_000 });
+    await frame.waitForSelector('#renameFileModal.visible', { state: 'hidden', timeout: 5_000 });
 
     // New name should appear in the sidebar. Some Polarion builds expose rename UI
     // but reject the action server-side depending on permissions/config.
-    const renamed = await page
+    const renamed = await frame
       .locator('#fileList .file-item', { hasText: TEST_FILE_NEW })
       .first()
       .isVisible({ timeout: 20_000 })
@@ -173,16 +175,16 @@ test.describe('Code Editor – File CRUD', () => {
 
     expect(renamed, 'Rename action not effective in this Polarion build/config').toBe(true);
 
-    await waitForFileInList(page, TEST_FILE_NEW, 20_000);
-    await expect(page.locator('#fileList .file-item', { hasText: TEST_FILE })).toHaveCount(0, { timeout: 20_000 });
+    await waitForFileInList(frame, TEST_FILE_NEW, 20_000);
+    await expect(frame.locator('#fileList .file-item', { hasText: TEST_FILE })).toHaveCount(0, { timeout: 20_000 });
   });
 
   // ── DELETE ───────────────────────────────────────────────────────────────
 
-  test('delete a file via the file-item delete button', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
+  test('delete a file via the file-item delete button', async ({ page: _ }) => {
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
-    const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
+    const fileItem = frame.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
 
     // Click delete button
@@ -190,11 +192,11 @@ test.describe('Code Editor – File CRUD', () => {
 
     // Confirm the custom dialog modal (replaces native browser confirm)
     await deleteBtn.click();
-    const confirmDeleteBtn = page.locator('#customDialogOverlay.visible #customDialogOkBtn');
+    const confirmDeleteBtn = frame.locator('#customDialogOverlay.visible #customDialogOkBtn');
     await confirmDeleteBtn.waitFor({ state: 'visible', timeout: 5_000 });
     await confirmDeleteBtn.click();
 
-    const deleted = await page
+    const deleted = await frame
       .waitForFunction(
         (name) => {
           const rows = Array.from(document.querySelectorAll('#fileList .file-item'));
@@ -208,16 +210,16 @@ test.describe('Code Editor – File CRUD', () => {
 
     expect(deleted, 'Delete action not effective in this Polarion build/config').toBe(true);
 
-    const filesAfter = await getFileList(page);
+    const filesAfter = await getFileList(frame);
     expect(filesAfter.some(f => f.includes(TEST_FILE))).toBe(false);
   });
 
   // ── COPY ─────────────────────────────────────────────────────────────────
 
-  test('copy a file via the file-item copy button', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
+  test('copy a file via the file-item copy button', async ({ page: _ }) => {
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
-    const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
+    const fileItem = frame.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
 
     // Copy action is optional in current UI builds; detect by explicit title.
@@ -230,16 +232,16 @@ test.describe('Code Editor – File CRUD', () => {
     await copyBtn.click();
 
     // A modal may appear asking for the copy name
-    const modalVisible = await page.locator('.modal-overlay.visible').count();
+    const modalVisible = await frame.locator('.modal-overlay.visible').count();
     if (modalVisible > 0) {
-      const input = page.locator('.modal-overlay.visible .path-input, .modal-overlay.visible input[type=text]').first();
+      const input = frame.locator('.modal-overlay.visible .path-input, .modal-overlay.visible input[type=text]').first();
       await input.fill(COPY_FILE);
-      const confirmBtn = page.locator('.modal-overlay.visible .action-btn:not(.secondary)').first();
+      const confirmBtn = frame.locator('.modal-overlay.visible .action-btn:not(.secondary)').first();
       await confirmBtn.click();
-      await page.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
+      await frame.waitForSelector('.modal-overlay.visible', { state: 'hidden', timeout: 5_000 });
     }
 
-    await waitForFileInList(page, COPY_FILE, 15_000);
+    await waitForFileInList(frame, COPY_FILE, 15_000);
   });
 
   // ── NEW FILE MODAL – TAB AUTOCOMPLETE ────────────────────────────────────
@@ -247,17 +249,17 @@ test.describe('Code Editor – File CRUD', () => {
   test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
     // Ensure at least one folder exists by creating a file inside a subfolder first
     const folderPrefix = `tab-autocomplete-${Date.now()}`;
-    const created = await tryCreateFile(page, `${folderPrefix}/seed.txt`);
+    const created = await tryCreateFile(frame, `${folderPrefix}/seed.txt`);
     expect(created, `Could not create seed folder ${folderPrefix}`).toBe(true);
 
-    await openNewFileModal(page);
-    const pathInput = page.locator('#newFileName');
+    await openNewFileModal(frame);
+    const pathInput = frame.locator('#newFileName');
 
     // Type the folder prefix so suggestions appear
     await pathInput.fill(folderPrefix.substring(0, 4));
 
     // Wait for the suggestions dropdown to become visible before pressing Tab
-    await expect(page.locator('#newFileSuggestions')).toBeVisible({ timeout: 3_000 });
+    await expect(frame.locator('#newFileSuggestions')).toBeVisible({ timeout: 3_000 });
     await pathInput.press('Tab');
 
     // After Tab, the input value should be completed with the folder name + trailing slash
@@ -265,27 +267,27 @@ test.describe('Code Editor – File CRUD', () => {
     expect(value).toMatch(new RegExp(`^${folderPrefix.substring(0, 4)}.*\\/`));
 
     // The suggestions dropdown should be hidden after selection
-    await expect(page.locator('#newFileSuggestions')).toBeHidden();
+    await expect(frame.locator('#newFileSuggestions')).toBeHidden();
 
     // Close modal
-    await page.locator('.modal-overlay.visible .action-btn.secondary').first().click();
+    await frame.locator('.modal-overlay.visible .action-btn.secondary').first().click();
   });
 
   // ── MODAL FOCUS TRAP ─────────────────────────────────────────────────────
 
   test('Tab without suggestions cycles focus within the New File modal', async ({ page }) => {
-    await openNewFileModal(page);
+    await openNewFileModal(frame);
 
     // Collect all focusable elements inside the modal
     const focusableSelector = '#newFileModal button:not([disabled]), #newFileModal input:not([disabled])';
 
     // Start: input should have focus
-    await expect(page.locator('#newFileName')).toBeFocused();
+    await expect(frame.locator('#newFileName')).toBeFocused();
 
     // Press Tab – focus must stay inside the modal (on one of the modal buttons)
     await page.keyboard.press('Tab');
-    const activeId = await page.evaluate(() => document.activeElement?.id ?? '');
-    const isInsideModal = await page.evaluate(
+    const activeId = await frame.evaluate(() => document.activeElement?.id ?? '');
+    const isInsideModal = await frame.evaluate(
       (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
                 Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
       focusableSelector
@@ -294,7 +296,7 @@ test.describe('Code Editor – File CRUD', () => {
 
     // Shift+Tab should also stay inside
     await page.keyboard.press('Shift+Tab');
-    const isInsideModalAfterShift = await page.evaluate(
+    const isInsideModalAfterShift = await frame.evaluate(
       (sel) => !!document.querySelector('#newFileModal')?.contains(document.activeElement) &&
                 Array.from(document.querySelectorAll(sel)).some(el => el === document.activeElement),
       focusableSelector
@@ -302,29 +304,29 @@ test.describe('Code Editor – File CRUD', () => {
     expect(isInsideModalAfterShift).toBe(true);
 
     // Close modal
-    await page.locator('#newFileModal .action-btn.secondary').first().click();
+    await frame.locator('#newFileModal .action-btn.secondary').first().click();
   });
 
   test('Tab without suggestions cycles focus within the Rename modal', async ({ page }) => {
-    await createRequiredFileOrSkip(page, TEST_FILE);
+    await createRequiredFileOrSkip(frame, TEST_FILE);
 
-    const fileItem = page.locator('#fileList .file-item', { hasText: TEST_FILE });
+    const fileItem = frame.locator('#fileList .file-item', { hasText: TEST_FILE });
     await fileItem.hover();
     await fileItem.locator('.list-btn[title*="Rename" i]').first().click();
-    await page.waitForSelector('#renameFileModal.visible', { timeout: 5_000 });
+    await frame.waitForSelector('#renameFileModal.visible', { timeout: 5_000 });
 
     // Input should be focused initially
-    await expect(page.locator('#renameFileName')).toBeFocused();
+    await expect(frame.locator('#renameFileName')).toBeFocused();
 
     // Tab must not escape the modal
     await page.keyboard.press('Tab');
-    const isInsideModal = await page.evaluate(() =>
+    const isInsideModal = await frame.evaluate(() =>
       !!document.querySelector('#renameFileModal')?.contains(document.activeElement)
     );
     expect(isInsideModal).toBe(true);
 
     // Close modal
-    await page.locator('#renameFileModal .action-btn.secondary').first().click();
+    await frame.locator('#renameFileModal .action-btn.secondary').first().click();
   });
 
   // ── API HEALTH ENDPOINT ───────────────────────────────────────────────────
