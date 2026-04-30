@@ -5,9 +5,11 @@
  *  1. Logs in as admin via browser and saves auth state (.auth/worker0.json).
  *  2. Creates a temporary Personal Access Token (PAT) via the Polarion web UI.
  *     The PAT is persisted to .auth/.ci-token.json for teardown cleanup.
- *  3. Uses the PAT (Bearer token) to create 2 Polarion test users via REST API.
- *  4. Logs in as each user and saves auth state (worker1.json, worker2.json).
- *     Falls back to copying worker0.json if user creation is not possible.
+ *  3. Provisions 2 Polarion test users via the Admin UI (creates user + sets
+ *     password in one step, bypassing the broken REST PATCH for passwords).
+ *  4. Assigns the Administrators group to each user via REST.
+ *  5. Logs in as each user and saves auth state (worker1.json, worker2.json).
+ *     Falls back to copying worker0.json if provisioning is not possible.
  *
  * Worker ↔ credentials mapping:
  *   workerIndex % 3 === 0  →  admin / admin          (.auth/worker0.json)
@@ -16,13 +18,9 @@
  */
 
 import { chromium, Browser, request as pwRequest } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-
-// ── Runtime configuration ─────────────────────────────────────────────────────
-const BASE_URL   = process.env.POLARION_URL  ?? 'http://localhost';
-const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
-const ADMIN_PASS = process.env.POLARION_PASS ?? 'admin';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { BASE_URL, ADMIN_USER, ADMIN_PASS, TEST_USERS } from './helpers/auth';
 
 /** Directory where auth-state JSON files are stored. */
 export const AUTH_DIR = path.join(__dirname, '.auth');
@@ -30,11 +28,56 @@ export const AUTH_DIR = path.join(__dirname, '.auth');
 /** File used to persist the CI access token between setup and teardown. */
 export const CI_TOKEN_FILE = path.join(AUTH_DIR, '.ci-token.json');
 
-/** The two extra test users created for parallel workers 1 & 2. */
-export const TEST_USERS = [
-  { id: 'playwright_w1', name: 'Playwright Worker 1', password: 'Playwright@W1!' },
-  { id: 'playwright_w2', name: 'Playwright Worker 2', password: 'Playwright@W2!' },
-] as const;
+/** Re-export so teardown and other callers can import from one place. */
+export { TEST_USERS } from './helpers/auth';
+
+async function addGlobalRoleInCreateForm(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page: any,
+  role: 'user' | 'admin',
+): Promise<void> {
+  const editor = page.locator('[data-debug-id="globalRolesWithSourcesEditor"]').first();
+  await editor.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+
+  // In create mode the editable role row has a placeholder combo input with value "--".
+  const roleInput = editor.locator('input.polarion-JComboBox-Input[value="--"]').first();
+  await roleInput.waitFor({ state: 'visible', timeout: 15_000 });
+
+  // Open the combo from the same row.
+  const comboIcon = roleInput
+    .locator('xpath=ancestor::table[1]//img[contains(@class,"polarion-JComboBox-Image")]')
+    .first();
+  await comboIcon.click({ force: true });
+  await page.waitForTimeout(500);
+
+  const matched = await page.evaluate((wantedRole: string) => {
+    const visible = (el: Element) => {
+      const h = el as HTMLElement;
+      return !!(h.offsetParent || h.getClientRects().length);
+    };
+    const candidates = Array.from(document.querySelectorAll('td, div, span, a')).filter((el) => {
+      const text = el.textContent?.trim();
+      return text === wantedRole && visible(el);
+    });
+    const target = candidates.at(-1) as HTMLElement | undefined;
+    if (!target) return false;
+    target.click();
+    return true;
+  }, role);
+
+  if (!matched) {
+    throw new Error(`Role option "${role}" could not be selected in Global Roles popup.`);
+  }
+
+  await page.waitForTimeout(300);
+  const addBtn = roleInput
+    .locator('xpath=ancestor::div[contains(@class,"JSTreeTableRow")][1]//img[@title="Add" or contains(@src,"tablePlus") or contains(@src,"plus")]')
+    .first();
+  await addBtn.click({ force: true });
+  await page.waitForTimeout(500);
+  console.log(`[global-setup] Added global role "${role}" in create form.`);
+}
 
 // ── REST helpers ──────────────────────────────────────────────────────────────
 
@@ -141,51 +184,129 @@ async function acquireAdminBearerToken(browser: Browser): Promise<string | null>
 }
 
 
-async function createUser(
-  apiCtx: Awaited<ReturnType<typeof pwRequest.newContext>>,
+/**
+ * Provisions a Polarion user (create + password) via the Admin UI.
+ *
+ * Polarion REST v1 does not support setting passwords on creation or via PATCH.
+ * This function uses the pre-saved admin auth state (worker0.json) to navigate
+ * to Administration > User Management > Users, check whether the user already
+ * exists, and either create them fresh or skip if they're already present.
+ *
+ * UI form field order on the "Create new User" panel:
+ *   text[0] = Login ID   text[1] = Full Name
+ *   text[2] = Email      text[3] = Description
+ *   password[0] = Password   password[1] = Confirm Password
+ *
+ * @param browser      - A Playwright Browser instance.
+ * @param user         - User data (id, name, password).
+ * @param adminAuthFile - Path to the admin storage-state JSON (worker0.json).
+ * @returns true on success or if user already exists, false on failure.
+ */
+async function provisionUserViaUI(
+  browser: Browser,
   user: { id: string; name: string; password: string },
+  adminAuthFile: string,
 ): Promise<boolean> {
-  const resp = await apiCtx.post(`${BASE_URL}/polarion/rest/v1/users`, {
-    data: {
-      data: [{
-        type: 'users',
-        attributes: {
-          id:   user.id,
-          name: user.name,
-        },
-      }],
-    },
-  });
+  const context = await browser.newContext({ storageState: adminAuthFile });
+  const page    = await context.newPage();
 
-  if (resp.status() === 409) {
-    console.log(`[global-setup] User "${user.id}" already exists – skipping creation.`);
-    return true;
-  }
-  if (!resp.ok()) {
-    console.warn(`[global-setup] Could not create user "${user.id}" (${resp.status()}): ${await resp.text()}`);
-    return false;
-  }
-  console.log(`[global-setup] Created user "${user.id}".`);
-
-  // Set password via PATCH (password is not accepted on creation in Polarion REST v1)
-  const patchResp = await apiCtx.patch(`${BASE_URL}/polarion/rest/v1/users/${user.id}`, {
-    data: {
-      data: {
-        type: 'users',
-        id: user.id,
-        attributes: { password: user.password },
-      },
-    },
-  });
-  if (!patchResp.ok()) {
-    // Cannot set password via REST – fall back to admin credentials for this worker
-    console.warn(
-      `[global-setup] Cannot set password for "${user.id}" via REST (${patchResp.status()}). ` +
-      `Worker will fall back to admin credentials.`,
+  try {
+    await page.goto(
+      `${BASE_URL}/polarion/#/administration/user_management/users`,
+      { waitUntil: 'domcontentloaded', timeout: 30_000 },
     );
+
+    // Wait for GWT to render the user list
+    await page.waitForFunction(
+      () => document.body?.textContent?.includes('Create new User'),
+      { timeout: 30_000, polling: 1_000 },
+    );
+    // Give GWT extra time to populate the user-list rows after the toolbar renders
+    await page.waitForTimeout(2_000);
+
+    // If the user already exists in the list, skip creation
+    const alreadyExists = await page.evaluate(
+      (uid: string) => (document.body?.textContent ?? '').includes(uid),
+      user.id,
+    );
+    if (alreadyExists) {
+      console.log(`[global-setup] User "${user.id}" already exists – skipping UI creation.`);
+      return true;
+    }
+
+    // dispatchEvent bypasses the GWT splitter overlay (GLNRHCCBMHB) which
+    // intercepts pointer events after navigating back from a user detail view.
+    await page.locator('table.polarion-ToolbarButton', { hasText: 'Create new User' }).first().dispatchEvent('click');
+    await page.waitForTimeout(1_500);
+
+    // Wait for the creation form: just check that password fields are present.
+    // The form may be pre-populated from a previous creation – we clear it below.
+    await page.waitForFunction(
+      () => document.querySelectorAll('input[type="password"]').length >= 2,
+      { timeout: 25_000, polling: 500 },
+    );
+
+    // Fill form: Name(0), Initials(1), ID(2), Login ID(3), Email(4)
+    // Clear each field first in case the form is pre-filled from a previous run.
+    const textInputs = page.locator('input[type="text"].polarion-JSTextEditor-Active');
+    await textInputs.nth(0).fill('');         // clear Name
+    await textInputs.nth(2).fill('');         // clear ID
+    await textInputs.nth(3).fill('');         // clear Login ID
+    await textInputs.nth(0).fill(user.name); // Name
+    await textInputs.nth(2).fill(user.id);   // ID
+    await textInputs.nth(3).fill(user.id);   // Login ID
+
+    // Fill password fields
+    const pwInputs = page.locator('input[type="password"].polarion-JSTextEditor-Active');
+    await pwInputs.nth(0).fill('');
+    await pwInputs.nth(1).fill('');
+    await pwInputs.nth(0).fill(user.password);
+    await pwInputs.nth(1).fill(user.password);
+
+    // Assign required global roles directly in create mode.
+    await addGlobalRoleInCreateForm(page, 'user');
+    await addGlobalRoleInCreateForm(page, 'admin');
+
+    // Select a license type with available seats via evaluate (reliable across GWT rendering).
+    // "Named ALM (0 remaining)" = no seats = user created as disabled.
+    const licenseChanged = await page.evaluate(() => {
+      const selects = Array.from(document.querySelectorAll('select'));
+      for (const sel of selects) {
+        const options = Array.from(sel.options);
+        if (!options.some(o => /remaining/i.test(o.text))) continue;
+        const preferred = options.find(o => /viewer/i.test(o.text) && !/0 remaining/i.test(o.text))
+          ?? options.find(o => !/0 remaining/i.test(o.text) && o.text.trim() !== '--');
+        if (preferred) {
+          sel.value = preferred.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return preferred.text;
+        }
+      }
+      return null;
+    });
+    console.log(`[global-setup] License type for "${user.id}": ${
+      licenseChanged ? `"${licenseChanged}"` : 'unchanged (no free seats found)'
+    }`);
+    await page.waitForTimeout(500);
+
+    // Submit – click the exact "Create" toolbar button (not "Create new User")
+    await page.locator('td.polarion-ToolbarButton-Label').filter({ hasText: /^Create$/ }).first().click();
+
+    // Confirm the user now appears in the list
+    await page.waitForFunction(
+      (uid: string) => (document.body?.textContent ?? '').includes(uid),
+      user.id,
+      { timeout: 20_000, polling: 500 },
+    );
+
+    console.log(`[global-setup] Created user "${user.id}" via Admin UI.`);
+    return true;
+  } catch (err) {
+    console.warn(`[global-setup] UI provisioning failed for "${user.id}": ${String(err)}`);
     return false;
+  } finally {
+    await context.close();
   }
-  return true;
 }
 
 /** Adds a user to the built-in Polarion "Administrators" group. */
@@ -305,37 +426,48 @@ export default async function globalSetup(): Promise<void> {
     return;
   }
 
-  // --- 3. Use Bearer token to create the parallel test users ---
-  const apiCtx = await pwRequest.newContext({
-    extraHTTPHeaders: {
-      Authorization: `Bearer ${bearerToken}`,
-      'Content-Type': 'application/json',
-      Accept:         'application/json',
-    },
-  });
-
-  let allCreated = true;
+  // --- 3. Provision test users via Admin UI (create + password in one step) ---
+  // REST PATCH for passwords returns 400 in Polarion – we use the UI instead.
+  const browser3 = await chromium.launch();
+  let allProvisioned = true;
   try {
     for (const user of TEST_USERS) {
-      const created = await createUser(apiCtx, user);
-      if (created) await assignAdminRole(apiCtx, user.id);
-      else allCreated = false;
+      const ok = await provisionUserViaUI(browser3, user, worker0Path);
+      if (!ok) { allProvisioned = false; break; }
     }
   } finally {
-    await apiCtx.dispose();
+    await browser3.close();
   }
 
-  // --- 4. Login as each worker's user and save browser storage state ---
-  if (allCreated) {
-    const browser3 = await chromium.launch();
+  // --- 4. Assign Administrators group via REST (requires valid Bearer token) ---
+  if (allProvisioned) {
+    const apiCtx = await pwRequest.newContext({
+      extraHTTPHeaders: {
+        Authorization: `Bearer ${bearerToken}`,
+        'Content-Type': 'application/json',
+        Accept:         'application/json',
+      },
+    });
     try {
-      await loginAndSave(browser3, TEST_USERS[0].id, TEST_USERS[0].password, worker1Path);
-      await loginAndSave(browser3, TEST_USERS[1].id, TEST_USERS[1].password, worker2Path);
+      for (const user of TEST_USERS) {
+        await assignAdminRole(apiCtx, user.id);
+      }
     } finally {
-      await browser3.close();
+      await apiCtx.dispose();
+    }
+  }
+
+  // --- 5. Login as each worker's user and save browser storage state ---
+  if (allProvisioned) {
+    const browser4 = await chromium.launch();
+    try {
+      await loginAndSave(browser4, TEST_USERS[0].id, TEST_USERS[0].password, worker1Path);
+      await loginAndSave(browser4, TEST_USERS[1].id, TEST_USERS[1].password, worker2Path);
+    } finally {
+      await browser4.close();
     }
   } else {
-    console.warn('[global-setup] Some users could not be created – affected workers will use admin credentials.');
+    console.warn('[global-setup] User provisioning failed – all workers will use admin credentials.');
     fs.copyFileSync(worker0Path, worker1Path);
     fs.copyFileSync(worker0Path, worker2Path);
   }

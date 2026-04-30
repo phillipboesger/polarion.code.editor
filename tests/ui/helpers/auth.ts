@@ -2,9 +2,15 @@ import { Page, BrowserContext } from '@playwright/test';
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 
-export const BASE_URL = env.POLARION_URL ?? 'http://localhost';
+export const BASE_URL   = env.POLARION_URL  ?? 'http://localhost';
 export const ADMIN_USER = env.POLARION_USER ?? 'admin';
 export const ADMIN_PASS = env.POLARION_PASS ?? 'admin';
+
+/** Credentials for the two parallel Playwright test workers. */
+export const TEST_USERS = [
+  { id: 'playwright_w1', name: 'Playwright Worker 1', password: 'Playwright@W1!' }, // NOSONAR – intentional test credential
+  { id: 'playwright_w2', name: 'Playwright Worker 2', password: 'Playwright@W2!' }, // NOSONAR – intentional test credential
+] as const;
 
 const USERNAME_SELECTORS = ['#j_username', 'input[name="j_username"]', 'input.j_username'];
 const PASSWORD_SELECTORS = ['#j_password', 'input[name="j_password"]', 'input.j_password'];

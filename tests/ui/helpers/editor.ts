@@ -207,6 +207,17 @@ export async function createFile(frame: Frame, fileName: string, projectId?: str
   }
 }
 
+/**
+ * Best-effort file deletion via the REST API.
+ * Silently ignores errors (e.g. file does not exist or environment is read-only).
+ */
+export async function deleteFile(page: Page, fileName: string, projectId?: string): Promise<void> {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+  await page.request
+    .delete(`/polarion/code-editor/api/config/file/${encodeURIComponent(fileName)}${query}`)
+    .catch(() => {/* best-effort */});
+}
+
 /** Best-effort file creation helper for environments with intermittent write restrictions. */
 export async function tryCreateFile(frame: Frame, fileName: string, projectId?: string): Promise<boolean> {
   try {

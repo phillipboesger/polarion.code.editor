@@ -7,10 +7,14 @@
 import { test, expect } from '../fixtures';
 import type { Page, Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, openGlobalEditor, clickFile, waitForTab, clearEditorStorage } from '../helpers/editor';
+import { openGlobalEditor, clickFile, waitForTab, clearEditorStorage, deleteFile } from '../helpers/editor';
 
 // Set once per worker in beforeAll; used as file-name prefix to avoid cross-worker conflicts.
 let TS: string;
+
+// Tracks the file created by the currently running test so afterEach can clean it up.
+// page.xml is intentionally excluded – it may be a pre-existing shared file.
+let _cleanupFile = '';
 
 // ── Low-level Monaco helpers ───────────────────────────────────────────────────
 
@@ -97,12 +101,21 @@ const LANG_CASES = [
 ] as const;
 
 test.describe('Code Editor – Syntax Highlighting', () => {
+  test.afterEach(async ({ page }: { page: Page }) => {
+    if (_cleanupFile) {
+      await deleteFile(page, _cleanupFile);
+      _cleanupFile = '';
+    }
+  });
+
   for (const { ext, lang } of LANG_CASES) {
     test(`".${ext}" → Monaco language "${lang}"`, async ({ page, workerPrefix }: { page: Page; workerPrefix: string }) => {
       await loginAsPolarionAdmin(page);
       await clearEditorStorage(page);
 
       const file = ext === 'pagexml' ? 'page.xml' : `hl-${workerPrefix}.${ext}`;
+      // Track for cleanup (skip page.xml – it may be a shared/pre-existing file)
+      if (ext !== 'pagexml') { _cleanupFile = file; }
       const ok = await apiCreateFile(page, file);
       expect(ok, `Cannot create "${file}" – environment may be read-only`).toBe(true);
 
@@ -125,6 +138,13 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     TS = workerPrefix;
   });
 
+  test.afterEach(async ({ page }: { page: Page }) => {
+    if (_cleanupFile) {
+      await deleteFile(page, _cleanupFile);
+      _cleanupFile = '';
+    }
+  });
+
   // ── JSON ────────────────────────────────────────────────────────────────────
 
   test('JSON: compact one-liner is pretty-printed on format', async ({ page }) => {
@@ -132,6 +152,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json-${TS}.json`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -159,6 +180,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json2-${TS}.json`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -185,6 +207,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-json3-${TS}.json`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -211,6 +234,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-xml-${TS}.xml`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -236,6 +260,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-xml2-${TS}.xml`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -264,6 +289,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -290,6 +316,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm2-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -317,6 +344,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm3-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -339,6 +367,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm4-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -367,6 +396,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vm5-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -415,6 +445,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-vtl-${TS}.vtl`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -435,6 +466,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-fhtml-${TS}.fhtml`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -457,6 +489,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-shortcut-${TS}.json`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 
@@ -481,6 +514,7 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     await clearEditorStorage(page);
 
     const FILE = `fmt-shortcut-vm-${TS}.vm`;
+    _cleanupFile = FILE;
     const ok = await apiCreateFile(page, FILE);
     expect(ok, 'File creation not available').toBe(true);
 

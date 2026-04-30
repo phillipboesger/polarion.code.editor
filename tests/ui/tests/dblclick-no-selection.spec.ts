@@ -7,7 +7,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, reloadEditor, tryCreateFile, waitForTab } from '../helpers/editor';
+import { openEditor, clearEditorStorage, reloadEditor, tryCreateFile, waitForTab, deleteFile, DEFAULT_PROJECT_ID } from '../helpers/editor';
 
 let FILE_A: string;
 
@@ -26,6 +26,10 @@ test.describe('Code Editor – Double-click on file', () => {
     await reloadEditor(frame);
     const created = await tryCreateFile(frame, FILE_A);
     expect(created, 'Double-click tests require writable file creation').toBe(true);
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (FILE_A) { await deleteFile(page, FILE_A, DEFAULT_PROJECT_ID); }
   });
 
   test('double-clicking a file opens a tab', async ({ page: _ }) => {

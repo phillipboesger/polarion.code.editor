@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, waitForEditorReady, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile } from '../helpers/editor';
+import { openEditor, waitForEditorReady, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, deleteFile, DEFAULT_PROJECT_ID } from '../helpers/editor';
 
 let SESSION_FILE_A: string;
 let SESSION_FILE_B: string;
@@ -40,7 +40,11 @@ test.describe('Code Editor – Session & Cache Persistence', () => {
     frame = await openEditor(page);
     await waitForEditorReady(frame);
   });
-
+  test.afterEach(async ({ page }) => {
+    for (const f of [SESSION_FILE_A, SESSION_FILE_B]) {
+      if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
+    }
+  });
   // ── LAST OPENED FILE ──────────────────────────────────────────────────────
 
   test('last opened file is restored after page reload', async ({ page: _ }) => {

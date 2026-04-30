@@ -10,7 +10,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile } from '../helpers/editor';
+import { openEditor, clearEditorStorage, waitForFileInList, clickFile, waitForTab, tryCreateFile, deleteFile, DEFAULT_PROJECT_ID } from '../helpers/editor';
 
 let TEST_FILE:   string;
 let UPLOAD_FILE: string;
@@ -31,7 +31,11 @@ test.describe('Code Editor – Download & Upload', () => {
     await clearEditorStorage(page);
     frame = await openEditor(page);
   });
-
+  test.afterEach(async ({ page }) => {
+    for (const f of [TEST_FILE, UPLOAD_FILE]) {
+      if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
+    }
+  });
   // ── ICONS / LAYOUT ──────────────────────────────────────────────────────
 
   test('New File button shows only an icon (no visible text)', async ({ page: _ }) => {

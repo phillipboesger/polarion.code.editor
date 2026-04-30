@@ -1,19 +1,18 @@
 /**
  * DEBUG SPEC: UI-Based Personal Access Token Acquisition
  *
- * Schritt-für-Schritt-Durchlauf der Polarion-UI um einen PAT zu erstellen.
- * Dieser Test ist NUR zum Debuggen gedacht – er zeigt Screenshots und
- * Selektoren, damit global-setup.ts korrekt implementiert werden kann.
+ * Step-by-step walkthrough of the Polarion UI to create a PAT.
+ * This test is for debugging purposes only – it captures screenshots and
+ * DOM selectors so that global-setup.ts can be implemented correctly.
  *
- * Ausführen mit:
+ * Run with:
  *   cd tests/ui && npx playwright test debug-token-setup --headed --workers=1
- *   oder ohne headed:
+ *   or without headed:
  *   cd tests/ui && npx playwright test debug-token-setup --workers=1
  */
 
 import { test, expect, Page } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
 import { loginAsPolarionAdmin } from '../helpers/auth';
 
 const BASE_URL   = process.env.POLARION_URL  ?? 'http://localhost';
@@ -198,14 +197,14 @@ test.describe('Debug: PAT acquisition via Polarion UI', () => {
     const createVisible = await createTokenBtn.isVisible({ timeout: 5_000 }).catch(() => false);
     console.log('[debug] "Create Token" button visible:', createVisible);
 
-    if (!createVisible) {
+    if (createVisible) {
+      await createTokenBtn.click();
+    } else {
       // Fallback: try locating by text
       const fallback = page.locator('button').filter({ hasText: 'Create Token' }).first();
       const fallbackVis = await fallback.isVisible({ timeout: 3_000 }).catch(() => false);
       console.log('[debug] Fallback "Create Token" button visible:', fallbackVis);
       if (fallbackVis) await fallback.click();
-    } else {
-      await createTokenBtn.click();
     }
 
     // Wait for the green "Your new Personal Access Token:" banner to appear
@@ -221,7 +220,7 @@ test.describe('Debug: PAT acquisition via Polarion UI', () => {
     const tokenValue = await page.evaluate(() => {
       const bodyText = document.body?.textContent ?? '';
       // Match the JWT: eyJ<header>.<payload>.<signature> (dots optional – some tokens are opaque)
-      const match = bodyText.match(/eyJ[A-Za-z0-9+/=._-]{50,}/);
+      const match = /eyJ[A-Za-z0-9+/=._-]{50,}/.exec(bodyText);
       return match ? match[0] : null;
     });
 
@@ -233,7 +232,7 @@ test.describe('Debug: PAT acquisition via Polarion UI', () => {
     } else {
       // Dump page text snippet to understand what's on the page
       const bodyText = await page.evaluate(() => document.body?.textContent ?? '');
-      console.log('[debug] ❌ Token not found. Body text (500 chars):', bodyText.replace(/\s+/g, ' ').slice(0, 500));
+      console.log('[debug] ❌ Token not found. Body text (500 chars):', bodyText.replaceAll(/\s+/g, ' ').slice(0, 500));
     }
 
     expect(tokenValue, 'Token value should be captured after creation').toBeTruthy();

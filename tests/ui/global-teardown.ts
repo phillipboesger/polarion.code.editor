@@ -10,12 +10,10 @@
  * teardown exits silently – nothing to clean up.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { request as pwRequest } from '@playwright/test';
-import { AUTH_DIR, CI_TOKEN_FILE, TEST_USERS } from './global-setup';
-
-const BASE_URL   = process.env.POLARION_URL  ?? 'http://localhost';
-const ADMIN_USER = process.env.POLARION_USER ?? 'admin';
+import { CI_TOKEN_FILE } from './global-setup';
+import { BASE_URL, ADMIN_USER, TEST_USERS } from './helpers/auth';
 
 export default async function globalTeardown(): Promise<void> {
   // Read the persisted PAT created during setup
@@ -44,10 +42,10 @@ export default async function globalTeardown(): Promise<void> {
       const resp = await apiCtx.delete(`${BASE_URL}/polarion/rest/v1/users/${user.id}`);
       if (resp.status() === 404) {
         console.log(`[global-teardown] User "${user.id}" already deleted.`);
-      } else if (!resp.ok()) {
-        console.warn(`[global-teardown] Failed to delete user "${user.id}": ${resp.status()} ${await resp.text()}`);
-      } else {
+      } else if (resp.ok()) {
         console.log(`[global-teardown] Deleted user "${user.id}".`);
+      } else {
+        console.warn(`[global-teardown] Failed to delete user "${user.id}": ${resp.status()} ${await resp.text()}`);
       }
     }
 

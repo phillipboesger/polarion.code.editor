@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, openNewFileModal, clickFile, waitForTab, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile } from '../helpers/editor';
+import { openEditor, openNewFileModal, clickFile, waitForTab, getFileList, clearEditorStorage, waitForFileInList, tryCreateFile, deleteFile, DEFAULT_PROJECT_ID } from '../helpers/editor';
 
 // File names are set once per worker in beforeAll using workerPrefix
 // to guarantee uniqueness across parallel workers and retries.
@@ -19,6 +19,9 @@ let TEST_FILE:     string;
 let TEST_FILE_NEW: string;
 let TEST_CONTENT:  string;
 let COPY_FILE:     string;
+
+// Tracks any additional files created ad-hoc during a test (e.g. for autocomplete).
+let extraCleanupFiles: string[] = [];
 
 // ---------------------------------------------------------------------------
 // Helper: type into the active Monaco editor (text model)
@@ -76,7 +79,12 @@ test.describe('Code Editor – File CRUD', () => {
     await clearEditorStorage(page);
     frame = await openEditor(page);
   });
-
+  test.afterEach(async ({ page }) => {
+    for (const f of [TEST_FILE, TEST_FILE_NEW, COPY_FILE, ...extraCleanupFiles]) {
+      if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
+    }
+    extraCleanupFiles = [];
+  });
   // ── CREATE ──────────────────────────────────────────────────────────────
 
   test('create a new file via the New File modal', async ({ page: _ }) => {
@@ -250,7 +258,9 @@ test.describe('Code Editor – File CRUD', () => {
   test('Tab key selects first folder suggestion in the New File modal', async ({ page }) => {
     // Ensure at least one folder exists by creating a file inside a subfolder first
     const folderPrefix = `tab-autocomplete-${Date.now()}`;
-    const created = await tryCreateFile(frame, `${folderPrefix}/seed.txt`);
+    const seedFile = `${folderPrefix}/seed.txt`;
+    extraCleanupFiles.push(seedFile);
+    const created = await tryCreateFile(frame, seedFile);
     expect(created, `Could not create seed folder ${folderPrefix}`).toBe(true);
 
     await openNewFileModal(frame);
@@ -342,7 +352,9 @@ test.describe('Code Editor – File CRUD', () => {
     // New context without any session cookies
     const freshCtx = await browser.newContext();
     const freshPage = await freshCtx.newPage();
-    const response = await freshPage.request.get('/polarion/code-editor/api/health');
+    // maxRedirects: 0 prevents Playwright from following 302 → login-page (200),
+    // so we observe the actual rejection status from the server.
+    const response = await freshPage.request.get('/polarion/code-editor/api/health', { maxRedirects: 0 });
     expect([401, 403, 302]).toContain(response.status());
     await freshCtx.close();
   });

@@ -11,7 +11,7 @@
 import { test, expect } from '../fixtures';
 import type { Frame } from '@playwright/test';
 import { loginAsPolarionAdmin } from '../helpers/auth';
-import { openEditor, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab } from '../helpers/editor';
+import { openEditor, clickFile, dblclickFile, waitForTab, reloadEditor, clearEditorStorage, tryCreateFile, hasTab, deleteFile, DEFAULT_PROJECT_ID } from '../helpers/editor';
 
 let FILE_A: string;
 let FILE_B: string;
@@ -109,6 +109,12 @@ test.describe('Code Editor – Tab Management', () => {
     const createdA = await tryCreateFile(frame, FILE_A);
     const createdB = await tryCreateFile(frame, FILE_B);
     expect(createdA && createdB, 'Tab tests require writable file creation in current Polarion build/config').toBe(true);
+  });
+
+  test.afterEach(async ({ page }) => {
+    for (const f of [FILE_A, FILE_B]) {
+      if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
+    }
   });
 
   test('clicking a file opens a tab in the tab bar', async ({ page }) => {
