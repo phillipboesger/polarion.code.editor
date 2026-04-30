@@ -1,4 +1,4 @@
-# Runs on every push and every pull request targeting main.
+# Runs on pull requests targeting main and pushes to main.
 # Compiles the project and executes all unit tests.
 #
 # PREREQUISITE: The Polarion platform JARs (com.polarion.*) must be accessible
@@ -10,7 +10,7 @@ name: CI – Build & Test
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
 
