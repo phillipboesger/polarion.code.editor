@@ -58,10 +58,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -106,7 +106,7 @@ jobs:
 
   discover-test-shards:
     name: Discover Test Shards
-    needs: prepare-release
+    needs: []
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -115,7 +115,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build shard matrix
         id: shards
@@ -157,7 +157,7 @@ jobs:
 
   test-shards:
     name: Release Tests (Shard ${{ matrix.shard }})
-    needs: [prepare-release, discover-test-shards]
+    needs: [discover-test-shards]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -171,10 +171,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -191,7 +191,7 @@ jobs:
 
       - name: Publish shard test report
         if: always()
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: "Release Tests (Shard ${{ matrix.shard }})"
           path: target/surefire-reports/*.xml
@@ -200,15 +200,187 @@ jobs:
 
       - name: Upload shard report artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: surefire-reports-shard-${{ matrix.shard }}
           path: target/surefire-reports/
           if-no-files-found: warn
 
+  ui-tests:
+    name: Playwright UI Tests (Release Gate)
+    needs: []
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    permissions:
+      contents: read
+      packages: read
+      checks: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
+      - name: Build plugin JAR
+        run: mvn --batch-mode package -DskipTests
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Create Polarion Docker volumes
+        run: |
+          docker volume create polarion_repo
+          docker volume create polarion_extensions
+
+      - name: Deploy plugin JAR into extensions volume
+        run: |
+          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
+          echo "Deploying: $JAR_NAME"
+          docker run --rm \
+            -v polarion_extensions:/ext \
+            -v "$(pwd)/target:/src" \
+            alpine sh -c "mkdir -p /ext/custom/eclipse/plugins && cp /src/${JAR_NAME} /ext/custom/eclipse/plugins/"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Pull Polarion image
+        run: docker pull ghcr.io/phillipboesger/polarion-docker:latest
+
+      - name: Start Polarion container
+        run: |
+          docker run -d \
+            --name polarion \
+            --platform linux/amd64 \
+            --memory 6g \
+            --shm-size=256m \
+            -p 80:80 \
+            -p 5433:5433 \
+            -p 5005:5005 \
+            -e JAVA_OPTS="-Xmx3g -Xms1g" \
+            -e JDWP_ENABLED=false \
+            --volume polarion_repo:/opt/polarion/data/svn \
+            --volume polarion_extensions:/opt/polarion/polarion/extensions \
+            ghcr.io/phillipboesger/polarion-docker:latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: tests/ui/package-lock.json
+
+      - name: Install npm dependencies
+        working-directory: tests/ui
+        run: npm ci
+
+      - name: Install Playwright Chromium browser
+        working-directory: tests/ui
+        run: npx playwright install chromium --with-deps
+
+      - name: Wait for Polarion to become ready
+        run: |
+          echo "⏳ Phase 1: waiting for Apache on port 80..."
+          timeout 120s bash -c 'until nc -z localhost 80; do sleep 2; done'
+          echo "  ✅ Apache is up after ${SECONDS}s"
+
+          echo "⏳ Phase 2: waiting for 'Polarion started' in container log (max 900s)..."
+          MAX_RETRIES=90
+          RETRY_COUNT=0
+          SUCCESS=false
+
+          docker exec polarion tail -f /var/log/polarion/polarion.log &
+          TAIL_PID=$!
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if docker exec polarion grep -q "Polarion started:  \[ TIME" /var/log/polarion/polarion.log 2>/dev/null; then
+              echo ""
+              echo "✅ Polarion started successfully after ${SECONDS}s"
+              SUCCESS=true
+              break
+            fi
+
+            if docker exec polarion grep -E "Unrecognized VM option|Could not create the Java Virtual Machine" /var/log/polarion/polarion.log 2>/dev/null | grep -q "."; then
+              echo "❌ FATAL JVM error detected"
+              kill $TAIL_PID 2>/dev/null || true
+              docker logs polarion --tail 50
+              exit 1
+            fi
+
+            if [ "$(docker inspect -f '{{.State.Running}}' polarion 2>/dev/null)" != "true" ]; then
+              echo "❌ Container crashed!"
+              kill $TAIL_PID 2>/dev/null || true
+              docker logs polarion --tail 100
+              exit 1
+            fi
+
+            echo -n "."
+            sleep 10
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+          done
+
+          kill $TAIL_PID 2>/dev/null || true
+
+          if [ "$SUCCESS" = "false" ]; then
+            echo "❌ Timed out waiting for Polarion to start"
+            docker logs polarion --tail 200
+            exit 1
+          fi
+
+      - name: Run Playwright UI tests
+        working-directory: tests/ui
+        env:
+          POLARION_URL: "http://localhost"
+          POLARION_USER: "admin"
+          POLARION_PASS: "admin"
+        run: npm run test:ci
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-playwright-report
+          path: tests/ui/playwright-report/
+          retention-days: 30
+
+      - name: Upload Playwright JUnit results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-playwright-junit
+          path: tests/ui/test-results/junit.xml
+          retention-days: 30
+
+      - name: Publish Playwright test results
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Playwright UI Tests (Release)
+          path: tests/ui/test-results/junit.xml
+          reporter: java-junit
+          fail-on-error: true
+
+      - name: Dump Polarion container logs on failure
+        if: failure()
+        run: docker logs polarion --tail 200
+
   build-and-release:
     name: Build And Publish Release
-    needs: [prepare-release, test-shards]
+    needs: [prepare-release, test-shards, ui-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -216,13 +388,13 @@ jobs:
 
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN != '' && secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -299,13 +471,21 @@ jobs:
           git push origin HEAD:main
           git push origin "${TAG}"
 
+      - name: Download Playwright JUnit report for release
+        uses: actions/download-artifact@v8
+        with:
+          name: release-playwright-junit
+          path: release-artifacts/
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare-release.outputs.new_tag }}
           name: "Release ${{ needs.prepare-release.outputs.new_tag }}"
           body: ${{ steps.changelog.outputs.body }}
-          files: target/*.jar
+          files: |
+            target/*.jar
+            release-artifacts/junit.xml
           draft: false
           prerelease: false
 

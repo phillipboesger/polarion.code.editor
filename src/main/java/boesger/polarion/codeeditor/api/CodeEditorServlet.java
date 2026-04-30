@@ -71,7 +71,8 @@ public class CodeEditorServlet extends HttpServlet {
 			}
 			else if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
-				handleGetFile(projectId, fileName, resp);
+				boolean forceDownload = "true".equalsIgnoreCase(req.getParameter("download"));
+				handleGetFile(projectId, fileName, forceDownload, resp);
 			}
 			else if(PATH_FILES_TREE.equals(pathInfo)) {
 				String path = req.getParameter("path");
@@ -197,19 +198,26 @@ public class CodeEditorServlet extends HttpServlet {
 		sendJson(resp, gson.toJson(entries));
 	}
 
-	private void handleGetFile(String projectId, String fileName, HttpServletResponse resp) throws IOException {
+	private void handleGetFile(String projectId, String fileName, boolean forceDownload, HttpServletResponse resp) throws IOException {
 		CodeEditorService editor = new CodeEditorService(projectId);
+		String baseName = fileName.contains("/") ? fileName.substring(fileName.lastIndexOf('/') + 1) : fileName;
 		String mimeType = getImageMimeType(fileName);
 		if(mimeType != null) {
 			byte[] bytes = editor.getFileBytes(fileName);
 			resp.setContentType(mimeType);
 			resp.setContentLength(bytes.length);
+			if(forceDownload) {
+				resp.setHeader("Content-Disposition", "attachment; filename=\"" + baseName + "\"");
+			}
 			resp.getOutputStream().write(bytes);
 			return;
 		}
 		RepoFile file = editor.getFile(fileName);
 		resp.setContentType("text/plain");
 		resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+		if(forceDownload) {
+			resp.setHeader("Content-Disposition", "attachment; filename=\"" + baseName + "\"");
+		}
 		resp.getWriter().write(file.getContent());
 	}
 

@@ -6,13 +6,12 @@ import java.nio.charset.StandardCharsets;
 
 import com.polarion.alm.tracker.ITrackerService;
 import com.polarion.alm.tracker.model.ITrackerProject;
+import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.ITransactionService;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.persistence.UnresolvableObjectException;
 import com.polarion.platform.service.repository.IRepositoryConnection;
 import com.polarion.platform.service.repository.IRepositoryService;
-
-import com.polarion.core.util.logging.Logger;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 
@@ -23,11 +22,33 @@ public class PolarionUtils {
 
 	private static final Logger log = Logger.getLogger(PolarionUtils.class.getName());
 
-	private static final ITrackerService trackerService = PlatformContext.getPlatform().lookupService(ITrackerService.class);
-	private static final ITransactionService transactionService = PlatformContext.getPlatform()
-			.lookupService(ITransactionService.class);
-	private static final IRepositoryService repositoryService = PlatformContext.getPlatform()
-			.lookupService(IRepositoryService.class);
+	private static ITrackerService trackerService = lookupService(ITrackerService.class);
+	private static ITransactionService transactionService = lookupService(ITransactionService.class);
+	private static IRepositoryService repositoryService = lookupService(IRepositoryService.class);
+
+	private static <T> T lookupService(Class<T> serviceClass) {
+		try {
+			return PlatformContext.getPlatform().lookupService(serviceClass);
+		}
+		catch(Exception e) {
+			return null;
+		}
+	}
+
+	/** For testing only. Replaces the tracker service with a test double. */
+	static void setTrackerService(ITrackerService service) {
+		trackerService = service;
+	}
+
+	/** For testing only. Replaces the transaction service with a test double. */
+	static void setTransactionService(ITransactionService service) {
+		transactionService = service;
+	}
+
+	/** For testing only. Replaces the repository service with a test double. */
+	static void setRepositoryService(IRepositoryService service) {
+		repositoryService = service;
+	}
 
 	public interface RunnableWEx<T> {
 		T run() throws Exception; // NOSONAR: Generisches Functional Interface — Implementierungen können beliebige Exceptions werfen
@@ -75,9 +96,6 @@ public class PolarionUtils {
 		return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
 	}
 
-	/**
-	 * Executes a function within a transaction.
-	 */
 	/**
 	 * Executes a function within a transaction and returns a result.
 	 */

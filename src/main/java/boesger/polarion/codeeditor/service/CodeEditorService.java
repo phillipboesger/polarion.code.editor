@@ -154,7 +154,8 @@ public class CodeEditorService {
 	private ILocation getFileRepoLocation(String projectId, String fileName)
 			throws RepositoryConfigurationException, IllegalArgumentException {
 
-		ILocation globalLocation = Location.getLocation(fileName.startsWith("/") ? fileName : "/" + fileName);
+		String cleanName = fileName.startsWith("/") ? fileName.substring(1) : fileName;
+		ILocation globalLocation = Location.getLocationWithRepository(IRepositoryService.DEFAULT, "/" + cleanName);
 
 		ILocation projectLocation = null;
 		if(Objects.nonNull(projectId)) {
@@ -210,8 +211,8 @@ public class CodeEditorService {
 	 * Use this instead of {@link #getFile(String)} for binary files such as images,
 	 * where converting through a {@link java.io.StringWriter} would corrupt the data.
 	 *
-	 * @param  fileName relative path of the file within the repository
-	 * @return          raw file bytes
+	 * @param  fileName                 relative path of the file within the repository
+	 * @return                          raw file bytes
 	 * @throws IllegalArgumentException if the path is invalid
 	 * @throws IOException              if the file cannot be read
 	 */
