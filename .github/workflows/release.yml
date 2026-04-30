@@ -189,22 +189,21 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Publish shard test report
+      - name: Generate HTML test report
         if: always()
-        uses: dorny/test-reporter@v3
-        with:
-          name: "Release Tests (Shard ${{ matrix.shard }})"
-          path: target/surefire-reports/*.xml
-          reporter: java-junit
-          fail-on-error: true
+        run: mvn --batch-mode surefire-report:report-only
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Upload shard report artifacts
+      - name: Upload HTML test report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: surefire-reports-shard-${{ matrix.shard }}
-          path: target/surefire-reports/
+          name: unit-test-report-shard-${{ matrix.shard }}
+          path: target/site/
           if-no-files-found: warn
+          retention-days: 30
 
   ui-tests:
     name: Playwright UI Tests (Release Gate)
@@ -357,23 +356,6 @@ jobs:
           path: tests/ui/playwright-report/
           retention-days: 30
 
-      - name: Upload Playwright JUnit results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-playwright-junit
-          path: tests/ui/test-results/junit.xml
-          retention-days: 30
-
-      - name: Publish Playwright test results
-        if: always()
-        uses: dorny/test-reporter@v3
-        with:
-          name: Playwright UI Tests (Release)
-          path: tests/ui/test-results/junit.xml
-          reporter: java-junit
-          fail-on-error: true
-
       - name: Dump Polarion container logs on failure
         if: failure()
         run: docker logs polarion --tail 200
@@ -471,21 +453,13 @@ jobs:
           git push origin HEAD:main
           git push origin "${TAG}"
 
-      - name: Download Playwright JUnit report for release
-        uses: actions/download-artifact@v8
-        with:
-          name: release-playwright-junit
-          path: release-artifacts/
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare-release.outputs.new_tag }}
           name: "Release ${{ needs.prepare-release.outputs.new_tag }}"
           body: ${{ steps.changelog.outputs.body }}
-          files: |
-            target/*.jar
-            release-artifacts/junit.xml
+          files: target/*.jar
           draft: false
           prerelease: false
 
