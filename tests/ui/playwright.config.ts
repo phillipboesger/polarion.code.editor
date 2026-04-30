@@ -9,18 +9,11 @@ export default defineConfig({
   // Retry up to 2 times to tolerate transient slowness
   retries: 2,
 
-  // 3 parallel workers on CI (each with its own Polarion admin user),
-  // 1 worker locally to keep the dev loop simple.
-  // Worker 0 → admin, Worker 1 → playwright_w1, Worker 2 → playwright_w2.
-  // All users are Polarion admins; see global-setup.ts for user provisioning.
-  workers: process.env.CI ? 3 : 1,
+  // 1 worker in CI (stable, no user provisioning needed) and locally.
+  workers: 1,
 
-  // Creates test users + saves per-worker auth states before the suite runs.
-  // Only needed on CI where 3 workers run in parallel.
-  ...(process.env.CI ? {
-    globalSetup:    './global-setup.ts',
-    globalTeardown: './global-teardown.ts',
-  } : {}),
+  // globalSetup/Teardown only needed when running with multiple workers.
+  // Disabled until multi-worker provisioning is stable in CI.
 
   reporter: [
     ['list'],

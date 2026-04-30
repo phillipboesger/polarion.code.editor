@@ -224,7 +224,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Publish Playwright test results
         if: always()
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v2
         with:
           name: Playwright UI Tests
           path: tests/ui/test-results/junit.xml
