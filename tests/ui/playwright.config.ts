@@ -19,7 +19,11 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['junit', { outputFile: 'test-results/junit.xml' }],
-    ...(process.env.CI ? [['github'] as ['github']] : []),
+    // Note: the built-in 'github' reporter is intentionally omitted.
+    // It emits ::error:: annotations for every failed attempt – including
+    // intermediate retries of flaky tests that ultimately pass – which
+    // creates false-positive error annotations in the Actions UI.
+    // dorny/test-reporter (workflow step) provides the final summary instead.
   ],
 
   use: {
