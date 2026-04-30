@@ -147,7 +147,7 @@ jobs:
           for shard_index in "${!SHARD_TESTS[@]}"; do
             shard_num=$((shard_index + 1))
             tests="${SHARD_TESTS[$shard_index]}"
-            matrix=$(jq \
+            matrix=$(jq -c \
               --arg shard "$shard_num" \
               --arg tests "$tests" \
               '. + [{"shard": $shard, "tests": $tests}]' <<< "$matrix")
