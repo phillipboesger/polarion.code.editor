@@ -211,15 +211,17 @@ async function provisionUserViaUI(
   const page    = await context.newPage();
 
   try {
+    const ciTimeout = process.env.CI ? 90_000 : 30_000;
+
     await page.goto(
       `${BASE_URL}/polarion/#/administration/user_management/users`,
-      { waitUntil: 'domcontentloaded', timeout: 30_000 },
+      { waitUntil: 'domcontentloaded', timeout: ciTimeout },
     );
 
     // Wait for GWT to render the user list
     await page.waitForFunction(
       () => document.body?.textContent?.includes('Create new User'),
-      { timeout: 30_000, polling: 1_000 },
+      { timeout: ciTimeout, polling: 1_000 },
     );
     // Give GWT extra time to populate the user-list rows after the toolbar renders
     await page.waitForTimeout(2_000);
@@ -243,7 +245,7 @@ async function provisionUserViaUI(
     // The form may be pre-populated from a previous creation – we clear it below.
     await page.waitForFunction(
       () => document.querySelectorAll('input[type="password"]').length >= 2,
-      { timeout: 25_000, polling: 500 },
+      { timeout: ciTimeout, polling: 500 },
     );
 
     // Fill form: Name(0), Initials(1), ID(2), Login ID(3), Email(4)
@@ -296,7 +298,7 @@ async function provisionUserViaUI(
     await page.waitForFunction(
       (uid: string) => (document.body?.textContent ?? '').includes(uid),
       user.id,
-      { timeout: 20_000, polling: 500 },
+      { timeout: ciTimeout, polling: 500 },
     );
 
     console.log(`[global-setup] Created user "${user.id}" via Admin UI.`);
