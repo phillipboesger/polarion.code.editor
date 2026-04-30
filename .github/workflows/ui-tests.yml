@@ -11,16 +11,17 @@
 name: UI Tests – Playwright
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
     branches: [main]
+    types: [closed]
+  workflow_dispatch:
 
 jobs:
   ui-tests:
     name: Playwright UI Tests (Polarion)
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
 
     permissions:
       contents: read
