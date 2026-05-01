@@ -15,6 +15,7 @@ import { openEditor, clickFile, dblclickFile, waitForTab, reloadEditor, clearEdi
 
 let FILE_A: string;
 let FILE_B: string;
+let FILE_C: string;
 
 async function typeInMonaco(frame: Frame, text: string): Promise<void> {
   const editorCanvas = frame.locator('#editor-container .monaco-editor').first();
@@ -108,6 +109,7 @@ test.describe('Code Editor – Tab Management', () => {
   test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
     FILE_A = `ui-tab-a-${workerPrefix}.txt`;
     FILE_B = `ui-tab-b-${workerPrefix}.txt`;
+    FILE_C = `ui-tab-c-${workerPrefix}.txt`;
   });
 
   let frame: Frame;
@@ -123,7 +125,7 @@ test.describe('Code Editor – Tab Management', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    for (const f of [FILE_A, FILE_B]) {
+    for (const f of [FILE_A, FILE_B, FILE_C]) {
       if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
     }
   });
@@ -268,33 +270,36 @@ test.describe('Code Editor – Tab Management', () => {
   });
 
   test('preview tab stays at the end after persistent tabs are reordered', async ({ page }) => {
-    // Open FILE_A as persistent and FILE_B as preview
+    // Create a third file used only as the preview tab in this test.
+    const created = await tryCreateFile(frame, FILE_C);
+    expect(created, 'Invariant test requires a third writable file (FILE_C)').toBe(true);
+
+    // Open FILE_A and FILE_B as persistent, then FILE_C as preview (single click).
     await dblclickFile(frame, FILE_A);
     await waitForTab(frame, FILE_A);
-    await clickFile(frame, FILE_B);  // single click = preview
+    await dblclickFile(frame, FILE_B);
     await waitForTab(frame, FILE_B);
+    await clickFile(frame, FILE_C);
+    await waitForTab(frame, FILE_C);
 
     const tabs = frame.locator('#editorTabs .editor-tab');
-    await expect(tabs).toHaveCount(2, { timeout: 5_000 });
-
-    // FILE_B (preview) must be at the end
+    await expect(tabs).toHaveCount(3, { timeout: 5_000 });
     await expect(tabs.nth(0)).toContainText(FILE_A, { timeout: 3_000 });
     await expect(tabs.nth(1)).toContainText(FILE_B, { timeout: 3_000 });
-    await expect(tabs.nth(1)).toHaveClass(/preview/);
+    await expect(tabs.nth(2)).toContainText(FILE_C, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toHaveClass(/preview/);
 
-    // Try to drag FILE_A to the right half of FILE_B (after the preview) —
-    // the invariant clamp should keep FILE_A before FILE_B.
+    // Reorder the two persistent tabs: drag FILE_B onto the left half of FILE_A
+    // (FILE_A is a valid persistent drop target; onTabDrop fires and reorders the array).
     const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
     const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
-    const boxB = await tabB.boundingBox();
-    if (!boxB) throw new Error('Could not get bounding box for FILE_B tab');
-    // Drop on the right three-quarters of FILE_B (right half → would be "insert after" without clamp)
-    await tabA.dragTo(tabB, { targetPosition: { x: Math.floor(boxB.width * 0.75), y: Math.floor(boxB.height / 2) } });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
 
-    // Preview tab (FILE_B) must still be last after the attempted move
-    await expect(tabs).toHaveCount(2, { timeout: 3_000 });
-    await expect(tabs.nth(1)).toHaveClass(/preview/, { timeout: 3_000 });
-    await expect(tabs.nth(1)).toContainText(FILE_B, { timeout: 3_000 });
+    // Persistent tabs are reordered; preview tab (FILE_C) must remain at the end.
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toContainText(FILE_C, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toHaveClass(/preview/, { timeout: 3_000 });
   });
 
 });
