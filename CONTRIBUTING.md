@@ -2,7 +2,7 @@
 
 Thanks for your interest in improving this plugin! Contributions are welcome in the forms described below.
 
-> **Note on the licence:** This project is released as proprietary freeware — you are free to use it, but the source code may not be redistributed or reused in other projects (see [LICENSE](LICENSE)). By submitting a pull request you agree that your contribution may be incorporated into the project under the same terms.
+> **Licence:** This project is licensed under the [Apache License 2.0](LICENSE). By submitting a pull request you agree that your contribution will be made available under the same licence.
 
 ---
 

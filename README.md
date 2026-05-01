@@ -42,8 +42,8 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ## Important Legal Note
 
-- This plugin is free to use in your Polarion environments.
-- Reuse, redistribution, or integration of the source code into other projects is currently not permitted.
+- This plugin is licensed under the [Apache License 2.0](LICENSE).
+- You are free to use, modify, and distribute it — including in your own projects — subject to the Apache 2.0 terms.
 
 ---
 
@@ -228,8 +228,6 @@ The plugin includes subtle branding (a custom navigation icon and a footer attri
 
 ## License
 
-The extension is free to use.
+Licensed under the [Apache License 2.0](LICENSE).
 
-Source code usage, reuse, and redistribution are currently not permitted.
-
-For legal details, see [LICENSE](LICENSE).
+Copyright 2026 Phillip Bösger (digital@boesger.com)
