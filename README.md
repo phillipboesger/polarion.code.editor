@@ -15,7 +15,8 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 - [Usage](#usage)
 - [Permissions](#permissions)
 - [Navigation Tab in User View](#navigation-tab-in-user-view)
-- [Bugs & Feature Requests](#bugs--feature-requests)
+- [Bugs, Features & Questions](#bugs-features--questions)
+- [Contributing](#contributing)
 - [Branding & Legal Notice](#branding--legal-notice)
 - [License](#license)
 
@@ -41,8 +42,8 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ## Important Legal Note
 
-- This plugin is free to use in your Polarion environments.
-- Reuse, redistribution, or integration of the source code into other projects is currently not permitted.
+- This plugin is licensed under the [Apache License 2.0](LICENSE).
+- You are free to use, modify, and distribute it — including in your own projects — subject to the Apache 2.0 terms.
 
 ---
 
@@ -194,22 +195,23 @@ After saving, the Code Editor tab is available in User View.
 
 <div style="page-break-before: always;"></div>
 
-## Bugs & Feature Requests
+## Bugs, Features & Questions
 
-Found a bug? Have an idea for a new feature?
+| Channel | Purpose |
+|---------|---------|
+| [🐛 Bug Report](https://github.com/phillipboesger/polarion.code.editor/issues/new?template=bug_report.yml) | Something isn't working as expected |
+| [💡 Feature Request](https://github.com/phillipboesger/polarion.code.editor/issues/new?template=feature_request.yml) | Suggest an idea or improvement |
+| [❓ Q&A Discussion](https://github.com/phillipboesger/polarion.code.editor/discussions/categories/q-a) | Questions about installation, configuration, or usage |
 
-Please contact me directly via email:
+When reporting a bug, please include your Polarion version, the plugin version, steps to reproduce, and any relevant error messages from the Polarion server log.
 
-👉 **digital@boesger.com**
+---
 
-GitHub Issues and a fully open collaboration workflow are planned for a future phase.
+<div style="page-break-before: always;"></div>
 
-When reporting a bug, please include:
+## Contributing
 
-- Your Polarion version
-- The plugin version (visible in the JAR filename or `pom.xml`)
-- Steps to reproduce the problem
-- Any relevant error messages from the Polarion server log
+Contributions are welcome — bug reports, feature ideas, and pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started.
 
 ---
 
@@ -226,8 +228,6 @@ The plugin includes subtle branding (a custom navigation icon and a footer attri
 
 ## License
 
-The extension is free to use.
+Licensed under the [Apache License 2.0](LICENSE).
 
-Source code usage, reuse, and redistribution are currently not permitted.
-
-For legal details, see [LICENSE](LICENSE).
+Copyright 2026 Phillip Bösger (digital@boesger.com)
