@@ -3,6 +3,8 @@ package boesger.polarion.codeeditor.api;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,16 +21,21 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.core.PlatformContext;
+import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
+import com.polarion.subterra.base.data.identification.ContextId;
+import com.polarion.subterra.base.data.identification.IContextId;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
+import boesger.polarion.codeeditor.security.CodeEditorPermission;
 import boesger.polarion.codeeditor.service.CodeEditorService;
 
 /**
  * HTTP entry point for the Code Editor plugin.
  * Routes GET / PUT / DELETE / POST requests to {@link boesger.polarion.codeeditor.service.CodeEditorService}.
  * All endpoints require an authenticated Polarion session; unauthenticated requests receive HTTP 401.
+ * Write operations additionally require the {@code boesger.codeeditor.write} permission or an admin role.
  */
 public class CodeEditorServlet extends HttpServlet {
 
@@ -40,13 +47,21 @@ public class CodeEditorServlet extends HttpServlet {
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
+	private static final String PERMISSION_DENIED_READ = "Missing permission: " + CodeEditorPermission.PERMISSION_READ;
+	private static final String PERMISSION_DENIED_WRITE = "Missing permission: " + CodeEditorPermission.PERMISSION_WRITE;
+	private static final String GLOBAL_ADMIN_ROLE = "admin";
+	private static final String PROJECT_ADMIN_ROLE = "project_admin";
 
 	private ISecurityService securityService;
+	private IPermission readPermission;
+	private IPermission writePermission;
 
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
+		readPermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_READ);
+		writePermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_WRITE);
 		log.info("CodeEditorServlet initialized.");
 	}
 
@@ -59,6 +74,10 @@ public class CodeEditorServlet extends HttpServlet {
 
 		if(securityService.getCurrentUser() == null) {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED, "User not authenticated");
+			return;
+		}
+		if(!hasPermission(readPermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_READ);
 			return;
 		}
 
@@ -100,6 +119,10 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
+			return;
+		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -128,6 +151,10 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
 			return;
 		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
+			return;
+		}
 
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
@@ -151,6 +178,10 @@ public class CodeEditorServlet extends HttpServlet {
 
 		if(securityService.getCurrentUser() == null) {
 			sendErrorSafely(resp, HttpServletResponse.SC_UNAUTHORIZED);
+			return;
+		}
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, PERMISSION_DENIED_WRITE);
 			return;
 		}
 
@@ -301,6 +332,76 @@ public class CodeEditorServlet extends HttpServlet {
 	private void sendResponse(HttpServletResponse resp, String message, int status) throws IOException {
 		resp.setStatus(status);
 		resp.getWriter().write(message);
+	}
+
+	private boolean hasPermission(IPermission permission, String projectId) {
+		IContextId contextId = resolveContextId(projectId);
+		IContextId globalContext = ContextId.getGlobalContextId();
+		if(permission != null && hasPermissionInContextSafely(permission, contextId)) {
+			return true;
+		}
+		if(permission != null && hasPermissionInContextSafely(permission, globalContext)) {
+			return true;
+		}
+		String userName = securityService.getCurrentUser();
+		if(userName == null) {
+			return false;
+		}
+		Collection<String> roles = getRolesForUserSafely(userName, contextId);
+		if(hasAdminRole(roles)) {
+			return true;
+		}
+		Collection<String> globalRoles = getRolesForUserSafely(userName, globalContext);
+		return hasAdminRole(globalRoles);
+	}
+
+	private IPermission constructPermissionSafely(String permissionId) {
+		try {
+			return securityService.constructPermission(permissionId);
+		}
+		catch(IllegalArgumentException permissionEx) {
+			log.warn("Unknown permission id: " + permissionId + ". Falling back to admin-role checks only.");
+			return null;
+		}
+	}
+
+	private IContextId resolveContextId(String projectId) {
+		if(projectId != null && !projectId.trim().isEmpty()) {
+			try {
+				return ContextId.getContextIdFromContext(projectId.trim());
+			}
+			catch(RuntimeException e) {
+				log.warn("Invalid project context '" + projectId + "'. Falling back to global context.");
+			}
+		}
+		return ContextId.getGlobalContextId();
+	}
+
+	private boolean hasPermissionInContextSafely(IPermission permission, IContextId contextId) {
+		try {
+			return securityService.hasPermission(permission, contextId);
+		}
+		catch(IllegalArgumentException e) {
+			log.warn("Ignoring invalid context for permission check: " + contextId + ". Cause: " + e.getMessage());
+			return false;
+		}
+	}
+
+	private Collection<String> getRolesForUserSafely(String userName, IContextId contextId) {
+		try {
+			return securityService.getRolesForUser(userName, contextId);
+		}
+		catch(IllegalArgumentException e) {
+			log.warn("Ignoring invalid context for role lookup: " + contextId + ". Cause: " + e.getMessage());
+			return Collections.emptyList();
+		}
+	}
+
+	private boolean hasAdminRole(Collection<String> roles) {
+		if(roles == null || roles.isEmpty()) {
+			return false;
+		}
+		return roles.contains(GLOBAL_ADMIN_ROLE) || roles.contains(PROJECT_ADMIN_ROLE);
 	}
 
 	private static class RenameRequest {
