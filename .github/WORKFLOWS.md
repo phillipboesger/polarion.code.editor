@@ -61,7 +61,7 @@ Compiles the Maven project and runs all JUnit unit tests on every push and pull 
 
 ### Purpose
 
-End-to-end release automation: bumps the Maven version, runs the full test suite (unit + UI) as a release gate, builds the final JAR, generates a changelog, tags the commit, and publishes a GitHub Release. Also pushes the JAR to the separate download repository `phillipboesger/polarion.code.editor-download`.
+End-to-end release automation: bumps the Maven version, runs the full test suite (unit + UI) as a release gate, builds the final JAR, generates a changelog, tags the commit, and publishes a GitHub Release with the JAR attached.
 
 ### Trigger
 
@@ -78,7 +78,7 @@ End-to-end release automation: bumps the Maven version, runs the full test suite
 | `discover-test-shards` | —                                              | Scans `src/test/java` for `*Test.java` files and builds a 4-shard JSON matrix for parallel execution.                                                                                                                                                 |
 | `test-shards`          | `discover-test-shards`                         | Runs the unit tests in 4 parallel shards; publishes per-shard JUnit reports via `dorny/test-reporter`.                                                                                                                                                |
 | `ui-tests`             | —                                              | Spins up the Polarion Docker image, deploys the built JAR, waits for Polarion to start (up to 15 min), runs all Playwright tests; uploads HTML report and JUnit XML. `fail-on-error: true` — blocks the release on test failure.                      |
-| `build-and-release`    | `prepare-release` + `test-shards` + `ui-tests` | Updates `pom.xml` version, builds the JAR (`-DskipTests`), generates the changelog from `git log`, commits the version bump, pushes the new tag, creates the GitHub Release with the JAR attached, and creates a mirror release on the download repo. |
+| `build-and-release`    | `prepare-release` + `test-shards` + `ui-tests` | Updates `pom.xml` version, builds the JAR (`-DskipTests`), generates the changelog from `git log`, commits the version bump, pushes the new tag, and creates the GitHub Release with the JAR attached. |
 
 ### Outputs
 
@@ -86,14 +86,13 @@ End-to-end release automation: bumps the Maven version, runs the full test suite
   - The plugin JAR (`target/*.jar`)
   - The Playwright JUnit XML attached as a release asset
   - An auto-generated changelog grouped into _New Features_, _Bug Fixes_, and _Other Changes_
-- A mirror release on `phillipboesger/polarion.code.editor-download`
 
 ### Secrets needed
 
 | Secret           | Purpose                                                                                                                                                                       |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PACKAGES_TOKEN` | `read:packages` — download Polarion JARs from GitHub Packages                                                                                                                 |
-| `RELEASE_TOKEN`  | PAT with `repo` scope — push to protected `main` branch and create the release on the download repo. Falls back to `GITHUB_TOKEN` (may fail if branch protection is enabled). |
+| `RELEASE_TOKEN`  | PAT with `repo` scope — push to protected `main` branch and create the release. Falls back to `GITHUB_TOKEN` (may fail if branch protection is enabled). |
 
 ### Setup required
 

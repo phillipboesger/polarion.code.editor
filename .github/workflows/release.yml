@@ -463,14 +463,4 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Create release on download repository
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ steps.changelog.outputs.body }}
-        run: |
-          TAG="${{ needs.prepare-release.outputs.new_tag }}"
-          gh release create "${TAG}" \
-            --repo phillipboesger/polarion.code.editor-download \
-            --title "Release ${TAG}" \
-            --notes "${RELEASE_BODY}" \
-            target/*.jar
+
