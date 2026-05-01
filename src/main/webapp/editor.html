@@ -2130,8 +2130,9 @@
       e.dataTransfer.setData('text/plain', draggedTabId);
       // Use setTimeout so the dragging class is applied after the drag image is captured
       setTimeout(() => {
-        const el = document.querySelector(`#editorTabs .editor-tab[data-tab-id="${draggedTabId}"]`);
-        if (el) el.classList.add('dragging');
+        document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
+          if (el.dataset.tabId === draggedTabId) el.classList.add('dragging');
+        });
       }, 0);
     }
 
