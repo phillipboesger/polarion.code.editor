@@ -913,6 +913,8 @@
     let previewTabId = null;
     let tabIdCounter = 0;
     let draggedTabId = null;
+    let lastDragOverEl = null;
+    let lastDragOverSide = null;
     const loadingPaths = new Map(); // path -> { persistent: boolean }
     let initialTabRestoreDone = false;
     let isInitialBootstrap = true;
@@ -2144,24 +2146,41 @@
 
       const rect = e.currentTarget.getBoundingClientRect();
       const isLeftHalf = e.clientX < rect.left + rect.width / 2;
+      const side = isLeftHalf ? 'drag-over-left' : 'drag-over-right';
 
-      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
-        el.classList.remove('drag-over-left', 'drag-over-right');
-      });
-      e.currentTarget.classList.add(isLeftHalf ? 'drag-over-left' : 'drag-over-right');
+      if (e.currentTarget === lastDragOverEl && side === lastDragOverSide) return;
+
+      if (lastDragOverEl && lastDragOverEl !== e.currentTarget) {
+        lastDragOverEl.classList.remove('drag-over-left', 'drag-over-right');
+      }
+      e.currentTarget.classList.remove('drag-over-left', 'drag-over-right');
+      e.currentTarget.classList.add(side);
+      lastDragOverEl = e.currentTarget;
+      lastDragOverSide = side;
     }
 
     function onTabDragLeave(e) {
       e.currentTarget.classList.remove('drag-over-left', 'drag-over-right');
+      if (lastDragOverEl === e.currentTarget) {
+        lastDragOverEl = null;
+        lastDragOverSide = null;
+      }
+    }
+
+    function clearDragState() {
+      if (lastDragOverEl) {
+        lastDragOverEl.classList.remove('drag-over-left', 'drag-over-right');
+        lastDragOverEl = null;
+        lastDragOverSide = null;
+      }
+      document.querySelectorAll('#editorTabs .editor-tab.dragging').forEach(el => el.classList.remove('dragging'));
     }
 
     function onTabDrop(e) {
       e.preventDefault();
       const targetTabId = e.currentTarget.dataset.tabId;
 
-      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
-        el.classList.remove('drag-over-left', 'drag-over-right', 'dragging');
-      });
+      clearDragState();
 
       if (!draggedTabId || targetTabId === draggedTabId) { draggedTabId = null; return; }
 
@@ -2185,9 +2204,7 @@
 
     function onTabDragEnd(e) {
       draggedTabId = null;
-      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
-        el.classList.remove('drag-over-left', 'drag-over-right', 'dragging');
-      });
+      clearDragState();
     }
 
     function setActiveFileInTree(filePath) {
