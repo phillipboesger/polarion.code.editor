@@ -94,8 +94,16 @@ test.describe('Code Editor – Toolbar & Font Size', () => {
 
 test.describe('Code Editor – Tab Management', () => {
 
-  /** Drop position targeting the left half of a tab (used for drag-and-drop ordering tests). */
-  const LEFT_DROP_POSITION = { x: 10, y: 14 };
+  /**
+   * Derives a drop position targeting the left quarter of a tab's bounding box.
+   * Using a relative position derived from the element's actual width/height avoids
+   * sensitivity to CSS layout changes (padding, zoom, font size, etc.).
+   */
+  async function leftDropPosition(tabLocator: ReturnType<Frame['locator']>): Promise<{ x: number; y: number }> {
+    const box = await tabLocator.boundingBox();
+    if (!box) throw new Error('Could not get bounding box for tab');
+    return { x: Math.floor(box.width * 0.25), y: Math.floor(box.height / 2) };
+  }
 
   test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
     FILE_A = `ui-tab-a-${workerPrefix}.txt`;
@@ -214,7 +222,7 @@ test.describe('Code Editor – Tab Management', () => {
     // Drag FILE_B onto the left half of FILE_A to place FILE_B before FILE_A
     const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
     const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
-    await tabB.dragTo(tabA, { targetPosition: LEFT_DROP_POSITION });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
 
     await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
     await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 3_000 });
@@ -248,7 +256,7 @@ test.describe('Code Editor – Tab Management', () => {
     // Drag FILE_B before FILE_A
     const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
     const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
-    await tabB.dragTo(tabA, { targetPosition: LEFT_DROP_POSITION });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
     await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
 
     // Reload and verify the order is preserved
@@ -257,6 +265,36 @@ test.describe('Code Editor – Tab Management', () => {
     await waitForTab(frame, FILE_A);
     await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 5_000 });
     await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 5_000 });
+  });
+
+  test('preview tab stays at the end after persistent tabs are reordered', async ({ page }) => {
+    // Open FILE_A as persistent and FILE_B as preview
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await clickFile(frame, FILE_B);  // single click = preview
+    await waitForTab(frame, FILE_B);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+    await expect(tabs).toHaveCount(2, { timeout: 5_000 });
+
+    // FILE_B (preview) must be at the end
+    await expect(tabs.nth(0)).toContainText(FILE_A, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toHaveClass(/preview/);
+
+    // Try to drag FILE_A to the right half of FILE_B (after the preview) —
+    // the invariant clamp should keep FILE_A before FILE_B.
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    const boxB = await tabB.boundingBox();
+    if (!boxB) throw new Error('Could not get bounding box for FILE_B tab');
+    // Drop on the right three-quarters of FILE_B (right half → would be "insert after" without clamp)
+    await tabA.dragTo(tabB, { targetPosition: { x: Math.floor(boxB.width * 0.75), y: Math.floor(boxB.height / 2) } });
+
+    // Preview tab (FILE_B) must still be last after the attempted move
+    await expect(tabs).toHaveCount(2, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toHaveClass(/preview/, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_B, { timeout: 3_000 });
   });
 
 });

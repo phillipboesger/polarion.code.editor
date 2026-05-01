@@ -2185,16 +2185,21 @@
       if (!draggedTabId || targetTabId === draggedTabId) { draggedTabId = null; return; }
 
       const fromIdx = openTabs.findIndex(t => t.id === draggedTabId);
-      const toIdx = openTabs.findIndex(t => t.id === targetTabId);
-
-      if (fromIdx === -1 || toIdx === -1) { draggedTabId = null; return; }
+      if (fromIdx === -1 || openTabs.findIndex(t => t.id === targetTabId) === -1) { draggedTabId = null; return; }
 
       const rect = e.currentTarget.getBoundingClientRect();
       const isLeftHalf = e.clientX < rect.left + rect.width / 2;
 
       const [movedTab] = openTabs.splice(fromIdx, 1);
       const newToIdx = openTabs.findIndex(t => t.id === targetTabId);
-      const insertIdx = isLeftHalf ? newToIdx : newToIdx + 1;
+      let insertIdx = isLeftHalf ? newToIdx : newToIdx + 1;
+
+      // Enforce invariant: preview tabs always stay at the end.
+      // Clamp insert position so it never goes past the first preview tab.
+      const firstPreviewIdx = openTabs.findIndex(t => t.isPreview);
+      if (firstPreviewIdx !== -1 && insertIdx > firstPreviewIdx) {
+        insertIdx = firstPreviewIdx;
+      }
       openTabs.splice(insertIdx, 0, movedTab);
 
       draggedTabId = null;
