@@ -374,6 +374,18 @@
       color: #fff;
     }
 
+    .editor-tab.dragging {
+      opacity: 0.4;
+    }
+
+    .editor-tab.drag-over-left {
+      border-left: 2px solid var(--accent);
+    }
+
+    .editor-tab.drag-over-right {
+      border-right: 2px solid var(--accent);
+    }
+
     /* Editor Area */
     #editor-wrapper {
       flex-grow: 1;
@@ -900,6 +912,7 @@
     let activeTabId = null;
     let previewTabId = null;
     let tabIdCounter = 0;
+    let draggedTabId = null;
     const loadingPaths = new Map(); // path -> { persistent: boolean }
     let initialTabRestoreDone = false;
     let isInitialBootstrap = true;
@@ -2072,6 +2085,16 @@
         if (tab.id === activeTabId) tabEl.classList.add('active');
         if (tab.isPreview) tabEl.classList.add('preview');
         if (isTabDirty(tab)) tabEl.classList.add('dirty');
+        tabEl.dataset.tabId = tab.id;
+
+        if (!tab.isPreview) {
+          tabEl.draggable = true;
+          tabEl.addEventListener('dragstart', onTabDragStart);
+          tabEl.addEventListener('dragover', onTabDragOver);
+          tabEl.addEventListener('dragleave', onTabDragLeave);
+          tabEl.addEventListener('drop', onTabDrop);
+          tabEl.addEventListener('dragend', onTabDragEnd);
+        }
 
         const icon = document.createElement('span');
         icon.className = 'tab-file-icon';
@@ -2098,6 +2121,71 @@
         tabEl.appendChild(title);
         tabEl.appendChild(close);
         tabsContainer.appendChild(tabEl);
+      });
+    }
+
+    function onTabDragStart(e) {
+      draggedTabId = e.currentTarget.dataset.tabId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedTabId);
+      // Use setTimeout so the dragging class is applied after the drag image is captured
+      setTimeout(() => {
+        const el = document.querySelector(`#editorTabs .editor-tab[data-tab-id="${draggedTabId}"]`);
+        if (el) el.classList.add('dragging');
+      }, 0);
+    }
+
+    function onTabDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const targetTabId = e.currentTarget.dataset.tabId;
+      if (!draggedTabId || targetTabId === draggedTabId) return;
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isLeftHalf = e.clientX < rect.left + rect.width / 2;
+
+      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
+        el.classList.remove('drag-over-left', 'drag-over-right');
+      });
+      e.currentTarget.classList.add(isLeftHalf ? 'drag-over-left' : 'drag-over-right');
+    }
+
+    function onTabDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over-left', 'drag-over-right');
+    }
+
+    function onTabDrop(e) {
+      e.preventDefault();
+      const targetTabId = e.currentTarget.dataset.tabId;
+
+      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
+        el.classList.remove('drag-over-left', 'drag-over-right', 'dragging');
+      });
+
+      if (!draggedTabId || targetTabId === draggedTabId) { draggedTabId = null; return; }
+
+      const fromIdx = openTabs.findIndex(t => t.id === draggedTabId);
+      const toIdx = openTabs.findIndex(t => t.id === targetTabId);
+
+      if (fromIdx === -1 || toIdx === -1) { draggedTabId = null; return; }
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isLeftHalf = e.clientX < rect.left + rect.width / 2;
+
+      const [movedTab] = openTabs.splice(fromIdx, 1);
+      const newToIdx = openTabs.findIndex(t => t.id === targetTabId);
+      const insertIdx = isLeftHalf ? newToIdx : newToIdx + 1;
+      openTabs.splice(insertIdx, 0, movedTab);
+
+      draggedTabId = null;
+      saveOpenTabsSession();
+      renderTabs();
+    }
+
+    function onTabDragEnd(e) {
+      draggedTabId = null;
+      document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
+        el.classList.remove('drag-over-left', 'drag-over-right', 'dragging');
       });
     }
 

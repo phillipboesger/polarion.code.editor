@@ -38,6 +38,7 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 - Project-aware: automatically scopes to the current Polarion project.
 - Keyboard shortcuts (`Ctrl+S` / `Cmd+S` to save).
 - Warns before you navigate away with unsaved changes.
+- Movable tabs — drag and drop persistent tabs to reorder them in the tab bar.
 - No additional server, database, or cloud service required.
 
 ## Important Legal Note
@@ -127,7 +128,7 @@ Navigate to **Polarion Administration → Code Editor** (or click the Code Edito
 3. Make your changes.
 4. Press **`Ctrl+S`** / **`Cmd+S`** or click the **Save** button in the top-right corner.
 
-You can have multiple files open at once — they appear as tabs at the top of the editor. If you open more tabs than fit in the bar, a thin horizontal scrollbar appears below the tabs.
+You can have multiple files open at once — they appear as tabs at the top of the editor. If you open more tabs than fit in the bar, a thin horizontal scrollbar appears below the tabs. Persistent tabs (opened by double-clicking a file) can be reordered by dragging and dropping them within the tab bar.
 
 ### Viewing an Image File
 

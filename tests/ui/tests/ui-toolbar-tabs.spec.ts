@@ -197,4 +197,63 @@ test.describe('Code Editor – Tab Management', () => {
     expect(contentA).toContain('content-for-file-a');
   });
 
+  test('persistent tabs can be reordered by drag and drop', async ({ page }) => {
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await dblclickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+    await expect(tabs).toHaveCount(2, { timeout: 5_000 });
+    await expect(tabs.nth(0)).toContainText(FILE_A);
+    await expect(tabs.nth(1)).toContainText(FILE_B);
+
+    // Drag FILE_B onto the left half of FILE_A to place FILE_B before FILE_A
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    await tabB.dragTo(tabA, { targetPosition: { x: 10, y: 14 } });
+
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 3_000 });
+  });
+
+  test('preview tab is not draggable', async ({ page }) => {
+    await clickFile(frame, FILE_A); // single click = preview tab
+    await waitForTab(frame, FILE_A);
+
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const isDraggable = await tab.getAttribute('draggable');
+    expect(isDraggable).not.toBe('true');
+  });
+
+  test('persistent tab has draggable attribute set', async ({ page }) => {
+    await dblclickFile(frame, FILE_A); // double click = persistent tab
+    await waitForTab(frame, FILE_A);
+
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    await expect(tab).toHaveAttribute('draggable', 'true');
+  });
+
+  test('tab order after drag-and-drop persists after page reload', async ({ page }) => {
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await dblclickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+
+    // Drag FILE_B before FILE_A
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    await tabB.dragTo(tabA, { targetPosition: { x: 10, y: 14 } });
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+
+    // Reload and verify the order is preserved
+    await reloadEditor(frame);
+    await waitForTab(frame, FILE_B);
+    await waitForTab(frame, FILE_A);
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 5_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 5_000 });
+  });
+
 });
