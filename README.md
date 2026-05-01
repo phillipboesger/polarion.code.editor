@@ -13,6 +13,7 @@ A **VS Code-like file editor** built right into Polarion ALM — edit Velocity m
 - [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Usage](#usage)
+- [REST API](#rest-api)
 - [Permissions](#permissions)
 - [Navigation Tab in User View](#navigation-tab-in-user-view)
 - [Bugs, Features & Questions](#bugs-features--questions)
@@ -154,6 +155,38 @@ Click any image file (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`, 
 ### Font Size
 
 Use the **A−**, **A**, **A+** buttons in the toolbar to decrease, reset, or increase the editor font size.
+
+---
+
+<div style="page-break-before: always;"></div>
+
+## REST API
+
+The plugin exposes a REST API at `/polarion/code-editor/api/`. All endpoints require an authenticated Polarion session — unauthenticated requests receive HTTP 401.
+
+### Endpoints
+
+| Method   | Path                          | Description                        |
+| -------- | ----------------------------- | ---------------------------------- |
+| `GET`    | `/api/health`                 | Health check — returns `OK`        |
+| `GET`    | `/api/config/list`            | List all files in the repository   |
+| `GET`    | `/api/config/file/{filename}` | Read file content or download file |
+| `GET`    | `/api/files/tree`             | Browse a directory tree            |
+| `PUT`    | `/api/config/file/{filename}` | Save (create or update) a file     |
+| `DELETE` | `/api/config/file/{filename}` | Delete a file                      |
+| `POST`   | `/api/config/rename`          | Rename a file                      |
+
+All write endpoints (`PUT`, `DELETE`, `POST`) accept an optional `projectId` query parameter to scope the operation to a specific Polarion project. Omit it for global (administration) scope.
+
+### Downloading a file
+
+`GET /api/config/file/{filename}` accepts a `download` query parameter. When set to `true`, the response includes a `Content-Disposition: attachment` header, which causes the browser to download the file rather than display it inline.
+
+```
+GET /polarion/code-editor/api/config/file/.file-editor/myconfig.json?projectId=MyProject&download=true
+```
+
+This is useful for scripted exports or CI pipelines that need to retrieve repository files via HTTP.
 
 ---
 
