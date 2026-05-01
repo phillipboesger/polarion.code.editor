@@ -1,0 +1,25 @@
+title: "[Q&A] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Welcome! Use this space to ask questions about installing, configuring, or using the Polarion Code Editor.
+
+        **Before posting**, please check if your question has already been answered in:
+        - The [README](../../README.md)
+        - Earlier [Q&A discussions](https://github.com/phillipboesger/polarion.code.editor/discussions/categories/q-a)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: Describe what you're trying to do or understand.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Polarion version, plugin version, what you've already tried — anything that helps.
