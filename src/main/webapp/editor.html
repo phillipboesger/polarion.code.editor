@@ -374,6 +374,18 @@
       color: #fff;
     }
 
+    .editor-tab.dragging {
+      opacity: 0.4;
+    }
+
+    .editor-tab.drag-over-left {
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+
+    .editor-tab.drag-over-right {
+      box-shadow: inset -2px 0 0 var(--accent);
+    }
+
     /* Editor Area */
     #editor-wrapper {
       flex-grow: 1;
@@ -900,6 +912,9 @@
     let activeTabId = null;
     let previewTabId = null;
     let tabIdCounter = 0;
+    let draggedTabId = null;
+    let lastDragOverEl = null;
+    let lastDragOverSide = null;
     const loadingPaths = new Map(); // path -> { persistent: boolean }
     let initialTabRestoreDone = false;
     let isInitialBootstrap = true;
@@ -2072,6 +2087,16 @@
         if (tab.id === activeTabId) tabEl.classList.add('active');
         if (tab.isPreview) tabEl.classList.add('preview');
         if (isTabDirty(tab)) tabEl.classList.add('dirty');
+        tabEl.dataset.tabId = tab.id;
+
+        if (!tab.isPreview) {
+          tabEl.draggable = true;
+          tabEl.addEventListener('dragstart', onTabDragStart);
+          tabEl.addEventListener('dragover', onTabDragOver);
+          tabEl.addEventListener('dragleave', onTabDragLeave);
+          tabEl.addEventListener('drop', onTabDrop);
+          tabEl.addEventListener('dragend', onTabDragEnd);
+        }
 
         const icon = document.createElement('span');
         icon.className = 'tab-file-icon';
@@ -2099,6 +2124,92 @@
         tabEl.appendChild(close);
         tabsContainer.appendChild(tabEl);
       });
+    }
+
+    function onTabDragStart(e) {
+      draggedTabId = e.currentTarget.dataset.tabId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedTabId);
+      // Use setTimeout so the dragging class is applied after the drag image is captured
+      setTimeout(() => {
+        document.querySelectorAll('#editorTabs .editor-tab').forEach(el => {
+          if (el.dataset.tabId === draggedTabId) el.classList.add('dragging');
+        });
+      }, 0);
+    }
+
+    function onTabDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const targetTabId = e.currentTarget.dataset.tabId;
+      if (!draggedTabId || targetTabId === draggedTabId) return;
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isLeftHalf = e.clientX < rect.left + rect.width / 2;
+      const side = isLeftHalf ? 'drag-over-left' : 'drag-over-right';
+
+      if (e.currentTarget === lastDragOverEl && side === lastDragOverSide) return;
+
+      if (lastDragOverEl && lastDragOverEl !== e.currentTarget) {
+        lastDragOverEl.classList.remove('drag-over-left', 'drag-over-right');
+      }
+      e.currentTarget.classList.remove('drag-over-left', 'drag-over-right');
+      e.currentTarget.classList.add(side);
+      lastDragOverEl = e.currentTarget;
+      lastDragOverSide = side;
+    }
+
+    function onTabDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over-left', 'drag-over-right');
+      if (lastDragOverEl === e.currentTarget) {
+        lastDragOverEl = null;
+        lastDragOverSide = null;
+      }
+    }
+
+    function clearDragState() {
+      if (lastDragOverEl) {
+        lastDragOverEl.classList.remove('drag-over-left', 'drag-over-right');
+        lastDragOverEl = null;
+        lastDragOverSide = null;
+      }
+      document.querySelectorAll('#editorTabs .editor-tab.dragging').forEach(el => el.classList.remove('dragging'));
+    }
+
+    function onTabDrop(e) {
+      e.preventDefault();
+      const targetTabId = e.currentTarget.dataset.tabId;
+
+      clearDragState();
+
+      if (!draggedTabId || targetTabId === draggedTabId) { draggedTabId = null; return; }
+
+      const fromIdx = openTabs.findIndex(t => t.id === draggedTabId);
+      if (fromIdx === -1 || openTabs.findIndex(t => t.id === targetTabId) === -1) { draggedTabId = null; return; }
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const isLeftHalf = e.clientX < rect.left + rect.width / 2;
+
+      const [movedTab] = openTabs.splice(fromIdx, 1);
+      const newToIdx = openTabs.findIndex(t => t.id === targetTabId);
+      let insertIdx = isLeftHalf ? newToIdx : newToIdx + 1;
+
+      // Enforce invariant: preview tabs always stay at the end.
+      // Clamp insert position so it never goes past the first preview tab.
+      const firstPreviewIdx = openTabs.findIndex(t => t.isPreview);
+      if (firstPreviewIdx !== -1 && insertIdx > firstPreviewIdx) {
+        insertIdx = firstPreviewIdx;
+      }
+      openTabs.splice(insertIdx, 0, movedTab);
+
+      draggedTabId = null;
+      saveOpenTabsSession();
+      renderTabs();
+    }
+
+    function onTabDragEnd(e) {
+      draggedTabId = null;
+      clearDragState();
     }
 
     function setActiveFileInTree(filePath) {

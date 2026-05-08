@@ -29,6 +29,7 @@ import org.mockito.MockitoAnnotations;
 import com.polarion.alm.tracker.ITrackerService;
 import com.polarion.alm.tracker.model.ITrackerProject;
 import com.polarion.platform.ITransactionService;
+import com.polarion.platform.TransactionExecuter;
 import com.polarion.platform.core.IPlatform;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.persistence.UnresolvableObjectException;
@@ -108,6 +109,11 @@ public class PolarionUtilsTest {
 		@Override
 		public void preventThreadKilling() {
 			// no-op
+		}
+
+		@Override
+		public TransactionExecuter execute() {
+			return new TransactionExecuter(this);
 		}
 	};
 

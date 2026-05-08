@@ -51,6 +51,7 @@ Use [GitHub Discussions → Q&A](https://github.com/phillipboesger/polarion.code
 |-------------|---------------|
 | Java (JDK)  | 21 or later   |
 | Maven       | 3.9 or later  |
+| Node.js     | 18 or later   |
 | Polarion    | 2512 or later |
 
 Build the JAR:
@@ -60,6 +61,34 @@ mvn clean package -DskipTests
 ```
 
 The artifact will be at `target/boesger.polarion.code-editor-*.jar`. Copy it to your Polarion plugins directory and restart the server to pick up changes.
+
+---
+
+## Running Tests
+
+### Java Unit Tests
+
+```bash
+mvn test
+```
+
+### UI Tests (Playwright)
+
+`node_modules` and the browser binaries are **not** committed to the repository (they are listed in `.gitignore`). After a fresh clone — or whenever the `tests/ui/package-lock.json` changes — run the following one-time setup:
+
+```bash
+cd tests/ui
+npm ci                   # installs packages from package-lock.json
+npx playwright install   # downloads browser binaries (~200 MB)
+```
+
+Once set up, run the tests against a running Polarion instance:
+
+```bash
+npm test
+```
+
+> **Note:** The browser binaries are stored in `~/.cache/ms-playwright` (macOS/Linux) and must be reinstalled whenever you switch machines or delete that cache directory.
 
 ---
 

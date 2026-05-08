@@ -15,6 +15,7 @@ import { openEditor, clickFile, dblclickFile, waitForTab, reloadEditor, clearEdi
 
 let FILE_A: string;
 let FILE_B: string;
+let FILE_C: string;
 
 async function typeInMonaco(frame: Frame, text: string): Promise<void> {
   const editorCanvas = frame.locator('#editor-container .monaco-editor').first();
@@ -94,9 +95,21 @@ test.describe('Code Editor – Toolbar & Font Size', () => {
 
 test.describe('Code Editor – Tab Management', () => {
 
+  /**
+   * Derives a drop position targeting the left quarter of a tab's bounding box.
+   * Using a relative position derived from the element's actual width/height avoids
+   * sensitivity to CSS layout changes (padding, zoom, font size, etc.).
+   */
+  async function leftDropPosition(tabLocator: ReturnType<Frame['locator']>): Promise<{ x: number; y: number }> {
+    const box = await tabLocator.boundingBox();
+    if (!box) throw new Error('Could not get bounding box for tab');
+    return { x: Math.floor(box.width * 0.25), y: Math.floor(box.height / 2) };
+  }
+
   test.beforeAll(async ({ workerPrefix }: { workerPrefix: string }) => {
     FILE_A = `ui-tab-a-${workerPrefix}.txt`;
     FILE_B = `ui-tab-b-${workerPrefix}.txt`;
+    FILE_C = `ui-tab-c-${workerPrefix}.txt`;
   });
 
   let frame: Frame;
@@ -112,7 +125,7 @@ test.describe('Code Editor – Tab Management', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    for (const f of [FILE_A, FILE_B]) {
+    for (const f of [FILE_A, FILE_B, FILE_C]) {
       if (f) { await deleteFile(page, f, DEFAULT_PROJECT_ID); }
     }
   });
@@ -195,6 +208,98 @@ test.describe('Code Editor – Tab Management', () => {
     await expect(frame.locator('#currentFileLabel')).toContainText(FILE_A, { timeout: 5_000 });
     const contentA = await frame.evaluate(() => (globalThis as any).editor?.getValue() ?? '');
     expect(contentA).toContain('content-for-file-a');
+  });
+
+  test('persistent tabs can be reordered by drag and drop', async ({ page }) => {
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await dblclickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+    await expect(tabs).toHaveCount(2, { timeout: 5_000 });
+    await expect(tabs.nth(0)).toContainText(FILE_A);
+    await expect(tabs.nth(1)).toContainText(FILE_B);
+
+    // Drag FILE_B onto the left half of FILE_A to place FILE_B before FILE_A
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
+
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 3_000 });
+  });
+
+  test('preview tab is not draggable', async ({ page }) => {
+    await clickFile(frame, FILE_A); // single click = preview tab
+    await waitForTab(frame, FILE_A);
+
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const isDraggable = await tab.getAttribute('draggable');
+    expect(isDraggable).not.toBe('true');
+  });
+
+  test('persistent tab has draggable attribute set', async ({ page }) => {
+    await dblclickFile(frame, FILE_A); // double click = persistent tab
+    await waitForTab(frame, FILE_A);
+
+    const tab = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    await expect(tab).toHaveAttribute('draggable', 'true');
+  });
+
+  test('tab order after drag-and-drop persists after page reload', async ({ page }) => {
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await dblclickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+
+    // Drag FILE_B before FILE_A
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+
+    // Reload and verify the order is preserved
+    await reloadEditor(frame);
+    await waitForTab(frame, FILE_B);
+    await waitForTab(frame, FILE_A);
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 5_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 5_000 });
+  });
+
+  test('preview tab stays at the end after persistent tabs are reordered', async ({ page }) => {
+    // Create a third file used only as the preview tab in this test.
+    const created = await tryCreateFile(frame, FILE_C);
+    expect(created, 'Invariant test requires a third writable file (FILE_C)').toBe(true);
+
+    // Open FILE_A and FILE_B as persistent, then FILE_C as preview (single click).
+    await dblclickFile(frame, FILE_A);
+    await waitForTab(frame, FILE_A);
+    await dblclickFile(frame, FILE_B);
+    await waitForTab(frame, FILE_B);
+    await clickFile(frame, FILE_C);
+    await waitForTab(frame, FILE_C);
+
+    const tabs = frame.locator('#editorTabs .editor-tab');
+    await expect(tabs).toHaveCount(3, { timeout: 5_000 });
+    await expect(tabs.nth(0)).toContainText(FILE_A, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toContainText(FILE_C, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toHaveClass(/preview/);
+
+    // Reorder the two persistent tabs: drag FILE_B onto the left half of FILE_A
+    // (FILE_A is a valid persistent drop target; onTabDrop fires and reorders the array).
+    const tabA = frame.locator('#editorTabs .editor-tab', { hasText: FILE_A });
+    const tabB = frame.locator('#editorTabs .editor-tab', { hasText: FILE_B });
+    await tabB.dragTo(tabA, { targetPosition: await leftDropPosition(tabA) });
+
+    // Persistent tabs are reordered; preview tab (FILE_C) must remain at the end.
+    await expect(tabs.nth(0)).toContainText(FILE_B, { timeout: 3_000 });
+    await expect(tabs.nth(1)).toContainText(FILE_A, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toContainText(FILE_C, { timeout: 3_000 });
+    await expect(tabs.nth(2)).toHaveClass(/preview/, { timeout: 3_000 });
   });
 
 });
