@@ -37,7 +37,8 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 - Preview image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`) directly in the editor.
 - Create, rename, and delete files — all via a simple file explorer sidebar.
 - Project-aware: automatically scopes to the current Polarion project.
-- Keyboard shortcuts (`Ctrl+S` / `Cmd+S` to save).
+- Keyboard shortcuts (`Ctrl+S` / `Cmd+S` to save, `Ctrl+Shift+F` / `Cmd+Shift+F` to format).
+- Right-click context menu with **Format Document** action (also available via `Ctrl+Shift+F` / `Cmd+Shift+F`).
 - Warns before you navigate away with unsaved changes.
 - Movable tabs — drag and drop persistent tabs to reorder them in the tab bar.
 - No additional server, database, or cloud service required.
@@ -128,6 +129,8 @@ Navigate to **Polarion Administration → Code Editor** (or click the Code Edito
 2. Click the file to open it in the editor.
 3. Make your changes.
 4. Press **`Ctrl+S`** / **`Cmd+S`** or click the **Save** button in the top-right corner.
+
+To format the document, press **`Ctrl+Shift+F`** / **`Cmd+Shift+F`**, or **right-click** inside the editor and choose **Format Document**. Formatting is supported for JSON, XML, and Velocity template files.
 
 You can have multiple files open at once — they appear as tabs at the top of the editor. If you open more tabs than fit in the bar, a thin horizontal scrollbar appears below the tabs. Persistent tabs (opened by double-clicking a file) can be reordered by dragging and dropping them within the tab bar.
 

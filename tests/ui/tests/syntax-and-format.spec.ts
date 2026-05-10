@@ -482,6 +482,43 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
       .toContain('  <p>Hello</p>');
   });
 
+  // ── Right-click context menu integration ────────────────────────────────────
+
+  test('Right-click context menu shows "Format Document" action for JSON', async ({ page }) => {
+    await loginAsPolarionAdmin(page);
+    await clearEditorStorage(page);
+
+    const FILE = `fmt-ctx-${TS}.json`;
+    _cleanupFile = FILE;
+    const ok = await apiCreateFile(page, FILE);
+    expect(ok, 'File creation not available').toBe(true);
+
+    const frame = await openGlobalEditor(page);
+    await clickFile(frame, FILE);
+    await waitForTab(frame, FILE);
+
+    const compact = '{"ctx":true}';
+    await setEditorContent(frame, compact);
+
+    // Right-click inside the editor to open the Monaco context menu
+    await frame.locator('.monaco-editor').first().click({ button: 'right' });
+
+    // The "Format Document" action should appear in the context menu
+    const menuItem = frame.locator('.monaco-menu .action-item').filter({ hasText: 'Format Document' }).first();
+    await expect(menuItem).toBeVisible({ timeout: 5_000 });
+
+    // Click the menu item and verify formatting was applied
+    await menuItem.click();
+
+    await expect
+      .poll(() => getEditorContent(frame), { timeout: 8_000 })
+      .not.toBe(compact);
+
+    const formatted = await getEditorContent(frame);
+    expect(formatted).toContain('\n');
+    expect(formatted).toContain('"ctx"');
+  });
+
   // ── Keyboard shortcut integration ───────────────────────────────────────────
 
   test('Shift+Mod+F keyboard shortcut triggers formatting for JSON', async ({ page }) => {

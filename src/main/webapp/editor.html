@@ -1080,6 +1080,22 @@
         updateToolbarState();
       });
 
+      // Add "Format Document" to the editor right-click context menu
+      editor.addAction({
+        id: 'polarion.formatDocument',
+        label: 'Format Document',
+        keybindings: [
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF
+        ],
+        contextMenuGroupId: '1_modification',
+        contextMenuOrder: 1.5,
+        run: function () {
+          formatCurrentDocument().catch(function (err) {
+            showAlert('Error formatting file: ' + err);
+          });
+        }
+      });
+
       // Expose editor instance and key functions globally for testing
       globalThis.editor = editor;
       globalThis.formatCurrentDocument = formatCurrentDocument;
