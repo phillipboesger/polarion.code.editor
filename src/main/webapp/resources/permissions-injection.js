@@ -27,13 +27,15 @@
 
   var _expanded = false;
   var _roleDone = false;
-  var _grantedMap = {};        // permId → { roleName: null|true|false }
+  var _grantedMap = {}; // permId → { roleName: null|true|false }
   var _activePermId = null;
-  var _editMode = false;
-  var _editBuffer = {};
-  var _customSets = [];        // [{ id, name, filter, grants:{permId:{role:null|true|false}} }]
-  var _editingSetId = null;    // id of set being edited, or 'new'
-  var _setEditBuffer = {};     // working copy when editing a set
+  var _customSets = []; // [{ id, name, filter, grants:{permId:{role:null|true|false}} }]
+  var _editingSetId = null; // id of set being edited, or 'new'
+  var _setEditBuffer = {}; // working copy when editing a set
+  var _dirty = false; // true when grants changed but not yet saved to backend
+  var _savedSnapshot = null; // snapshot of _grantedMap at last successful save (for Cancel)
+  var _cepiActive = false; // true when any cepi row is selected
+  var _globalGrantedMap = {}; // global-scope grants, used as inheritance baseline in project scope
 
   /* ── DOM helpers ────────────────────────────────────────────────────── */
 
@@ -324,11 +326,37 @@
       .replace(/"/g, "&quot;");
   }
 
-  /** Return image src for a grant state: null=grey-deny, true=green-grant, false=red-deny */
+  /** Return image src for a grant state: null=grey-checkmark, true=green-grant, false=red-deny */
   function grantImg(p, state) {
-    if (state === true)  return p.base + 'yes.png' + p.bid;
-    if (state === false) return p.base + 'checkbox/no.png' + p.bid;
-    return p.base + 'noGrey.png' + p.bid;  // null / undefined
+    if (state === true) return p.base + "checkbox/yes.png" + p.bid;
+    if (state === false) return p.base + "checkbox/no.png" + p.bid;
+    return p.base + "checkbox/yesGrey.png" + p.bid; // null / undefined
+  }
+
+  /**
+   * In project scope: if project has no explicit value, show the global value in grey.
+   * Grey-grant (yesGrey) = inherited grant from global.
+   * Grey-deny  (noGrey)  = inherited deny from global.
+   * Falls back to neutral yesGrey when nothing is set anywhere.
+   */
+  function grantImgProject(p, projectState, globalState) {
+    if (projectState === true) return p.base + "checkbox/yes.png" + p.bid; // explicit grant
+    if (projectState === false) return p.base + "checkbox/no.png" + p.bid; // explicit deny
+    // null: show what's inherited from global (greyed)
+    if (globalState === true) return p.base + "checkbox/yesGrey.png" + p.bid;
+    if (globalState === false) return p.base + "checkbox/noGrey.png" + p.bid;
+    return p.base + "checkbox/yesGrey.png" + p.bid; // nothing anywhere
+  }
+
+  /** Build the title/tooltip text for a role cell in project scope. */
+  function grantTitleProject(projectState, globalState) {
+    if (projectState === true) return "Granted (project-specific)";
+    if (projectState === false) return "Denied (project-specific)";
+    if (globalState === true)
+      return "Inherited: Grant (from global – click to override)";
+    if (globalState === false)
+      return "Inherited: Deny (from global – click to override)";
+    return "Not set – click to cycle: grant → deny → reset";
   }
 
   /** Cycle grant state: null → true → false → null */
@@ -338,91 +366,276 @@
     return null;
   }
 
-  function loadGrants() {
+  /** Detect current project scope from the URL (#/project/ID/... vs global) */
+  function _currentProjectId() {
+    var m = location.hash.match(/#\/?project\/([^/]+)/);
+    return m ? m[1] : null;
+  }
+
+  function _fetchGlobalGrants(callback) {
+    // Always fetches without projectId (= global scope)
+    var url = _apiBase() + "/permissions";
     try {
-      var stored = localStorage.getItem("cepi-grants");
-      if (stored) _grantedMap = JSON.parse(stored);
-    } catch (e) {}
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data && data.grants) {
+              _globalGrantedMap = data.grants;
+              callback(true);
+              return;
+            }
+          } catch (e) {}
+        }
+        callback(false);
+      };
+      xhr.send();
+    } catch (e) {
+      callback(false);
+    }
+  }
+
+  function _afterGrantsLoaded() {
     PERMISSIONS.forEach(function (perm) {
       if (!_grantedMap[perm.id]) _grantedMap[perm.id] = {};
       ROLES.forEach(function (role) {
-        if (!Object.prototype.hasOwnProperty.call(_grantedMap[perm.id], role.name)) {
-          _grantedMap[perm.id][role.name] = null;  // null = not set
+        if (
+          !Object.prototype.hasOwnProperty.call(_grantedMap[perm.id], role.name)
+        ) {
+          _grantedMap[perm.id][role.name] = null;
         }
       });
     });
+    _savedSnapshot = deepCloneGrants(_grantedMap);
+    _dirty = false;
+    if (_activePermId) {
+      renderDetailPanel();
+      cepiEnterMode();
+    }
+  }
+
+  /**
+   * Versioned, scope-specific localStorage key.
+   * The v2 prefix ignores stale data written by older code (which incorrectly
+   * saved null values as explicit false, causing phantom red denies on reload).
+   */
+  function _grantsStorageKey() {
+    return "cepi-grants-v2-" + (_currentProjectId() || "global");
+  }
+
+  function loadGrants() {
+    var projectId = _currentProjectId();
+    if (projectId) {
+      // In project scope: load global first (for inheritance), then project-specific
+      _fetchGlobalGrants(function () {
+        _fetchGrantsFromBackend(function (loaded) {
+          if (!loaded) {
+            try {
+              var s = localStorage.getItem(_grantsStorageKey());
+              if (s) _grantedMap = JSON.parse(s);
+            } catch (e) {}
+          }
+          _afterGrantsLoaded();
+        });
+      });
+    } else {
+      // Global scope: also set _globalGrantedMap from the same fetch
+      _fetchGrantsFromBackend(function (loaded) {
+        if (!loaded) {
+          try {
+            var s = localStorage.getItem(_grantsStorageKey());
+            if (s) _grantedMap = JSON.parse(s);
+          } catch (e) {}
+        }
+        _globalGrantedMap = _grantedMap; // global == itself
+        _afterGrantsLoaded();
+      });
+    }
   }
 
   function saveGrants() {
+    // Mirror to localStorage as fast session cache (scoped + versioned key)
     try {
-      localStorage.setItem("cepi-grants", JSON.stringify(_grantedMap));
+      localStorage.setItem(_grantsStorageKey(), JSON.stringify(_grantedMap));
+    } catch (e) {}
+    // Mark dirty so Save/Cancel buttons become active
+    setCepiButtonsDirty(true);
+  }
+
+  function _apiBase() {
+    return "/polarion/code-editor/api";
+  }
+
+  function _fetchGrantsFromBackend(callback) {
+    var projectId = _currentProjectId();
+    var url =
+      _apiBase() +
+      "/permissions" +
+      (projectId ? "?projectId=" + encodeURIComponent(projectId) : "");
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status === 200) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data && data.grants) {
+              _grantedMap = data.grants;
+              callback(true);
+            } else {
+              callback(false);
+            }
+          } catch (e) {
+            callback(false);
+          }
+        } else {
+          callback(false);
+        }
+      };
+      xhr.send();
+    } catch (e) {
+      callback(false);
+    }
+  }
+
+  function _pushGrantsToBackend() {
+    var projectId = _currentProjectId();
+    var url =
+      _apiBase() +
+      "/permissions" +
+      (projectId ? "?projectId=" + encodeURIComponent(projectId) : "");
+    // Only send explicit grant (true) / deny (false) – omit null/undefined (grey = not set = absent in XML)
+    var filteredGrants = {};
+    Object.keys(_grantedMap).forEach(function (permId) {
+      filteredGrants[permId] = {};
+      var roleMap = _grantedMap[permId];
+      if (roleMap) {
+        Object.keys(roleMap).forEach(function (role) {
+          if (roleMap[role] === true || roleMap[role] === false) {
+            filteredGrants[permId][role] = roleMap[role];
+          }
+        });
+      }
+    });
+    var body = JSON.stringify({ grants: filteredGrants });
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(body);
     } catch (e) {}
   }
 
   function loadCustomSets() {
     try {
-      var stored = localStorage.getItem('cepi-custom-sets');
+      var stored = localStorage.getItem("cepi-custom-sets");
       if (stored) _customSets = JSON.parse(stored);
-    } catch (e) { _customSets = []; }
+    } catch (e) {
+      _customSets = [];
+    }
   }
 
   function saveCustomSets() {
-    try { localStorage.setItem('cepi-custom-sets', JSON.stringify(_customSets)); } catch (e) {}
+    try {
+      localStorage.setItem("cepi-custom-sets", JSON.stringify(_customSets));
+    } catch (e) {}
   }
 
   function genId() {
-    return 'set-' + Math.random().toString(36).slice(2, 9);
+    return "set-" + Math.random().toString(36).slice(2, 9);
   }
 
   /* ── Group detail panel (click on "Code Editor" row body) ───────────── */
 
   function buildCustomSetEditorHtml(set) {
     // set = null means new set
-    var name   = set ? escHtml(set.name || '') : '';
-    var filter = set ? escHtml(set.filter || '') : '';
-    var thStyle = 'white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;' +
-                  'height:28px;padding:0 4px;vertical-align:middle;text-align:left;';
-    var tdStyle = 'white-space:nowrap;border-bottom:1px solid #D2D7DA;padding:0 4px;height:28px;vertical-align:middle;';
+    var name = set ? escHtml(set.name || "") : "";
+    var filter = set ? escHtml(set.filter || "") : "";
+    var thStyle =
+      "white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;" +
+      "height:28px;padding:0 4px;vertical-align:middle;text-align:left;";
+    var tdStyle =
+      "white-space:nowrap;border-bottom:1px solid #D2D7DA;padding:0 4px;height:28px;vertical-align:middle;";
 
     var p = imgPaths();
-    var rolesSection = '';
+    var rolesSection = "";
     if (ROLES.length > 0) {
-      var permCols = PERMISSIONS.map(function(perm) {
-        return '<th class="polarion-TableDataHeader" style="' + thStyle + '">' + escHtml(perm.label) + '</th>';
-      }).join('');
+      var permCols = PERMISSIONS.map(function (perm) {
+        return (
+          '<th class="polarion-TableDataHeader" style="' +
+          thStyle +
+          '">' +
+          escHtml(perm.label) +
+          "</th>"
+        );
+      }).join("");
 
-      var roleRows = ROLES.map(function(role) {
-        var cells = PERMISSIONS.map(function(perm) {
-          var state = (set && set.grants && set.grants[perm.id]) ? set.grants[perm.id][role.name] : null;
+      var roleRows = ROLES.map(function (role) {
+        var cells = PERMISSIONS.map(function (perm) {
+          var state =
+            set && set.grants && set.grants[perm.id]
+              ? set.grants[perm.id][role.name]
+              : null;
           // normalize old boolean values
-          if (state === false && _setEditBuffer && _setEditBuffer[perm.id]) state = _setEditBuffer[perm.id][role.name];
-          return '<td class="polarion-TableDataRow" style="' + tdStyle + 'text-align:center;">' +
-            '<img src="' + grantImg(p, state) + '"' +
-            ' data-cepi-set-toggle="' + escHtml(perm.id) + ':' + escHtml(role.name) + '"' +
+          if (state === false && _setEditBuffer && _setEditBuffer[perm.id])
+            state = _setEditBuffer[perm.id][role.name];
+          return (
+            '<td class="polarion-TableDataRow" style="' +
+            tdStyle +
+            'text-align:center;">' +
+            '<img src="' +
+            grantImg(p, state) +
+            '"' +
+            ' data-cepi-set-toggle="' +
+            escHtml(perm.id) +
+            ":" +
+            escHtml(role.name) +
+            '"' +
             ' style="cursor:pointer;display:inline-block;vertical-align:middle;">' +
-            '</td>';
-        }).join('');
-        return '<tr>' +
-          '<td class="polarion-TableDataRow" style="' + tdStyle + '">' + escHtml(role.name) + '</td>' +
-          '<td class="polarion-TableDataRow" style="' + tdStyle + '">' + escHtml(role.scope) + '</td>' +
+            "</td>"
+          );
+        }).join("");
+        return (
+          "<tr>" +
+          '<td class="polarion-TableDataRow" style="' +
+          tdStyle +
+          '">' +
+          escHtml(role.name) +
+          "</td>" +
+          '<td class="polarion-TableDataRow" style="' +
+          tdStyle +
+          '">' +
+          escHtml(role.scope) +
+          "</td>" +
           cells +
-          '</tr>';
-      }).join('');
+          "</tr>"
+        );
+      }).join("");
 
       rolesSection =
         '<div class="polarion-JSPreviewPanelTitleClick" style="margin-top:8px;">' +
         '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
         '<td class="polarion-JSPreviewPanel-TitleTd">Role Grants (click to cycle: grey \u2192 green \u2192 red)</td>' +
-        '</tr></tbody></table></div>' +
+        "</tr></tbody></table></div>" +
         '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
         '<tbody><tr><td style="padding:0 10px;width:100%;">' +
         '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;table-layout:fixed;">' +
-        '<tbody><tr>' +
-        '<th class="polarion-TableDataHeader" style="' + thStyle + '">Role</th>' +
-        '<th class="polarion-TableDataHeader" style="' + thStyle + '">Scope</th>' +
+        "<tbody><tr>" +
+        '<th class="polarion-TableDataHeader" style="' +
+        thStyle +
+        '">Role</th>' +
+        '<th class="polarion-TableDataHeader" style="' +
+        thStyle +
+        '">Scope</th>' +
         permCols +
-        '</tr>' + roleRows + '</tbody></table>' +
-        '</td></tr></tbody></table>';
+        "</tr>" +
+        roleRows +
+        "</tbody></table>" +
+        "</td></tr></tbody></table>";
     }
 
     return (
@@ -430,20 +643,24 @@
       '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody>' +
       '<tr><td class="polarion-NameCell"><span>Name:</span></td>' +
       '<td class="polarion-SectionLayouterContentCell">' +
-      '<input type="text" data-cepi-set-name value="' + name + '" style="width:100%;box-sizing:border-box;">' +
-      '</td></tr>' +
+      '<input type="text" data-cepi-set-name value="' +
+      name +
+      '" style="width:100%;box-sizing:border-box;">' +
+      "</td></tr>" +
       '<tr><td class="polarion-NameCell"><span>Filter:</span></td>' +
       '<td class="polarion-SectionLayouterContentCell">' +
-      '<input type="text" data-cepi-set-filter value="' + filter + '" placeholder="e.g. *.java, src/**, text/xml" style="width:100%;box-sizing:border-box;">' +
-      '</td></tr>' +
-      '</tbody></table></div>' +
+      '<input type="text" data-cepi-set-filter value="' +
+      filter +
+      '" placeholder="e.g. *.java, src/**, text/xml" style="width:100%;box-sizing:border-box;">' +
+      "</td></tr>" +
+      "</tbody></table></div>" +
       rolesSection +
       '<div style="margin-top:10px;display:flex;gap:8px;">' +
       '<span class="polarion-ToolbarButton-Label" data-cepi-action="set-save"' +
       ' style="cursor:pointer;padding:3px 10px;border:1px solid #aaa;background:#f5f5f5;border-radius:2px;">Save Set</span>' +
       '<span class="polarion-ToolbarButton-Label" data-cepi-action="set-cancel"' +
       ' style="cursor:pointer;padding:3px 10px;border:1px solid #aaa;background:#f5f5f5;border-radius:2px;">Cancel</span>' +
-      '</div>'
+      "</div>"
     );
   }
 
@@ -451,57 +668,96 @@
     var permList = PERMISSIONS.map(function (perm) {
       return (
         "<li style='margin-bottom:8px;'>" +
-        "<tt>" + escHtml(perm.id) + "</tt> &ndash; <strong>" + escHtml(perm.label) + "</strong>" +
-        "<br><span style='color:#555;'>" + escHtml(perm.description || "") + "</span>" +
+        "<tt>" +
+        escHtml(perm.id) +
+        "</tt> &ndash; <strong>" +
+        escHtml(perm.label) +
+        "</strong>" +
+        "<br><span style='color:#555;'>" +
+        escHtml(perm.description || "") +
+        "</span>" +
         "</li>"
       );
     }).join("");
 
     // ── Custom Sets section ──────────────────────────────────────────────
-    var thStyle = 'white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;height:28px;padding:0 4px;vertical-align:middle;text-align:left;';
-    var tdStyle = 'white-space:nowrap;border-bottom:1px solid #D2D7DA;padding:0 4px;height:32px;vertical-align:middle;';
+    var thStyle =
+      "white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;height:28px;padding:0 4px;vertical-align:middle;text-align:left;";
+    var tdStyle =
+      "white-space:nowrap;border-bottom:1px solid #D2D7DA;padding:0 4px;height:32px;vertical-align:middle;";
 
-    var setsRows = _customSets.map(function(set) {
-      return '<tr>' +
-        '<td class="polarion-TableDataRow" style="' + tdStyle + '">' + escHtml(set.name || '') + '</td>' +
-        '<td class="polarion-TableDataRow" style="' + tdStyle + '"><tt>' + escHtml(set.filter || '') + '</tt></td>' +
-        '<td class="polarion-TableDataRow" style="' + tdStyle + 'text-align:right;white-space:nowrap;">' +
-        '<span data-cepi-action="set-edit" data-cepi-set-id="' + escHtml(set.id) + '"' +
-        ' style="cursor:pointer;margin-right:6px;color:#1a7fbc;" title="Edit">&#9998;</span>' +
-        '<span data-cepi-action="set-delete" data-cepi-set-id="' + escHtml(set.id) + '"' +
-        ' style="cursor:pointer;color:#c00;" title="Delete">&times;</span>' +
-        '</td></tr>';
-    }).join('');
+    var setsRows = _customSets
+      .map(function (set) {
+        return (
+          "<tr>" +
+          '<td class="polarion-TableDataRow" style="' +
+          tdStyle +
+          '">' +
+          escHtml(set.name || "") +
+          "</td>" +
+          '<td class="polarion-TableDataRow" style="' +
+          tdStyle +
+          '"><tt>' +
+          escHtml(set.filter || "") +
+          "</tt></td>" +
+          '<td class="polarion-TableDataRow" style="' +
+          tdStyle +
+          'text-align:right;white-space:nowrap;">' +
+          '<span data-cepi-action="set-edit" data-cepi-set-id="' +
+          escHtml(set.id) +
+          '"' +
+          ' style="cursor:pointer;margin-right:6px;color:#1a7fbc;" title="Edit">&#9998;</span>' +
+          '<span data-cepi-action="set-delete" data-cepi-set-id="' +
+          escHtml(set.id) +
+          '"' +
+          ' style="cursor:pointer;color:#c00;" title="Delete">&times;</span>' +
+          "</td></tr>"
+        );
+      })
+      .join("");
 
-    var setsTable = _customSets.length > 0
-      ? '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
-        '<tbody><tr><td style="padding:0 10px;width:100%;">' +
-        '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;table-layout:fixed;">' +
-        '<tbody><tr>' +
-        '<th class="polarion-TableDataHeader" style="width:40%;' + thStyle + '">Name</th>' +
-        '<th class="polarion-TableDataHeader" style="width:50%;' + thStyle + '">Filter Pattern</th>' +
-        '<th class="polarion-TableDataHeader" style="width:80px;' + thStyle + '">Actions</th>' +
-        '</tr>' + setsRows +
-        '</tbody></table></td></tr></tbody></table>'
-      : '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
-        '<tbody><tr><td style="padding:6px 10px;color:#888;font-style:italic;">No custom sets defined.</td></tr></tbody></table>';
+    var setsTable =
+      _customSets.length > 0
+        ? '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
+          '<tbody><tr><td style="padding:0 10px;width:100%;">' +
+          '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;table-layout:fixed;">' +
+          "<tbody><tr>" +
+          '<th class="polarion-TableDataHeader" style="width:40%;' +
+          thStyle +
+          '">Name</th>' +
+          '<th class="polarion-TableDataHeader" style="width:50%;' +
+          thStyle +
+          '">Filter Pattern</th>' +
+          '<th class="polarion-TableDataHeader" style="width:80px;' +
+          thStyle +
+          '">Actions</th>' +
+          "</tr>" +
+          setsRows +
+          "</tbody></table></td></tr></tbody></table>"
+        : '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
+          '<tbody><tr><td style="padding:6px 10px;color:#888;font-style:italic;">No custom sets defined.</td></tr></tbody></table>';
 
     // If currently editing a set, show editor inline
-    var editorSection = '';
+    var editorSection = "";
     if (_editingSetId) {
       var editingSet = null;
-      if (_editingSetId !== 'new') {
+      if (_editingSetId !== "new") {
         editingSet = null;
         for (var i = 0; i < _customSets.length; i++) {
-          if (_customSets[i].id === _editingSetId) { editingSet = _customSets[i]; break; }
+          if (_customSets[i].id === _editingSetId) {
+            editingSet = _customSets[i];
+            break;
+          }
         }
       }
       editorSection =
         '<div class="polarion-JSPreviewPanelTitleClick" style="margin-top:8px;">' +
         '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
         '<td class="polarion-JSPreviewPanel-TitleTd">' +
-        (_editingSetId === 'new' ? 'New Custom Set' : 'Edit: ' + escHtml(editingSet ? editingSet.name : '')) +
-        '</td></tr></tbody></table></div>' +
+        (_editingSetId === "new"
+          ? "New Custom Set"
+          : "Edit: " + escHtml(editingSet ? editingSet.name : "")) +
+        "</td></tr></tbody></table></div>" +
         buildCustomSetEditorHtml(editingSet);
     }
 
@@ -509,24 +765,25 @@
       '<div id="_ui_cepi_form_layouter" data-cepi-form="true">' +
       '<div class="GLNRHCCBOBB">' +
       '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody>' +
-      '<tr>' +
+      "<tr>" +
       '<td class="polarion-NameCell"><span>Plugin:</span></td>' +
       '<td class="polarion-SectionLayouterContentCell">' +
       '<div style="display:flex;align-items:center;gap:8px;">' +
       '<img src="/polarion/code-editor/resources/img/code-editor-icon-light.svg" style="width:24px;height:24px;display:block;">' +
       '<span><strong>Code Editor</strong> &nbsp;<tt style="color:#888;font-size:11px;">boesger.polarion.codeeditor</tt></span>' +
-      '</div>' +
-      '</td></tr>' +
+      "</div>" +
+      "</td></tr>" +
       '<tr><td class="polarion-NameCell"><span>Description:</span></td>' +
       '<td class="polarion-SectionLayouterContentCell">' +
-      'The Code Editor plugin extends Polarion with a browser-based file editor.' +
-      '</td></tr>' +
+      "The Code Editor plugin extends Polarion with a browser-based file editor." +
+      "</td></tr>" +
       '<tr><td class="polarion-NameCell"><span>Applicable&nbsp;permissions:</span></td>' +
       '<td class="polarion-SectionLayouterContentCell">' +
-      '<ul style="margin:2px 0 0 0;padding-left:18px;">' + permList + '</ul>' +
-      '</td></tr>' +
-      '</tbody></table></div>' +
-
+      '<ul style="margin:2px 0 0 0;padding-left:18px;">' +
+      permList +
+      "</ul>" +
+      "</td></tr>" +
+      "</tbody></table></div>" +
       // Custom Sets header
       '<div class="polarion-JSPreviewPanelTitleClick">' +
       '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
@@ -534,43 +791,50 @@
       '<td style="white-space:nowrap;">' +
       '<span data-cepi-action="set-new" style="cursor:pointer;margin-left:12px;padding:1px 8px;' +
       'border:1px solid #aaa;background:#f5f5f5;border-radius:2px;font-size:11px;" title="Add new set">+ Add Set</span>' +
-      '</td></tr></tbody></table></div>' +
+      "</td></tr></tbody></table></div>" +
       setsTable +
       editorSection +
-      '</div>'
+      "</div>"
     );
   }
 
   /* ── Permission detail panel (click on child row) ───────────────────── */
 
   function buildDetailHtml(perm, grants, editMode, p) {
-    var base = p.base, bid = p.bid;
+    var base = p.base,
+      bid = p.bid;
 
     // Description fields block
     var fieldsHtml =
       '<div class="GLNRHCCBOBB">' +
       '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody>' +
-      '<tr>' +
-        '<td class="polarion-NameCell"><span>ID:</span></td>' +
-        '<td class="polarion-SectionLayouterContentCell" style="height:auto;">' +
-          '<div><tt style="font-weight:normal;">' + escHtml(perm.id) + '</tt></div>' +
-        '</td>' +
-      '</tr>' +
-      '<tr>' +
-        '<td class="polarion-NameCell"><span>Label:</span></td>' +
-        '<td class="polarion-SectionLayouterContentCell" style="height:auto;">' +
-          '<div>' + escHtml(perm.label) + '</div>' +
-        '</td>' +
-      '</tr>' +
+      "<tr>" +
+      '<td class="polarion-NameCell"><span>ID:</span></td>' +
+      '<td class="polarion-SectionLayouterContentCell" style="height:auto;">' +
+      '<div><tt style="font-weight:normal;">' +
+      escHtml(perm.id) +
+      "</tt></div>" +
+      "</td>" +
+      "</tr>" +
+      "<tr>" +
+      '<td class="polarion-NameCell"><span>Label:</span></td>' +
+      '<td class="polarion-SectionLayouterContentCell" style="height:auto;">' +
+      "<div>" +
+      escHtml(perm.label) +
+      "</div>" +
+      "</td>" +
+      "</tr>" +
       (perm.description
-        ? '<tr>' +
+        ? "<tr>" +
           '<td class="polarion-NameCell"><span>Description:</span></td>' +
           '<td class="polarion-SectionLayouterContentCell" style="height:auto;">' +
-            '<div>' + escHtml(perm.description) + '</div>' +
-          '</td>' +
-          '</tr>'
-        : '') +
-      '</tbody></table></div>';
+          "<div>" +
+          escHtml(perm.description) +
+          "</div>" +
+          "</td>" +
+          "</tr>"
+        : "") +
+      "</tbody></table></div>";
 
     if (ROLES.length === 0) {
       return (
@@ -579,144 +843,290 @@
         '<div class="polarion-JSPreviewPanelTitleClick">' +
         '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
         '<td class="polarion-JSPreviewPanel-TitleTd">Applicable Roles</td>' +
-        '</tr></tbody></table>' +
-        '</div>' +
+        "</tr></tbody></table>" +
+        "</div>" +
         '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
         '<tbody><tr><td style="padding-left:10px;padding-right:10px;width:100%;">' +
         '<div style="padding:6px 0;color:#888;font-style:italic;">Role definitions not yet loaded. Click any native permission row first.</div>' +
-        '</td></tr></tbody></table>' +
-        '</div>'
+        "</td></tr></tbody></table>" +
+        "</div>"
       );
     }
 
-    // Section header – OOTB Polarion style
-    var sectionHeader;
-    if (editMode) {
-      sectionHeader =
-        '<div class="polarion-JSPreviewPanelTitleClick">' +
-        '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
-        '<td class="polarion-JSPreviewPanel-TitleTd">Applicable Roles</td>' +
-        '<td style="white-space:nowrap;padding-right:4px;">' +
-        '<span style="cursor:pointer;margin-right:4px;" data-cepi-action="save">' +
-        '<span class="polarion-ToolbarButton-Label" style="padding:2px 8px;border:1px solid #aaa;background:#f5f5f5;border-radius:2px;font-size:11px;">Save</span>' +
-        '</span>' +
-        '<span style="cursor:pointer;" data-cepi-action="cancel">' +
-        '<span class="polarion-ToolbarButton-Label" style="padding:2px 8px;border:1px solid #aaa;background:#f5f5f5;border-radius:2px;font-size:11px;">Cancel</span>' +
-        '</span>' +
-        '</td>' +
-        '</tr></tbody></table>' +
-        '</div>';
-    } else {
-      sectionHeader =
-        '<div class="polarion-JSPreviewPanelTitleClick">' +
-        '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
-        '<td class="polarion-JSPreviewPanel-TitleTd">Applicable Roles</td>' +
-        '<td style="white-space:nowrap;">' +
-        '<span style="cursor:pointer;margin-left:12px;" data-cepi-action="edit">' +
-        '<img class="polarion-IconHover" style="vertical-align:middle;" src="' + base + 'portlet/portletEdit.png' + bid + '" title="Edit">' +
-        '</span>' +
-        '</td>' +
-        '</tr></tbody></table>' +
-        '</div>';
-    }
+    // Section header – always edit mode, no pencil needed
+    var sectionHeader =
+      '<div class="polarion-JSPreviewPanelTitleClick">' +
+      '<table cellspacing="0" cellpadding="0" style="width:100%"><tbody><tr>' +
+      '<td class="polarion-JSPreviewPanel-TitleTd">Applicable Roles</td>' +
+      "</tr></tbody></table>" +
+      "</div>";
 
-    var tdStyle = 'white-space:nowrap;border-bottom:1px solid #D2D7DA;padding-left:4px;padding-right:4px;height:32px;vertical-align:middle;';
-    var editHint = editMode ? ' title="Click to cycle: grey\u2192green\u2192red"' : '';
+    var tdStyle =
+      "white-space:nowrap;border-bottom:1px solid #D2D7DA;padding-left:4px;padding-right:4px;height:32px;vertical-align:middle;";
+    var isProjectScope = !!_currentProjectId();
+    var globalGrants = _globalGrantedMap[perm.id] || {};
     var roleRows = ROLES.map(function (role) {
       var state = grants[role.name];
-      // normalize legacy boolean true → true, false → false, undefined → null
       if (state === undefined) state = null;
-      var grantedCell;
-      if (editMode) {
-        grantedCell =
-          '<td class="polarion-TableDataRow" style="' + tdStyle + 'text-align:center;">' +
-          '<img src="' + grantImg(p, state) + '"' +
-          ' data-cepi-role-toggle="' + escHtml(role.name) + '"' +
-          editHint +
-          ' style="cursor:pointer;display:inline-block;vertical-align:middle;">' +
-          '</td>';
-      } else {
-        var imgSrc = (state !== null && state !== undefined) ? grantImg(p, state) : '';
-        grantedCell =
-          '<td class="polarion-TableDataRow" style="' + tdStyle + '">' +
-          (imgSrc ? '<img src="' + imgSrc + '" title="' + (state === true ? 'Granted' : 'Denied') + '">' : '') +
-          '</td>';
-      }
+      var globalState = globalGrants[role.name];
+      if (globalState === undefined) globalState = null;
+      var grantedTdStyle = tdStyle + "text-align:center;width:50px;";
+      var imgSrc = isProjectScope
+        ? grantImgProject(p, state, globalState)
+        : grantImg(p, state);
+      var stateTitle = isProjectScope
+        ? grantTitleProject(state, globalState)
+        : state === true
+          ? "Granted"
+          : state === false
+            ? "Denied"
+            : "Not set – click to cycle";
+      var grantedCell =
+        '<td class="polarion-TableDataRow" style="' +
+        grantedTdStyle +
+        '">' +
+        '<img src="' +
+        imgSrc +
+        '"' +
+        ' data-cepi-role-toggle="' +
+        escHtml(role.name) +
+        '"' +
+        ' title="' +
+        escHtml(stateTitle) +
+        '"' +
+        ' style="cursor:pointer;vertical-align:middle;">' +
+        "</td>";
       return (
-        '<tr>' +
-        '<td class="polarion-TableDataRow" style="' + tdStyle + '"><div style="overflow:hidden;">' + escHtml(role.name) + '</div></td>' +
-        '<td class="polarion-TableDataRow" style="' + tdStyle + '">' + escHtml(role.scope) + '</td>' +
+        "<tr>" +
+        '<td class="polarion-TableDataRow" style="' +
+        tdStyle +
+        '"><div style="overflow:hidden;">' +
+        escHtml(role.name) +
+        "</div></td>" +
+        '<td class="polarion-TableDataRow" style="' +
+        tdStyle +
+        '">' +
+        escHtml(role.scope) +
+        "</td>" +
         grantedCell +
-        '</tr>'
+        "</tr>"
       );
-    }).join('');
+    }).join("");
 
-    var thStyle = 'white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;height:28px;padding-right:4px;padding-left:4px;vertical-align:middle;text-align:left;';
+    var thStyle =
+      "white-space:nowrap;color:#757575;font-weight:normal;border-bottom:1px solid #d5d6da;height:28px;padding-right:4px;padding-left:4px;vertical-align:middle;text-align:left;";
     var rolesTable =
       '<table cellspacing="0" cellpadding="0" class="polarion-JSPreviewPanel-PanelFixed">' +
       '<tbody><tr><td style="padding-left:10px;padding-right:10px;width:100%;">' +
       '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;table-layout:fixed;">' +
-      '<tbody><tr>' +
-      '<th class="polarion-TableDataHeader" style="width:50%;' + thStyle + '">Role</th>' +
-      '<th class="polarion-TableDataHeader" style="width:50%;' + thStyle + '">Scope</th>' +
-      '<th class="polarion-TableDataHeader" style="width:50px;' + thStyle + '">Granted</th>' +
-      '</tr>' +
+      "<tbody><tr>" +
+      '<th class="polarion-TableDataHeader" style="width:50%;' +
+      thStyle +
+      '">Role</th>' +
+      '<th class="polarion-TableDataHeader" style="width:50%;' +
+      thStyle +
+      '">Scope</th>' +
+      '<th class="polarion-TableDataHeader" style="width:50px;' +
+      thStyle +
+      '">Granted</th>' +
+      "</tr>" +
       roleRows +
-      '</tbody></table>' +
-      '</td></tr></tbody></table>';
+      "</tbody></table>" +
+      "</td></tr></tbody></table>";
 
     return (
       '<div id="_ui_cepi_form_layouter" data-cepi-form="true">' +
       fieldsHtml +
       sectionHeader +
       rolesTable +
-      '</div>'
+      "</div>"
     );
   }
 
-  /* ── Native toolbar hooks (Refresh only – Save/Cancel are inline) ──────── */
+  /* ── Toolbar state helpers ──────────────────────────────────────────── */
+
+  /** Deep-clone the grants map for snapshot/restore. */
+  function deepCloneGrants(src) {
+    var dst = {};
+    if (!src) return dst;
+    Object.keys(src).forEach(function (permId) {
+      dst[permId] = {};
+      if (src[permId]) {
+        Object.keys(src[permId]).forEach(function (role) {
+          dst[permId][role] = src[permId][role];
+        });
+      }
+    });
+    return dst;
+  }
+
+  /** Enable or disable the OOTB Save/Cancel buttons based on dirty state.
+   *  Polarion marks disabled buttons with color:rgb(201,209,215) on the <table>
+   *  and class="polarion-ToolbarButton-IconDisabled" on the icon <img>.
+   *  We toggle exactly those two signals so it looks native. */
+  function setCepiButtonsDirty(isDirty) {
+    _dirty = isDirty;
+    document
+      .querySelectorAll("table.polarion-ToolbarButton")
+      .forEach(function (t) {
+        var l = t.querySelector(".polarion-ToolbarButton-Label");
+        var text = l ? l.textContent.trim() : "";
+        if (text !== "Save" && text !== "Cancel") return;
+        var img = t.querySelector("img");
+        if (isDirty) {
+          t.style.color = "";
+          t.style.pointerEvents = "";
+          if (img) img.className = "polarion-ToolbarButton-Icon";
+        } else {
+          t.style.color = "rgb(201, 209, 215)";
+          t.style.pointerEvents = "none";
+          if (img) img.className = "polarion-ToolbarButton-IconDisabled";
+        }
+      });
+  }
+
+  /** One-time document-level capture handler for all toolbar button clicks.
+   *  More robust than per-element hooks since GWT recreates DOM nodes freely.
+   *  Intercepts Save, Cancel, and Refresh while cepi is active. */
+  var _docToolbarHookInstalled = false;
+  function initDocumentLevelToolbarHook() {
+    if (_docToolbarHookInstalled) return;
+    _docToolbarHookInstalled = true;
+    document.addEventListener(
+      "click",
+      function (e) {
+        // Walk up to find the toolbar button <table>
+        var t = e.target;
+        while (t && t !== document.body) {
+          if (
+            t.tagName === "TABLE" &&
+            t.classList &&
+            t.classList.contains("polarion-ToolbarButton")
+          )
+            break;
+          t = t.parentElement;
+        }
+        if (
+          !t ||
+          !t.classList ||
+          !t.classList.contains("polarion-ToolbarButton")
+        )
+          return;
+        if (!_cepiActive) return; // only intercept when cepi row is selected
+
+        var l = t.querySelector(".polarion-ToolbarButton-Label");
+        var text = l ? l.textContent.trim() : "";
+        var isRefresh = !!t.querySelector('img[src*="refreshBtn"]');
+
+        if (text === "Save") {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          if (!_dirty) return;
+          _pushGrantsToBackend();
+          try {
+            localStorage.setItem(
+              _grantsStorageKey(),
+              JSON.stringify(_grantedMap),
+            );
+          } catch (ex) {}
+          _savedSnapshot = deepCloneGrants(_grantedMap);
+          setCepiButtonsDirty(false);
+        } else if (text === "Cancel") {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          if (!_dirty) return;
+          _grantedMap = deepCloneGrants(_savedSnapshot);
+          try {
+            localStorage.setItem(
+              _grantsStorageKey(),
+              JSON.stringify(_grantedMap),
+            );
+          } catch (ex) {}
+          setCepiButtonsDirty(false);
+          if (_activePermId) renderDetailPanel();
+        } else if (isRefresh) {
+          // Intercept Refresh: hard reload from backend – discard any stale in-memory / localStorage state
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          try {
+            localStorage.removeItem(_grantsStorageKey());
+          } catch (ex) {}
+          loadGrants(); // fetches permissions.xml fresh, then re-renders panel
+        }
+      },
+      true,
+    ); // capture phase – runs before GWT onclick handlers
+  }
+
+  /** Enter cepi mode: hide Edit, show Save/Cancel in correct dirty/clean state. */
+  function cepiEnterMode() {
+    _cepiActive = true;
+    document
+      .querySelectorAll("table.polarion-ToolbarButton")
+      .forEach(function (t) {
+        var l = t.querySelector(".polarion-ToolbarButton-Label");
+        var text = l ? l.textContent.trim() : "";
+        if (text === "Edit") {
+          t.style.display = "none";
+        } else if (text === "Save" || text === "Cancel") {
+          t.style.display = "";
+        }
+      });
+    setCepiButtonsDirty(_dirty);
+  }
+
+  /** Leave cepi mode: restore all toolbar buttons to native state. */
+  function cepiLeaveMode() {
+    _cepiActive = false;
+    _dirty = false;
+    document
+      .querySelectorAll("table.polarion-ToolbarButton")
+      .forEach(function (t) {
+        var l = t.querySelector(".polarion-ToolbarButton-Label");
+        var text = l ? l.textContent.trim() : "";
+        if (text === "Edit" || text === "Save" || text === "Cancel") {
+          t.style.display = "";
+          t.style.color = "";
+          t.style.pointerEvents = "";
+          var img = t.querySelector("img");
+          if (img) img.className = "polarion-ToolbarButton-Icon";
+        }
+      });
+  }
+
+  /* ── Native toolbar hooks ────────────────────────────────────────────── */
 
   function setupToolbarHooks() {
-    var refreshTb = (function () {
-      var img = Array.from(document.querySelectorAll("img.polarion-ToolbarButton-Icon")).find(function (i) {
-        return (i.src || "").indexOf("refreshBtn") !== -1;
-      });
-      if (!img) return null;
-      var el = img;
-      while (el && el.tagName !== "TD") el = el.parentElement;
-      return el || img;
-    })();
-
-    if (refreshTb && !refreshTb._cepiHooked) {
-      refreshTb._cepiHooked = true;
-      refreshTb.addEventListener("click", function (e) {
-        if (_activePermId === null) return;
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        _editMode = false;
-        renderDetailPanel();
-      }, true);
-    }
-
+    // One-time document-level hook for Save/Cancel/Refresh toolbar buttons
+    initDocumentLevelToolbarHook();
     // Deselect cepi when user clicks any OOTB row
-    var tableContainer = document.querySelector('.polarion-JSTreeTable-TableContainer, .polarion-JSTreeTable') || document.body;
+    var tableContainer =
+      document.querySelector(
+        ".polarion-JSTreeTable-TableContainer, .polarion-JSTreeTable",
+      ) || document.body;
     if (tableContainer && !tableContainer._cepiClickHooked) {
       tableContainer._cepiClickHooked = true;
-      tableContainer.addEventListener('click', function (e) {
-        var target = e.target;
-        // Walk up to find a JSTreeTableRow
-        while (target && target !== tableContainer) {
-          if (target.classList && target.classList.contains('JSTreeTableRow') &&
-              !target.getAttribute('data-cepi-parent') && !target.getAttribute('data-cepi-child')) {
-            // Clicked on a native OOTB row → deselect cepi
-            deselectAll();
-            _activePermId = null;
-            _editMode = false;
-            return;
+      tableContainer.addEventListener(
+        "click",
+        function (e) {
+          var target = e.target;
+          while (target && target !== tableContainer) {
+            if (
+              target.classList &&
+              target.classList.contains("JSTreeTableRow") &&
+              !target.getAttribute("data-cepi-parent") &&
+              !target.getAttribute("data-cepi-child")
+            ) {
+              deselectAll();
+              _activePermId = null;
+              cepiLeaveMode();
+              return;
+            }
+            target = target.parentElement;
           }
-          target = target.parentElement;
-        }
-      }, true);
+        },
+        true,
+      );
     }
   }
 
@@ -740,86 +1150,53 @@
     if (!perm) return;
 
     var p = imgPaths();
-    var grants = _editMode ? _editBuffer : (_grantedMap[perm.id] || {});
-    content.innerHTML = buildDetailHtml(perm, grants, _editMode, p);
+    // Always in edit mode: use _grantedMap directly (no separate buffer)
+    var grants = _grantedMap[perm.id] || {};
+    content.innerHTML = buildDetailHtml(perm, grants, true, p);
 
-    // Image toggle handlers (edit mode – cycle through null → true → false → null)
-    if (_editMode) {
-      content
-        .querySelectorAll("[data-cepi-role-toggle]")
-        .forEach(function (img) {
-          var role = img.getAttribute("data-cepi-role-toggle");
-          img.addEventListener(
-            "click",
-            function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              _editBuffer[role] = cycleGrant(_editBuffer[role]);
-              img.src = grantImg(p, _editBuffer[role]);
-            },
-            true,
-          );
-        });
-
-      // Inline Save button
-      var saveBtn = content.querySelector('[data-cepi-action="save"]');
-      if (saveBtn) {
-        saveBtn.addEventListener("click", function (e) {
+    // Image toggle handlers – always active, auto-save on each click
+    var isProjectScopeHandler = !!_currentProjectId();
+    content.querySelectorAll("[data-cepi-role-toggle]").forEach(function (img) {
+      var role = img.getAttribute("data-cepi-role-toggle");
+      img.addEventListener(
+        "click",
+        function (e) {
           e.preventDefault();
           e.stopPropagation();
-          _grantedMap[perm.id] = {};
-          for (var k in _editBuffer) {
-            if (Object.prototype.hasOwnProperty.call(_editBuffer, k)) {
-              _grantedMap[perm.id][k] = _editBuffer[k];
-            }
-          }
+          e.stopImmediatePropagation();
+          if (!_grantedMap[perm.id]) _grantedMap[perm.id] = {};
+          _grantedMap[perm.id][role] = cycleGrant(_grantedMap[perm.id][role]);
+          var newState = _grantedMap[perm.id][role];
+          var globalState = isProjectScopeHandler
+            ? (_globalGrantedMap[perm.id] || {})[role] !== undefined
+              ? (_globalGrantedMap[perm.id] || {})[role]
+              : null
+            : null;
+          img.src = isProjectScopeHandler
+            ? grantImgProject(p, newState, globalState)
+            : grantImg(p, newState);
+          img.title = isProjectScopeHandler
+            ? grantTitleProject(newState, globalState)
+            : newState === true
+              ? "Granted"
+              : newState === false
+                ? "Denied"
+                : "Not set – click to cycle";
           saveGrants();
-          _editMode = false;
-          renderDetailPanel();
-        });
-      }
-
-      // Inline Cancel button
-      var cancelBtn = content.querySelector('[data-cepi-action="cancel"]');
-      if (cancelBtn) {
-        cancelBtn.addEventListener("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          _editMode = false;
-          renderDetailPanel();
-        });
-      }
-    }
-
-    // Pencil Edit button (view mode)
-    var editBtn = content.querySelector('[data-cepi-action="edit"]');
-    if (editBtn) {
-      editBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        _editBuffer = {};
-        var src = _grantedMap[perm.id] || {};
-        ROLES.forEach(function (r) {
-          var v = src[r.name];
-          _editBuffer[r.name] = (v === undefined) ? null : v;
-        });
-        _editMode = true;
-        renderDetailPanel();
-      });
-    }
+        },
+        true,
+      );
+    });
   }
 
   function showDetailPanel(permId) {
     _activePermId = permId;
-    _editMode = false;
     renderDetailPanel();
+    cepiEnterMode();
   }
 
   function showGroupDetailPanel() {
     _activePermId = null;
-    _editMode = false;
     var container = document.querySelector(
       ".polarion-PreviewForm-ContentContainer",
     );
@@ -834,67 +1211,84 @@
     // Add new set
     var addBtn = content.querySelector('[data-cepi-action="set-new"]');
     if (addBtn) {
-      addBtn.addEventListener('click', function(e) {
+      addBtn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        _editingSetId = 'new';
-        _setEditBuffer = { name: '', filter: '' };
+        _editingSetId = "new";
+        _setEditBuffer = { name: "", filter: "" };
         // Init grant buffer for new set
-        PERMISSIONS.forEach(function(perm) {
+        PERMISSIONS.forEach(function (perm) {
           _setEditBuffer[perm.id] = {};
-          ROLES.forEach(function(role) { _setEditBuffer[perm.id][role.name] = null; });
+          ROLES.forEach(function (role) {
+            _setEditBuffer[perm.id][role.name] = null;
+          });
         });
         showGroupDetailPanel();
       });
     }
 
     // Edit existing set
-    content.querySelectorAll('[data-cepi-action="set-edit"]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var id = btn.getAttribute('data-cepi-set-id');
-        var set = null;
-        for (var i = 0; i < _customSets.length; i++) {
-          if (_customSets[i].id === id) { set = _customSets[i]; break; }
-        }
-        if (!set) return;
-        _editingSetId = id;
-        _setEditBuffer = { name: set.name, filter: set.filter };
-        PERMISSIONS.forEach(function(perm) {
-          _setEditBuffer[perm.id] = {};
-          ROLES.forEach(function(role) {
-            var v = set.grants && set.grants[perm.id] ? set.grants[perm.id][role.name] : null;
-            _setEditBuffer[perm.id][role.name] = (v === undefined) ? null : v;
+    content
+      .querySelectorAll('[data-cepi-action="set-edit"]')
+      .forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var id = btn.getAttribute("data-cepi-set-id");
+          var set = null;
+          for (var i = 0; i < _customSets.length; i++) {
+            if (_customSets[i].id === id) {
+              set = _customSets[i];
+              break;
+            }
+          }
+          if (!set) return;
+          _editingSetId = id;
+          _setEditBuffer = { name: set.name, filter: set.filter };
+          PERMISSIONS.forEach(function (perm) {
+            _setEditBuffer[perm.id] = {};
+            ROLES.forEach(function (role) {
+              var v =
+                set.grants && set.grants[perm.id]
+                  ? set.grants[perm.id][role.name]
+                  : null;
+              _setEditBuffer[perm.id][role.name] = v === undefined ? null : v;
+            });
           });
+          showGroupDetailPanel();
         });
-        showGroupDetailPanel();
       });
-    });
 
     // Delete set
-    content.querySelectorAll('[data-cepi-action="set-delete"]').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var id = btn.getAttribute('data-cepi-set-id');
-        _customSets = _customSets.filter(function(s) { return s.id !== id; });
-        saveCustomSets();
-        _editingSetId = null;
-        showGroupDetailPanel();
+    content
+      .querySelectorAll('[data-cepi-action="set-delete"]')
+      .forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var id = btn.getAttribute("data-cepi-set-id");
+          _customSets = _customSets.filter(function (s) {
+            return s.id !== id;
+          });
+          saveCustomSets();
+          _editingSetId = null;
+          showGroupDetailPanel();
+        });
       });
-    });
 
     // Set-editor: role grant toggles
-    content.querySelectorAll('[data-cepi-set-toggle]').forEach(function(img) {
-      var key = img.getAttribute('data-cepi-set-toggle');  // "permId:roleName"
-      var parts = key.split(':');
-      var permId = parts[0], roleName = parts.slice(1).join(':');
-      img.addEventListener('click', function(e) {
+    content.querySelectorAll("[data-cepi-set-toggle]").forEach(function (img) {
+      var key = img.getAttribute("data-cepi-set-toggle"); // "permId:roleName"
+      var parts = key.split(":");
+      var permId = parts[0],
+        roleName = parts.slice(1).join(":");
+      img.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
         if (!_setEditBuffer[permId]) _setEditBuffer[permId] = {};
-        _setEditBuffer[permId][roleName] = cycleGrant(_setEditBuffer[permId][roleName]);
+        _setEditBuffer[permId][roleName] = cycleGrant(
+          _setEditBuffer[permId][roleName],
+        );
         var p = imgPaths();
         img.src = grantImg(p, _setEditBuffer[permId][roleName]);
       });
@@ -903,24 +1297,34 @@
     // Save set
     var setsSaveBtn = content.querySelector('[data-cepi-action="set-save"]');
     if (setsSaveBtn) {
-      setsSaveBtn.addEventListener('click', function(e) {
+      setsSaveBtn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        var nameInp = content.querySelector('[data-cepi-set-name]');
-        var filterInp = content.querySelector('[data-cepi-set-filter]');
-        var name = nameInp ? nameInp.value.trim() : '';
-        var filter = filterInp ? filterInp.value.trim() : '';
-        if (!name) { alert('Please enter a set name.'); return; }
+        var nameInp = content.querySelector("[data-cepi-set-name]");
+        var filterInp = content.querySelector("[data-cepi-set-filter]");
+        var name = nameInp ? nameInp.value.trim() : "";
+        var filter = filterInp ? filterInp.value.trim() : "";
+        if (!name) {
+          alert("Please enter a set name.");
+          return;
+        }
         var grants = {};
-        PERMISSIONS.forEach(function(perm) {
+        PERMISSIONS.forEach(function (perm) {
           grants[perm.id] = {};
-          ROLES.forEach(function(role) {
-            var v = _setEditBuffer[perm.id] ? _setEditBuffer[perm.id][role.name] : null;
-            grants[perm.id][role.name] = (v === undefined) ? null : v;
+          ROLES.forEach(function (role) {
+            var v = _setEditBuffer[perm.id]
+              ? _setEditBuffer[perm.id][role.name]
+              : null;
+            grants[perm.id][role.name] = v === undefined ? null : v;
           });
         });
-        if (_editingSetId === 'new') {
-          _customSets.push({ id: genId(), name: name, filter: filter, grants: grants });
+        if (_editingSetId === "new") {
+          _customSets.push({
+            id: genId(),
+            name: name,
+            filter: filter,
+            grants: grants,
+          });
         } else {
           for (var i = 0; i < _customSets.length; i++) {
             if (_customSets[i].id === _editingSetId) {
@@ -938,9 +1342,11 @@
     }
 
     // Cancel set editing
-    var setsCancelBtn = content.querySelector('[data-cepi-action="set-cancel"]');
+    var setsCancelBtn = content.querySelector(
+      '[data-cepi-action="set-cancel"]',
+    );
     if (setsCancelBtn) {
-      setsCancelBtn.addEventListener('click', function(e) {
+      setsCancelBtn.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
         _editingSetId = null;
@@ -953,7 +1359,9 @@
 
   function deselectOotb() {
     document
-      .querySelectorAll(".JSTreeTableRow.selected:not([data-cepi-parent]):not([data-cepi-child])")
+      .querySelectorAll(
+        ".JSTreeTableRow.selected:not([data-cepi-parent]):not([data-cepi-child])",
+      )
       .forEach(function (r) {
         r.classList.remove("selected");
       });
@@ -966,6 +1374,60 @@
         r.removeAttribute("data-cepi-selected");
         r.style.background = "";
       });
+  }
+
+  /* ── Keep cepi rows at end of table (fix OOTB expand-under-cepi bug) ─ */
+
+  function _ensureCepiAtEnd() {
+    var cepiParent = document.querySelector("[data-cepi-parent]");
+    if (!cepiParent) return;
+    var next = cepiParent.nextSibling;
+    var hasOotbAfter = false;
+    while (next) {
+      if (
+        next.nodeType === 1 &&
+        next.getAttribute &&
+        !next.getAttribute("data-cepi-parent") &&
+        !next.getAttribute("data-cepi-child") &&
+        next.classList &&
+        next.classList.contains("JSTreeTableRow")
+      ) {
+        hasOotbAfter = true;
+        break;
+      }
+      next = next.nextSibling;
+    }
+    if (!hasOotbAfter) return;
+    // Move all cepi rows to after the last OOTB row
+    var allRows = Array.from(cepiParent.parentNode.children);
+    var lastOotb = null;
+    for (var i = allRows.length - 1; i >= 0; i--) {
+      var r = allRows[i];
+      if (
+        r.classList &&
+        r.classList.contains("JSTreeTableRow") &&
+        !r.getAttribute("data-cepi-parent") &&
+        !r.getAttribute("data-cepi-child")
+      ) {
+        lastOotb = r;
+        break;
+      }
+    }
+    if (!lastOotb) return;
+    var cepiRows = Array.from(
+      cepiParent.parentNode.querySelectorAll(
+        "[data-cepi-parent],[data-cepi-child]",
+      ),
+    );
+    cepiRows.forEach(function (r) {
+      r.remove();
+    });
+    var ref = lastOotb;
+    cepiRows.forEach(function (r) {
+      ref.insertAdjacentElement("afterend", r);
+      ref = r;
+    });
+    console.info("[cepi] Repositioned cepi rows after last OOTB row");
   }
 
   /* ── Main injection ─────────────────────────────────────────────────── */
@@ -1023,8 +1485,9 @@
         } else {
           deselectAll();
           parentRow.setAttribute("data-cepi-selected", "true");
-        parentRow.style.background = "#CDE6EB";
+          parentRow.style.background = "#CDE6EB";
           showGroupDetailPanel();
+          cepiEnterMode();
           setTimeout(deselectOotb, 100);
         }
       },
@@ -1060,7 +1523,7 @@
           e.stopImmediatePropagation();
           deselectAll();
           row.setAttribute("data-cepi-selected", "true");
-        row.style.background = "#CDE6EB";
+          row.style.background = "#CDE6EB";
           showDetailPanel(perm.id);
           setTimeout(deselectOotb, 100);
         },
@@ -1106,6 +1569,7 @@
         inject();
       } else {
         tryAddRoleCells();
+        _ensureCepiAtEnd();
       }
       if (ROLES.length === 0) {
         if (tryExtractRoles() && _activePermId) {
@@ -1118,10 +1582,36 @@
       // clear cepi selection.
       // Simple heuristic: if a cepi row is selected but _activePermId is null, we're in transition.
       // Instead: clear cepi selection only when Polarion shows its native panel for a non-cepi entity.
-      var hasCepiSelected = !!document.querySelector('[data-cepi-parent][data-cepi-selected="true"],[data-cepi-child][data-cepi-selected="true"]');
+      var hasCepiSelected = !!document.querySelector(
+        '[data-cepi-parent][data-cepi-selected="true"],[data-cepi-child][data-cepi-selected="true"]',
+      );
       if (hasCepiSelected && _activePermId === null) {
-        // Cepi row visually selected but our panel state is gone - clear visual state
         deselectAll();
+      }
+      // If cepi was active but something (SPA navigation, GWT repaint) replaced our panel,
+      // restore it immediately from in-memory state (no backend fetch needed here –
+      // Refresh is intercepted at the click level and calls loadGrants() itself).
+      if (_cepiActive && _activePermId) {
+        var panelContent = document.querySelector(
+          ".polarion-PreviewForm-Content",
+        );
+        if (panelContent && !panelContent.querySelector("[data-cepi-form]")) {
+          renderDetailPanel();
+          cepiEnterMode();
+        }
+      }
+      // Re-apply row highlight for active cepi selection after DOM mutations
+      if (_activePermId) {
+        var activeRow = document.querySelector(
+          '[data-cepi-pid="' + _activePermId + '"]',
+        );
+        if (
+          activeRow &&
+          activeRow.getAttribute("data-cepi-selected") !== "true"
+        ) {
+          activeRow.setAttribute("data-cepi-selected", "true");
+          activeRow.style.background = "#CDE6EB";
+        }
       }
     });
   }).observe(document.documentElement, { childList: true, subtree: true });

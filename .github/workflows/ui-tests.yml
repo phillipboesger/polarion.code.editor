@@ -65,7 +65,7 @@ jobs:
 
       - name: Deploy plugin JAR into extensions volume
         run: |
-          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
+          JAR_NAME=$(ls target/*.jar | grep -v -e 'javadoc' -e 'sources' | head -1 | xargs basename)
           echo "Deploying: $JAR_NAME"
           docker run --rm \
             -v polarion_extensions:/ext \

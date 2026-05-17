@@ -19,6 +19,7 @@ import org.apache.commons.io.IOUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.core.PlatformContext;
 import com.polarion.platform.security.IPermission;
@@ -30,6 +31,7 @@ import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
 import boesger.polarion.codeeditor.security.CodeEditorPermission;
 import boesger.polarion.codeeditor.service.CodeEditorService;
+import boesger.polarion.codeeditor.service.PermissionsService;
 
 /**
  * HTTP entry point for the Code Editor plugin.
@@ -84,6 +86,9 @@ public class CodeEditorServlet extends HttpServlet {
 		try {
 			if("/health".equals(pathInfo)) {
 				sendResponse(resp, "OK", 200);
+			}
+			else if("/permissions".equals(pathInfo)) {
+				handleGetPermissions(projectId, resp);
 			}
 			else if("/config/list".equals(pathInfo)) {
 				handleListConfigs(projectId, resp);
@@ -189,6 +194,9 @@ public class CodeEditorServlet extends HttpServlet {
 			if("/config/rename".equals(pathInfo)) {
 				handlePostRename(req, projectId, resp);
 			}
+			else if("/permissions".equals(pathInfo)) {
+				handlePostPermissions(req, projectId, resp);
+			}
 			else {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND);
 			}
@@ -210,6 +218,29 @@ public class CodeEditorServlet extends HttpServlet {
 		}
 
 		handleRenameFile(projectId, renameReq.oldName, renameReq.newName, resp);
+	}
+
+	private void handleGetPermissions(String projectId, HttpServletResponse resp) throws IOException {
+		PermissionsService svc = new PermissionsService(projectId);
+		Map<String, Map<String, Boolean>> grants = svc.loadGrants();
+		Map<String, Object> result = new HashMap<>();
+		result.put("grants", grants);
+		sendJson(resp, gson.toJson(result));
+	}
+
+	private void handlePostPermissions(HttpServletRequest req, String projectId, HttpServletResponse resp)
+			throws IOException, CodeEditorException {
+		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		GrantsRequest grantsReq = gson.fromJson(body,
+				new TypeToken<GrantsRequest>() {
+				}.getType());
+		if(grantsReq == null || grantsReq.grants == null) {
+			sendErrorSafely(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing grants");
+			return;
+		}
+		PermissionsService svc = new PermissionsService(projectId);
+		svc.saveGrants(grantsReq.grants);
+		sendJson(resp, "{\"status\":\"saved\"}");
 	}
 
 	private void handleListConfigs(String projectId, HttpServletResponse resp) throws IOException {
@@ -337,20 +368,12 @@ public class CodeEditorServlet extends HttpServlet {
 	private boolean hasPermission(IPermission permission, String projectId) {
 		IContextId contextId = resolveContextId(projectId);
 		IContextId globalContext = ContextId.getGlobalContextId();
-		if(permission != null && hasPermissionInContextSafely(permission, contextId)) {
-			return true;
-		}
-		if(permission != null && hasPermissionInContextSafely(permission, globalContext)) {
-			return true;
-		}
+		if(permission != null && hasPermissionInContextSafely(permission, contextId)) { return true; }
+		if(permission != null && hasPermissionInContextSafely(permission, globalContext)) { return true; }
 		String userName = securityService.getCurrentUser();
-		if(userName == null) {
-			return false;
-		}
+		if(userName == null) { return false; }
 		Collection<String> roles = getRolesForUserSafely(userName, contextId);
-		if(hasAdminRole(roles)) {
-			return true;
-		}
+		if(hasAdminRole(roles)) { return true; }
 		Collection<String> globalRoles = getRolesForUserSafely(userName, globalContext);
 		return hasAdminRole(globalRoles);
 	}
@@ -398,14 +421,16 @@ public class CodeEditorServlet extends HttpServlet {
 	}
 
 	private boolean hasAdminRole(Collection<String> roles) {
-		if(roles == null || roles.isEmpty()) {
-			return false;
-		}
+		if(roles == null || roles.isEmpty()) { return false; }
 		return roles.contains(GLOBAL_ADMIN_ROLE) || roles.contains(PROJECT_ADMIN_ROLE);
 	}
 
 	private static class RenameRequest {
 		String oldName;
 		String newName;
+	}
+
+	private static class GrantsRequest {
+		Map<String, Map<String, Boolean>> grants;
 	}
 }
