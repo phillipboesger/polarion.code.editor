@@ -1,9 +1,13 @@
 # Creates a new versioned GitHub Release (JAR + auto-generated changelog) in two ways:
 #
 #  1. AUTOMATIC – merge a PR that carries one of these labels:
-#       release:major  → breaking changes (X.0.0)
-#       release:minor  → new features     (x.Y.0)
-#       release:patch  → bug fixes        (x.y.Z)
+#       release:major  → breaking changes  (X.0.0)
+#       release:minor  → new features      (x.Y.0)   [or: enhancement]
+#       release:patch  → bug fixes         (x.y.Z)   [or: bug]
+#
+#     Standard GitHub labels are also mapped automatically:
+#       enhancement    → minor bump (x.Y.0)
+#       bug            → patch bump (x.y.Z)
 #
 #  2. MANUAL – open Actions → Release → Run workflow and choose a bump type.
 #
@@ -44,7 +48,9 @@ jobs:
         (
           contains(github.event.pull_request.labels.*.name, 'release:major') ||
           contains(github.event.pull_request.labels.*.name, 'release:minor') ||
-          contains(github.event.pull_request.labels.*.name, 'release:patch')
+          contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+          contains(github.event.pull_request.labels.*.name, 'bug') ||
+          contains(github.event.pull_request.labels.*.name, 'enhancement')
         )
       )
     runs-on: ubuntu-latest
@@ -79,7 +85,7 @@ jobs:
             LABELS="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
             if [[ "$LABELS" == *"release:major"* ]]; then
               echo "type=major" >> "$GITHUB_OUTPUT"
-            elif [[ "$LABELS" == *"release:minor"* ]]; then
+            elif [[ "$LABELS" == *"release:minor"* ]] || [[ "$LABELS" == *"enhancement"* ]]; then
               echo "type=minor" >> "$GITHUB_OUTPUT"
             else
               echo "type=patch" >> "$GITHUB_OUTPUT"
@@ -107,6 +113,18 @@ jobs:
   discover-test-shards:
     name: Discover Test Shards
     needs: []
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'release:major') ||
+          contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+          contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+          contains(github.event.pull_request.labels.*.name, 'bug') ||
+          contains(github.event.pull_request.labels.*.name, 'enhancement')
+        )
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -208,6 +226,18 @@ jobs:
   ui-tests:
     name: Playwright UI Tests (Release Gate)
     needs: []
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        (
+          contains(github.event.pull_request.labels.*.name, 'release:major') ||
+          contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+          contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+          contains(github.event.pull_request.labels.*.name, 'bug') ||
+          contains(github.event.pull_request.labels.*.name, 'enhancement')
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
