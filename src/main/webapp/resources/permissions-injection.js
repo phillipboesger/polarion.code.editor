@@ -36,10 +36,19 @@
   var _savedSnapshot = null; // snapshot of _grantedMap at last successful save (for Cancel)
   var _cepiActive = false; // true when any cepi row is selected
   var _globalGrantedMap = {}; // global-scope grants, used as inheritance baseline in project scope
+  var _lastKnownProjectId; // undefined = not yet tracked; used to detect scope switches
 
   /* ── DOM helpers ────────────────────────────────────────────────────── */
 
   function isTargetPage() {
+    // Only activate on the Polarion Permissions Management page.
+    // The SPA URL hash contains "permissions" (or "globalPermissions") for both
+    // global scope (#/administration/permissions) and project scope
+    // (#/project/PROJID/administration/permissions).
+    // Without this check the script would inject into any admin view that uses
+    // a JSTreeTable (Projects, Users, Groups, …).
+    if (!/permissions/i.test(location.hash)) return false;
+
     return !!(
       document.querySelector(".JSTreeTable") ||
       document.querySelector('[data-debug-id^="root/"]')
@@ -292,11 +301,18 @@
         PERMISSIONS.forEach(function (perm) {
           if (!_grantedMap[perm.id]) _grantedMap[perm.id] = {};
           ROLES.forEach(function (role) {
-            if (_grantedMap[perm.id][role.name] === undefined) {
-              _grantedMap[perm.id][role.name] = false;
+            // Nur fehlende Einträge (undefined) auffüllen – niemals explizit
+            // auf false setzen, da das einen Deny erzeugen würde. Rollen ohne
+            // Eintrag in der XML sind "nicht gesetzt" = null (grau), nicht deny.
+            if (!Object.prototype.hasOwnProperty.call(_grantedMap[perm.id], role.name)) {
+              _grantedMap[perm.id][role.name] = null;
             }
           });
         });
+        // Snapshot aktualisieren, damit Cancel nicht neu entdeckte Rollen verliert
+        if (!_dirty) {
+          _savedSnapshot = deepCloneGrants(_grantedMap);
+        }
         console.info(
           "[cepi] extracted " + ROLES.length + " roles from Polarion panel",
         );
@@ -1563,6 +1579,36 @@
     _scheduledInject = true;
     requestAnimationFrame(function () {
       _scheduledInject = false;
+
+      // If the user navigated away from the Permissions page, reset active
+      // state so stale panel-renders and row-highlights don't bleed into
+      // other admin views (Projects, Users, Groups, …) that share the same
+      // JSTreeTable structure.
+      if (!isTargetPage()) {
+        if (_cepiActive || _activePermId !== null) {
+          _cepiActive = false;
+          _activePermId = null;
+        }
+        return;
+      }
+
+      // ── Context-change detection: clear stale state when scope switches ──
+      var _currentCtx = _currentProjectId();
+      if (_lastKnownProjectId !== undefined && _lastKnownProjectId !== _currentCtx) {
+        // Scope changed (e.g. global → project or project A → project B).
+        // Reset all grant state so we never show the previous scope's values.
+        _grantedMap = {};
+        _globalGrantedMap = {};
+        ROLES = [];
+        _roleDone = false;
+        _dirty = false;
+        _savedSnapshot = null;
+        _activePermId = null;
+        _cepiActive = false;
+        loadGrants(); // fresh fetch for the new scope
+      }
+      _lastKnownProjectId = _currentCtx;
+
       if (!isInjected()) {
         _expanded = false;
         _roleDone = false;
