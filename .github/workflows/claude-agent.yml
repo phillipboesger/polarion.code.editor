@@ -241,11 +241,11 @@ jobs:
           ${ISSUE_BODY}
 
           Start implementing now."
-
-          claude \
+          
+          echo "$FULL_PROMPT" | claude \
+            --model claude-sonnet-4-6 \
             --print \
-            --dangerously-skip-permissions \
-            -p "${FULL_PROMPT}"
+            --dangerously-skip-permissions
 
       # ----------------------------------------------------------------
       # 9. Upload Playwright artifacts (always, for debugging)
