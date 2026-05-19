@@ -860,7 +860,7 @@
           <button class="icon-btn" id="fontSizeIncreaseBtn" title="Editor Font Size +">A+</button>
           <span class="font-size-indicator" id="fontSizeIndicator">14px</span>
           <span class="editor-toolbar-divider"></span>
-          <button id="saveBtn" class="action-btn" disabled>Save</button>
+          <button id="saveBtn" class="action-btn" title="Save current file (Ctrl+S)" disabled>Save</button>
         </div>
       </div>
 
@@ -3555,8 +3555,8 @@
       <h3 id="customDialogTitle">Confirm</h3>
       <p id="customDialogMessage" class="dialog-message"></p>
       <div class="modal-actions" style="margin-top:20px;">
-        <button id="customDialogCancelBtn" onclick="customDialogCancel()" class="action-btn secondary">Cancel</button>
-        <button id="customDialogOkBtn" onclick="customDialogOk()" class="action-btn">OK</button>
+        <button id="customDialogCancelBtn" onclick="customDialogCancel()" class="action-btn secondary" title="Cancel and close dialog">Cancel</button>
+        <button id="customDialogOkBtn" onclick="customDialogOk()" class="action-btn" title="Confirm action">OK</button>
       </div>
     </div>
   </div>
@@ -3581,8 +3581,8 @@
             <div id="newFileError" class="validation-error"></div>
         </div>
         <div class="modal-actions">
-            <button onclick="closeNewFileModal()" class="action-btn secondary">Cancel</button>
-            <button id="btnConfirmCreate" onclick="confirmCreateFile()" class="action-btn">Create File</button>
+            <button onclick="closeNewFileModal()" class="action-btn secondary" title="Cancel and close dialog">Cancel</button>
+            <button id="btnConfirmCreate" onclick="confirmCreateFile()" class="action-btn" title="Create the new file">Create File</button>
         </div>
     </div>
   </div>
@@ -3601,8 +3601,8 @@
             <div id="uploadPathError" class="validation-error"></div>
         </div>
         <div class="modal-actions">
-            <button onclick="closeUploadModal()" class="action-btn secondary">Cancel</button>
-            <button onclick="confirmUploadFile()" class="action-btn">Upload</button>
+            <button onclick="closeUploadModal()" class="action-btn secondary" title="Cancel and close dialog">Cancel</button>
+            <button onclick="confirmUploadFile()" class="action-btn" title="Upload the selected file">Upload</button>
         </div>
     </div>
   </div>
@@ -3623,8 +3623,8 @@
             <div id="renameFileError" class="validation-error"></div>
         </div>
         <div class="modal-actions">
-            <button onclick="closeRenameModal()" class="action-btn secondary">Cancel</button>
-            <button id="btnConfirmRename" onclick="confirmRenameFile()" class="action-btn">Rename</button>
+            <button onclick="closeRenameModal()" class="action-btn secondary" title="Cancel and close dialog">Cancel</button>
+            <button id="btnConfirmRename" onclick="confirmRenameFile()" class="action-btn" title="Rename the file">Rename</button>
         </div>
     </div>
   </div>
