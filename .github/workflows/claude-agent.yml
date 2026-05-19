@@ -1,0 +1,149 @@
+# Autonomous Claude Code Agent
+#
+# Triggered when the label "ai-implement" is added to an issue.
+# The agent implements the issue, iterates until unit tests pass,
+# and opens a pull request against main.
+#
+# Required secrets:
+#   ANTHROPIC_API_KEY – Anthropic API key for Claude Code
+#   PACKAGES_TOKEN    – PAT with read:packages for Polarion JARs (optional fallback to GITHUB_TOKEN)
+
+name: Claude Code Agent
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  claude-agent:
+    name: Claude Code Agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event.label.name == 'ai-implement'
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      packages: read
+
+    steps:
+      # ----------------------------------------------------------------
+      # 1. Source code
+      # ----------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # ----------------------------------------------------------------
+      # 2. Java + Maven (mirrors ci.yml setup)
+      # ----------------------------------------------------------------
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: PACKAGES_TOKEN
+
+      - name: Pre-download Maven dependencies
+        run: mvn --batch-mode dependency:go-offline
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------------
+      # 3. Install Claude Code CLI
+      # ----------------------------------------------------------------
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # ----------------------------------------------------------------
+      # 4. Git identity for commits and branch creation
+      # ----------------------------------------------------------------
+      - name: Configure Git
+        run: |
+          git config --global user.name "Claude Code Agent"
+          git config --global user.email "claude-agent@users.noreply.github.com"
+
+      # ----------------------------------------------------------------
+      # 5. Notify issue that the agent has started
+      # ----------------------------------------------------------------
+      - name: Comment – agent started
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.issue.number }},
+              body: [
+                '🤖 **Claude Code Agent started**',
+                '',
+                'I am working on this issue. I will report back once the pull request is ready.',
+              ].join('\n'),
+            });
+
+      # ----------------------------------------------------------------
+      # 6. Run Claude Code Agent
+      # ----------------------------------------------------------------
+      - name: Run Claude Code Agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+
+          # Write issue body to a temp file to avoid shell escaping issues
+          cat << 'ISSUE_EOF' > /tmp/issue-body.txt
+          ${{ github.event.issue.body }}
+          ISSUE_EOF
+
+          AGENT_INSTRUCTIONS=$(cat .github/claude-agent-prompt.md)
+          ISSUE_BODY=$(cat /tmp/issue-body.txt)
+
+          FULL_PROMPT="${AGENT_INSTRUCTIONS}
+
+          ---
+
+          ## Your current issue (#${ISSUE_NUMBER})
+
+          **Title:** ${ISSUE_TITLE}
+
+          **Description:**
+          ${ISSUE_BODY}
+
+          Start implementing now."
+
+          claude \
+            --print \
+            --dangerously-skip-permissions \
+            -p "${FULL_PROMPT}"
+
+      # ----------------------------------------------------------------
+      # 7. Notify issue with final status
+      # ----------------------------------------------------------------
+      - name: Comment – agent finished
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const icon = status === 'success' ? '✅' : '❌';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ github.event.issue.number }},
+              body: [
+                `${icon} **Claude Code Agent finished** – Status: \`${status}\``,
+                '',
+                'The pull request should now be open for your review.',
+              ].join('\n'),
+            });
