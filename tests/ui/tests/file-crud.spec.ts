@@ -339,6 +339,44 @@ test.describe('Code Editor – File CRUD', () => {
     await frame.locator('#renameFileModal .action-btn.secondary').first().click();
   });
 
+  // ── TOOLTIP COVERAGE ─────────────────────────────────────────────────────
+
+  test('New File modal buttons have tooltips', async ({ page: _ }) => {
+    await frame.locator('#newBtn').click();
+    await expect(frame.locator('#newFileModal')).toBeVisible({ timeout: 5_000 });
+    await expect(frame.locator('#newFileModal button.action-btn.secondary')).toHaveAttribute('title', 'Cancel and close dialog');
+    await expect(frame.locator('#btnConfirmCreate')).toHaveAttribute('title', 'Create the new file');
+    await frame.locator('#newFileModal button.action-btn.secondary').click();
+  });
+
+  test('Rename modal buttons have tooltips', async ({ page: _ }) => {
+    await createRequiredFileOrSkip(frame, TEST_FILE);
+    const item = frame.locator('.file-list li', { hasText: TEST_FILE }).first();
+    await item.hover();
+    const renBtn = item.locator('.list-btn').first();
+    await renBtn.click();
+    await expect(frame.locator('#renameFileModal')).toBeVisible({ timeout: 5_000 });
+    await expect(frame.locator('#renameFileModal button.action-btn.secondary')).toHaveAttribute('title', 'Cancel and close dialog');
+    await expect(frame.locator('#btnConfirmRename')).toHaveAttribute('title', 'Rename the file');
+    await frame.locator('#renameFileModal button.action-btn.secondary').click();
+  });
+
+  test('Upload modal buttons have tooltips', async ({ page }) => {
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.locator('#uploadBtn').click(),
+    ]);
+    await fileChooser.setFiles({
+      name: 'dummy.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('test'),
+    });
+    await expect(frame.locator('#uploadModal')).toHaveClass(/visible/, { timeout: 5_000 });
+    await expect(frame.locator('#uploadModal button.action-btn.secondary')).toHaveAttribute('title', 'Cancel and close dialog');
+    await expect(frame.locator('#uploadModal button.action-btn:not(.secondary)')).toHaveAttribute('title', 'Upload the selected file');
+    await frame.locator('#uploadModal button.action-btn.secondary').click();
+  });
+
   // ── API HEALTH ENDPOINT ───────────────────────────────────────────────────
 
   test('API health endpoint returns "OK"', async ({ page }) => {

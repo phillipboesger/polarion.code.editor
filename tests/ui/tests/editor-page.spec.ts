@@ -54,6 +54,23 @@ test.describe('Code Editor – Page Load & Empty State', () => {
     await expect(frame.locator('#saveBtn')).toBeDisabled();
   });
 
+  test('save button has tooltip with keyboard shortcut', async ({ page }) => {
+    const frame: Frame = await openEditor(page);
+    await expect(frame.locator('#saveBtn')).toHaveAttribute('title', 'Save current file (Ctrl+S)');
+  });
+
+  test('toolbar buttons have tooltips', async ({ page }) => {
+    const frame: Frame = await openEditor(page);
+    await expect(frame.locator('#newBtn')).toHaveAttribute('title', 'New File');
+    await expect(frame.locator('#uploadBtn')).toHaveAttribute('title', 'Upload file');
+    await expect(frame.locator('#downloadBtn')).toHaveAttribute('title', 'Download current file');
+    await expect(frame.locator('#collapseSidebar')).toHaveAttribute('title', 'Collapse Sidebar');
+    await expect(frame.locator('#expandSidebar')).toHaveAttribute('title', 'Show Explorer');
+    await expect(frame.locator('#fontSizeDecreaseBtn')).toHaveAttribute('title', 'Editor Font Size -');
+    await expect(frame.locator('#fontSizeResetBtn')).toHaveAttribute('title', 'Editor Font Size Reset');
+    await expect(frame.locator('#fontSizeIncreaseBtn')).toHaveAttribute('title', 'Editor Font Size +');
+  });
+
   test('toolbar shows "No File Selected" label when no file open', async ({ page }) => {
     await page.evaluate(() => localStorage.clear());
     const frame: Frame = await openEditor(page);
