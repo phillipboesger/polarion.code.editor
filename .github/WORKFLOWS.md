@@ -114,7 +114,7 @@ gh label create "release:major" --description "Triggers a major release (X.0.0)"
 
 ### Purpose
 
-Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance on every pull request targeting `main` and after every push to `main`.
+Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance on every pull request targeting `main`.
 
 ### Trigger
 
@@ -328,7 +328,7 @@ giving every PR (including those opened by the Claude Code Agent) a second set o
 
 | Event          | Condition                                            |
 | -------------- | ---------------------------------------------------- |
-| `pull_request` | Types: `opened`, `ready_for_review`; branch: `main`  |
+| `pull_request` | Types: `opened`, `ready_for_review`, `reopened`; branch: `main`  |
 
 The workflow is skipped for draft PRs (`github.event.pull_request.draft == false`).
 When a draft is converted to ready-for-review the `ready_for_review` event fires and

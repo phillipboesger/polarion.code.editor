@@ -143,7 +143,7 @@ to Phase 3 (rebuild from scratch).
 
 Only execute Phase 7 when **both** unit tests and Playwright tests are green.
 
-Determine the release label from the planner's Phase 7 classification:
+Determine the release label from the planner's **Section 8 (Release Classification)**:
 - Bug fix / internal change → `release:patch`
 - New feature / visible enhancement → `release:minor`
 - Breaking change → `release:major`
