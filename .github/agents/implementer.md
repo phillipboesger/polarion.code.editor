@@ -49,8 +49,23 @@ file operations.
 mvn --batch-mode verify
 ```
 
-Repeat until the build and all unit tests pass. Read compiler errors and test failures
-carefully; fix the root cause, not the symptom.
+If the build or tests fail, spawn the debug agent before trying to fix anything:
+
+```bash
+cat .github/agents/debugger.md
+```
+
+Replace `{{BUILD_OR_TEST_OUTPUT}}` with the Maven output, then spawn:
+
+```
+Agent({
+  subagent_type: "claude",
+  description: "Build failure analysis",
+  prompt: "<debugger.md content with Maven output substituted>"
+})
+```
+
+Apply the fixes, then re-run `mvn --batch-mode verify`. Repeat until green.
 
 ---
 
@@ -108,13 +123,13 @@ Read the debugger prompt template:
 cat .github/agents/debugger.md
 ```
 
-Replace `{{PLAYWRIGHT_OUTPUT}}` with the full test failure output, then spawn:
+Replace `{{BUILD_OR_TEST_OUTPUT}}` with the full Playwright failure output, then spawn:
 
 ```
 Agent({
   subagent_type: "claude",
   description: "Playwright failure analysis for issue #<NUMBER>",
-  prompt: "<debugger.md content with failure output substituted>"
+  prompt: "<debugger.md content with Playwright output substituted>"
 })
 ```
 
