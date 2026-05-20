@@ -114,14 +114,14 @@ gh label create "release:major" --description "Triggers a major release (X.0.0)"
 
 ### Purpose
 
-Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance. Provides post-merge feedback for every merge to `main`, regardless of whether a release is being published.
+Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance on every pull request targeting `main` and after every push to `main`.
 
 ### Trigger
 
-| Event                   | Condition             |
-| ----------------------- | --------------------- |
-| `pull_request` (closed) | PR merged into `main` |
-| `workflow_dispatch`     | Manual                |
+| Event               | Condition                                              |
+| ------------------- | ------------------------------------------------------ |
+| `pull_request`      | Types: `opened`, `synchronize`, `reopened`; branch: `main` |
+| `workflow_dispatch` | Manual                                                 |
 
 ### Jobs
 
