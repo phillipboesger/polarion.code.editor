@@ -1,0 +1,52 @@
+name: Request Copilot Review
+
+# Automatically assign GitHub Copilot as a reviewer on every new or
+# ready-for-review pull request targeting main.  Copilot posts an
+# AI-generated code review as a regular pull-request review.
+#
+# Prerequisites:
+#   • GitHub Copilot code review must be enabled for the repository
+#     (Settings → Copilot → "Code review" → enable).
+#   • The workflow needs pull-requests: write permission (granted below).
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    branches: [main]
+
+jobs:
+  request-copilot-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs – Copilot review is only useful on ready-for-review PRs.
+    if: github.event.pull_request.draft == false
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Request Copilot as reviewer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                reviewers: ['github-copilot[bot]'],
+              });
+              core.info(`Copilot review requested for PR #${pr.number}`);
+            } catch (err) {
+              // A 422 means Copilot is not available as a reviewer (e.g. the feature
+              // is not enabled for this repository).  Warn but don't fail the workflow.
+              if (err.status === 422) {
+                core.warning(
+                  'Could not assign github-copilot[bot] as reviewer. ' +
+                  'Make sure Copilot code review is enabled in repository settings.'
+                );
+              } else {
+                throw err;
+              }
+            }

@@ -12,8 +12,10 @@ This document describes every workflow and agentic workflow in this repository: 
 4. [compile-workflows.yml — Compile Agentic Workflows](#4-compile-workflowsyml--compile-agentic-workflows)
 5. [issue-triage.md — Issue Triage Agent](#5-issue-triagemd--issue-triage-agent)
 6. [daily-doc-updater.md — Daily Documentation Updater Agent](#6-daily-doc-updatermd--daily-documentation-updater-agent)
-7. [Shared Imports](#7-shared-imports)
-8. [Secrets Reference](#8-secrets-reference)
+7. [claude-agent.yml — Claude Code Agent (Multi-Agent)](#7-claude-agentyml--claude-code-agent-multi-agent)
+8. [copilot-review.yml — Automatic Copilot PR Review](#8-copilot-reviewyml--automatic-copilot-pr-review)
+9. [Shared Imports](#9-shared-imports)
+10. [Secrets Reference](#10-secrets-reference)
 
 ---
 
@@ -259,7 +261,101 @@ An AI agentic workflow that scans recently merged pull requests and commits, ide
 
 ---
 
-## 7. Shared Imports
+## 7. `claude-agent.yml` — Claude Code Agent (Multi-Agent)
+
+**File:** `.github/workflows/claude-agent.yml`
+**Prompt:** `.github/claude-agent-prompt.md`
+
+### Purpose
+
+Fully autonomous feature implementation triggered by adding the `ai-implement` label to a GitHub Issue. The agent works through a structured multi-agent loop: plan → implement → build → code-review → deploy → UI verify → fix → PR.
+
+### Multi-Agent Architecture
+
+The Claude Code Agent acts as an **orchestrator** and spawns specialized subagents at key phases:
+
+| Subagent | `subagent_type` | When spawned | Purpose |
+|---|---|---|---|
+| Planning agent | `plan` | Before any code | Analyzes the issue, designs classes/methods, lists tests to write |
+| Code review agent | `claude` | After unit tests are green | Reviews changed files for OSGi correctness, security, thread safety |
+| Debugging agent | `claude` | When Playwright tests fail | Analyzes failure output, identifies root cause, suggests minimal fix |
+
+This ensures the main agent never starts writing code without a plan, never deploys unreviewed code, and gets targeted help when UI tests fail rather than guessing.
+
+### Trigger
+
+| Event    | Condition                          |
+| -------- | ---------------------------------- |
+| `issues` | Label `ai-implement` added to issue |
+
+### Implementation Loop
+
+1. **Plan** – spawn planning subagent, read the output
+2. **Branch** – `claude/issue-<NUMBER>-<title>`
+3. **Implement** – edit files per plan
+4. **Unit tests** – `mvn verify` (repeat until green)
+5. **Code review** – spawn review subagent, fix findings, re-run tests
+6. **Package & deploy** – `mvn package -DskipTests` + `redeploy.sh`
+7. **Playwright tests** – `npm run test:ci` (spawn debug subagent on failure)
+8. **PR** – only when both test suites are green; opens as draft
+
+### Outputs
+
+- A draft pull request on a `claude/issue-*` branch
+- Playwright HTML report uploaded as artifact `playwright-report`
+- Issue comments: agent-started notification and agent-finished summary with run link
+
+### Secrets needed
+
+| Secret | Purpose |
+|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Authenticates the Claude Code CLI |
+| `PACKAGES_TOKEN` | Pull Polarion JARs from GitHub Packages and the Polarion Docker image from GHCR |
+
+---
+
+## 8. `copilot-review.yml` — Automatic Copilot PR Review
+
+**File:** `.github/workflows/copilot-review.yml`
+
+### Purpose
+
+Requests GitHub Copilot as a reviewer automatically on every non-draft pull request
+targeting `main`. Copilot posts an AI code review as a standard GitHub PR review,
+giving every PR (including those opened by the Claude Code Agent) a second set of eyes.
+
+### Trigger
+
+| Event          | Condition                                            |
+| -------------- | ---------------------------------------------------- |
+| `pull_request` | Types: `opened`, `ready_for_review`; branch: `main`  |
+
+The workflow is skipped for draft PRs (`github.event.pull_request.draft == false`).
+When a draft is converted to ready-for-review the `ready_for_review` event fires and
+Copilot review is requested at that point.
+
+### What it does
+
+1. Calls the GitHub Reviews API (`pulls.requestReviewers`) with `github-copilot[bot]`.
+2. If the repository does not have Copilot code review enabled it logs a warning and
+   exits cleanly (workflow stays green, no noise).
+
+### Outputs
+
+- A Copilot-authored pull request review on every eligible PR.
+
+### Secrets needed
+
+`GITHUB_TOKEN` (automatic — no additional secrets required).
+
+### Setup required
+
+Enable Copilot code review in repository settings:  
+_Settings → Copilot → Code review → Enable_
+
+---
+
+## 9. Shared Imports
 
 The `shared/` sub-folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
 
@@ -270,7 +366,7 @@ The `shared/` sub-folder contains Markdown files that are imported by agentic wo
 
 ---
 
-## 8. Secrets Reference
+## 10. Secrets Reference
 
 | Secret                   | Used by                                 | How to create                                                                                              |
 | ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
