@@ -12,7 +12,7 @@ name: Request Copilot Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, reopened]
     branches: [main]
 
 jobs:
@@ -32,6 +32,22 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
+
+            // Guard: skip if Copilot is already a requested reviewer to avoid
+            // noisy 422 warnings on reruns or duplicate events.
+            const { data: existing } = await github.rest.pulls.listRequestedReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+            const alreadyRequested = (existing.users ?? []).some(
+              u => u.login === 'github-copilot[bot]'
+            );
+            if (alreadyRequested) {
+              core.info(`Copilot is already a requested reviewer for PR #${pr.number} – skipping.`);
+              return;
+            }
+
             try {
               await github.rest.pulls.requestReviewers({
                 owner: context.repo.owner,
@@ -52,8 +68,8 @@ jobs:
                   `A maintainer can request it manually. Details: ${message}`
                 );
               } else if (status === 422) {
-                // 422 covers several cases: Copilot review not enabled, reviewer already
-                // requested, reviewer cannot be assigned, or validation errors.
+                // 422 covers: Copilot review not enabled, reviewer cannot be assigned,
+                // or other validation errors.
                 core.warning(
                   `PR #${pr.number}: could not assign github-copilot[bot] as reviewer. ` +
                   `Details: ${message}. ` +

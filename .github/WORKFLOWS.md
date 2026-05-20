@@ -264,7 +264,7 @@ An AI agentic workflow that scans recently merged pull requests and commits, ide
 ## 7. `claude-agent.yml` — Claude Code Agent (Multi-Agent)
 
 **File:** `.github/workflows/claude-agent.yml`
-**Prompt:** `.github/claude-agent-prompt.md`
+**Prompts:** `.github/agents/main.md` (shared project context) + `.github/agents/implementer.md` (orchestrator loop); subagent templates in `.github/agents/planner.md`, `reviewer.md`, `debugger.md`
 
 ### Purpose
 
