@@ -1,13 +1,14 @@
 name: Request Copilot Review
 
-# Automatically assign GitHub Copilot as a reviewer on every new or
-# ready-for-review pull request targeting main.  Copilot posts an
-# AI-generated code review as a regular pull-request review.
+# Automatically assign GitHub Copilot as a reviewer on every non-draft pull request
+# targeting main.  Copilot posts an AI-generated code review as a regular PR review.
 #
 # Prerequisites:
 #   • GitHub Copilot code review must be enabled for the repository
 #     (Settings → Copilot → "Code review" → enable).
-#   • The workflow needs pull-requests: write permission (granted below).
+#
+# Note on forks: pull_request events from forks use a read-only GITHUB_TOKEN.
+# The workflow handles this gracefully (warns, does not fail).
 
 on:
   pull_request:
@@ -19,6 +20,7 @@ jobs:
     name: Request Copilot Review
     runs-on: ubuntu-latest
     # Skip draft PRs – Copilot review is only useful on ready-for-review PRs.
+    # When a draft is converted to ready_for_review the event fires again.
     if: github.event.pull_request.draft == false
 
     permissions:
@@ -39,12 +41,24 @@ jobs:
               });
               core.info(`Copilot review requested for PR #${pr.number}`);
             } catch (err) {
-              // A 422 means Copilot is not available as a reviewer (e.g. the feature
-              // is not enabled for this repository).  Warn but don't fail the workflow.
-              if (err.status === 422) {
+              const status  = err.status ?? err.response?.status;
+              const message = err.response?.data?.message ?? err.message ?? String(err);
+
+              if (status === 403) {
+                // Forked PRs: GITHUB_TOKEN is read-only – cannot request reviewers.
                 core.warning(
-                  'Could not assign github-copilot[bot] as reviewer. ' +
-                  'Make sure Copilot code review is enabled in repository settings.'
+                  `PR #${pr.number}: cannot request Copilot review from a fork ` +
+                  `(GITHUB_TOKEN is read-only for fork events). ` +
+                  `A maintainer can request it manually. Details: ${message}`
+                );
+              } else if (status === 422) {
+                // 422 covers several cases: Copilot review not enabled, reviewer already
+                // requested, reviewer cannot be assigned, or validation errors.
+                core.warning(
+                  `PR #${pr.number}: could not assign github-copilot[bot] as reviewer. ` +
+                  `Details: ${message}. ` +
+                  `If Copilot code review is not yet enabled, go to ` +
+                  `Settings → Copilot → Code review → Enable.`
                 );
               } else {
                 throw err;
