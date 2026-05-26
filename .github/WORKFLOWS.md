@@ -114,13 +114,13 @@ gh label create "release:major" --description "Triggers a major release (X.0.0)"
 
 ### Purpose
 
-Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance on every pull request targeting `main`.
+Runs the full Playwright end-to-end UI test suite against a live Polarion Docker instance on pull requests targeting `main` that change source or test files.
 
 ### Trigger
 
 | Event               | Condition                                              |
 | ------------------- | ------------------------------------------------------ |
-| `pull_request`      | Types: `opened`, `synchronize`, `reopened`; branch: `main` |
+| `pull_request`      | Types: `opened`, `synchronize`, `reopened`; branch: `main`; paths: `src/**`, `tests/ui/**`, `pom.xml`, `META-INF/**`, `plugin.xml` |
 | `workflow_dispatch` | Manual                                                 |
 
 ### Jobs
@@ -143,7 +143,7 @@ Runs the full Playwright end-to-end UI test suite against a live Polarion Docker
 
 ### Relationship to `release.yml`
 
-`release.yml` contains its own `ui-tests` job that acts as a hard release gate (`fail-on-error: true`, 30-day artifact retention). This standalone workflow runs for **every** merge to `main` — including non-release PRs — providing continuous post-merge feedback. When a **release PR** is merged, both workflows fire; this is intentional: the standalone run provides quick feedback, while the release pipeline's gate controls whether the release is published.
+`release.yml` contains its own `ui-tests` job that acts as a hard release gate (`fail-on-error: true`, 30-day artifact retention). This standalone workflow runs on **every pull request targeting `main`** that touches source or test files (paths filter: `src/**`, `tests/ui/**`, `pom.xml`, `META-INF/**`, `plugin.xml`) — including non-release PRs — providing pre-merge feedback. PRs that only change `.github/` files (documentation, workflows, agent prompts) skip this workflow. When a **release PR** is merged, the release pipeline's `ui-tests` gate controls whether the release is published.
 
 ---
 
@@ -264,7 +264,7 @@ An AI agentic workflow that scans recently merged pull requests and commits, ide
 ## 7. `claude-agent.yml` — Claude Code Agent (Multi-Agent)
 
 **File:** `.github/workflows/claude-agent.yml`
-**Prompts:** `.github/agents/main.md` (shared project context) + `.github/agents/implementer.md` (orchestrator loop); subagent templates in `.github/agents/planner.md`, `reviewer.md`, `debugger.md`
+**Prompts:** `.github/agents/main.md` (shared project context) + `.github/agents/implementer.md` (orchestrator loop); subagent templates in `.github/agents/planner.md`, `.github/agents/reviewer.md`, `.github/agents/debugger.md`
 
 ### Purpose
 
