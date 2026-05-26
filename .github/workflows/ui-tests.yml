@@ -14,6 +14,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+    paths:
+      - "src/**"
+      - "tests/ui/**"
+      - "pom.xml"
+      - "META-INF/**"
+      - "plugin.xml"
   workflow_dispatch:
 
 jobs:

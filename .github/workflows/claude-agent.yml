@@ -184,52 +184,15 @@ jobs:
           ${{ github.event.issue.body }}
           ISSUE_EOF
 
-          AGENT_INSTRUCTIONS=$(cat .github/claude-agent-prompt.md)
+          AGENT_MAIN=$(cat .github/agents/main.md)
+          AGENT_IMPL=$(cat .github/agents/implementer.md)
           ISSUE_BODY=$(cat /tmp/issue-body.txt)
 
-          FULL_PROMPT="${AGENT_INSTRUCTIONS}
+          FULL_PROMPT="${AGENT_MAIN}
 
-          ## Runtime Environment
+          ---
 
-          A fully running Polarion instance is available at http://localhost (admin/admin).
-          Use this to verify your implementation after each deploy.
-
-          ### How to deploy your changes into Polarion
-
-          After building the JAR with \`mvn --batch-mode package -DskipTests\`, run:
-
-          \`\`\`bash
-          /opt/polarion-scripts/redeploy.sh . polarion custom docker
-          \`\`\`
-
-          This script will:
-          1. Find the JAR in target/
-          2. Copy it into the running Polarion container
-          3. Restart Polarion
-          4. Wait until Polarion is healthy again
-
-          After the redeploy completes, Polarion is ready for UI verification.
-
-          ### How to run Playwright UI tests
-
-          \`\`\`bash
-          cd tests/ui
-          npm run test:ci
-          \`\`\`
-
-          Playwright results are in tests/ui/test-results/.
-          Read the failures carefully and fix until all tests pass.
-
-          ### Your full implementation loop
-
-          1. Create branch: claude/issue-${ISSUE_NUMBER}-<short-title>
-          2. Implement the feature
-          3. Run: mvn --batch-mode verify (unit tests must pass)
-          4. Run: mvn --batch-mode package -DskipTests
-          5. Run: /opt/polarion-scripts/redeploy.sh . polarion custom docker
-          6. Run: cd tests/ui && npm run test:ci
-          7. If Playwright tests fail: read failures, fix code, go back to step 3
-          8. Only open a PR once both unit tests AND Playwright tests are green
+          ${AGENT_IMPL}
 
           ---
 
