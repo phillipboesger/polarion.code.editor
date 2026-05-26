@@ -61,12 +61,23 @@ jobs:
               const message = err.response?.data?.message ?? err.message ?? String(err);
 
               if (status === 403) {
-                // Forked PRs: GITHUB_TOKEN is read-only – cannot request reviewers.
-                core.warning(
-                  `PR #${pr.number}: cannot request Copilot review from a fork ` +
-                  `(GITHUB_TOKEN is read-only for fork events). ` +
-                  `A maintainer can request it manually. Details: ${message}`
-                );
+                // 403 can mean a fork PR (read-only token) or a permission/org restriction.
+                // Detect forks explicitly so the warning message is accurate.
+                const isFork =
+                  pr.head.repo?.fork === true ||
+                  pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+                if (isFork) {
+                  core.warning(
+                    `PR #${pr.number}: cannot request Copilot review from a fork ` +
+                    `(GITHUB_TOKEN is read-only for fork events). ` +
+                    `A maintainer can request it manually. Details: ${message}`
+                  );
+                } else {
+                  core.warning(
+                    `PR #${pr.number}: received HTTP 403 while requesting Copilot review. ` +
+                    `This may be a missing permission or an org restriction. Details: ${message}`
+                  );
+                }
               } else if (status === 422) {
                 // 422 covers: Copilot review not enabled, reviewer cannot be assigned,
                 // or other validation errors.
