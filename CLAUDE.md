@@ -40,7 +40,8 @@ All endpoints are mounted under `/polarion/code-editor/api/`:
 |---|---|---|
 | `GET` | `/health` | Health check, returns `OK` |
 | `GET` | `/config/list` | List all managed files |
-| `GET` | `/config/file/{filename}` | Read a file |
+| `GET` | `/config/file/{filename}` | Read a file (`?download=true` forces download) |
+| `GET` | `/files/tree?path={path}` | Browse the repository file tree |
 | `PUT` | `/config/file/{filename}` | Write a file |
 | `DELETE` | `/config/file/{filename}` | Delete a file |
 | `POST` | `/config/rename` | Rename a file |
