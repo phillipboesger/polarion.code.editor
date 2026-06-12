@@ -170,8 +170,13 @@ Keeps the compiled `.lock.yml` files in sync with their `.md` source files. GitH
 
 ### Outputs
 
-- Updated `.lock.yml` files committed back to the branch (push events only).
-- On pull requests: diff is computed but not committed (lets you review changes before merging).
+- Updated `.lock.yml` files committed back to the branch (direct pushes to `main` only).
+- On pull requests and feature-branch pushes: diff is computed but not committed (lets you review changes before merging).
+
+### Known limitations
+
+- The default `GITHUB_TOKEN` cannot push changes to files under `.github/workflows/`. If the auto-commit on `main` ever needs to push regenerated lock files, the workflow will fail until it is given a PAT with the `workflow` scope.
+- Newer `gh-aw` compiler versions can produce different lock files than the committed ones (e.g. requiring new secrets such as `ANTHROPIC_API_KEY`). Such changes need a deliberate, reviewed recompile — do not blindly regenerate.
 
 ### Secrets needed
 
