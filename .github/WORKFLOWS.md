@@ -310,11 +310,11 @@ _Settings → Copilot → Code review → Enable_
 
 ## 8. Shared Imports
 
-The `shared/` sub-folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
+The `.github/workflows/shared/` folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
 
-| File             | Imported by            | Purpose                                                            |
-| ---------------- | ---------------------- | ------------------------------------------------------------------ |
-| `shared/mood.md` | `daily-doc-updater.md` | Tone/style instructions for the AI agent. Currently a placeholder. |
+| File                                | Imported by            | Purpose                                                            |
+| ----------------------------------- | ---------------------- | ------------------------------------------------------------------ |
+| `.github/workflows/shared/mood.md`  | `daily-doc-updater.md` | Tone/style instructions for the AI agent. Currently a placeholder. |
 
 ---
 

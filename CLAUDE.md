@@ -55,8 +55,14 @@ mvn --batch-mode verify
 # Build the plugin JAR without tests (for deployment)
 mvn --batch-mode package -DskipTests
 
-# Deploy into a running Polarion Docker container (when available)
+# Deploy into a running Polarion Docker container — only in environments that
+# provide the redeploy script (e.g. the project dev container); it is NOT part
+# of this repository
 /opt/polarion-scripts/redeploy.sh . polarion custom docker
+
+# Manual deployment alternative (any Polarion installation):
+# copy the JAR into <POLARION_HOME>/polarion/plugins/ and restart Polarion
+cp target/boesger.polarion.code-editor-*.jar <POLARION_HOME>/polarion/plugins/
 
 # Run Playwright UI tests (requires a running Polarion with the plugin deployed)
 cd tests/ui && npm run test:ci
