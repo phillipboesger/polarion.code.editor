@@ -141,6 +141,8 @@ Javadoc, and any other affected documentation so that docs never drift from the 
   `PlatformContext.getPlatform().lookupService(...)`.
 - **Tests:** Every new or changed execution path gets a unit test; every new
   user-facing behaviour gets a Playwright test.
+- **Generated files:** Never edit `.lock.yml` files in `.github/workflows/` — they
+  are auto-generated from their `.md` sources by `compile-workflows.yml`.
 
 ## Git & Release Conventions
 

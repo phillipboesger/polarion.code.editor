@@ -1,0 +1,93 @@
+name: Request Copilot Review
+
+# Automatically assign GitHub Copilot as a reviewer on every non-draft pull request
+# targeting main.  Copilot posts an AI-generated code review as a regular PR review.
+#
+# Prerequisites:
+#   • GitHub Copilot code review must be enabled for the repository
+#     (Settings → Copilot → "Code review" → enable).
+#
+# Note on forks: pull_request events from forks use a read-only GITHUB_TOKEN.
+# The workflow handles this gracefully (warns, does not fail).
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+    branches: [main]
+
+jobs:
+  request-copilot-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    # Skip draft PRs – Copilot review is only useful on ready-for-review PRs.
+    # When a draft is converted to ready_for_review the event fires again.
+    if: github.event.pull_request.draft == false
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Request Copilot as reviewer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // Guard: skip if Copilot is already a requested reviewer to avoid
+            // noisy 422 warnings on reruns or duplicate events.
+            const { data: existing } = await github.rest.pulls.listRequestedReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+            const alreadyRequested = (existing.users ?? []).some(
+              u => u.login === 'github-copilot[bot]'
+            );
+            if (alreadyRequested) {
+              core.info(`Copilot is already a requested reviewer for PR #${pr.number} – skipping.`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                reviewers: ['github-copilot[bot]'],
+              });
+              core.info(`Copilot review requested for PR #${pr.number}`);
+            } catch (err) {
+              const status  = err.status ?? err.response?.status;
+              const message = err.response?.data?.message ?? err.message ?? String(err);
+
+              if (status === 403) {
+                // 403 can mean a fork PR (read-only token) or a permission/org restriction.
+                // Detect forks explicitly so the warning message is accurate.
+                const isFork =
+                  pr.head.repo?.fork === true ||
+                  pr.head.repo?.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+                if (isFork) {
+                  core.warning(
+                    `PR #${pr.number}: cannot request Copilot review from a fork ` +
+                    `(GITHUB_TOKEN is read-only for fork events). ` +
+                    `A maintainer can request it manually. Details: ${message}`
+                  );
+                } else {
+                  core.warning(
+                    `PR #${pr.number}: received HTTP 403 while requesting Copilot review. ` +
+                    `This may be a missing permission or an org restriction. Details: ${message}`
+                  );
+                }
+              } else if (status === 422) {
+                // 422 covers: Copilot review not enabled, reviewer cannot be assigned,
+                // or other validation errors.
+                core.warning(
+                  `PR #${pr.number}: could not assign github-copilot[bot] as reviewer. ` +
+                  `Details: ${message}. ` +
+                  `If Copilot code review is not yet enabled, go to ` +
+                  `Settings → Copilot → Code review → Enable.`
+                );
+              } else {
+                throw err;
+              }
+            }

@@ -1,8 +1,8 @@
 # GitHub Workflows – polarion.code.editor
 
-This document describes every workflow in this repository: what it does, when it runs, how it is triggered, what secrets it needs, and what it produces.
+This document describes every workflow and agentic workflow in this repository: what it does, when it runs, how it is triggered, what secrets it needs, and what it produces.
 
-AI-assisted development is **not** done via GitHub Actions in this repository. Development happens locally with the Claude Code CLI — see `CLAUDE.md` in the repository root and the subagents in `.claude/agents/`.
+**Note on AI-assisted development:** Feature implementation by AI is **not** done via GitHub Actions in this repository — it happens locally with the Claude Code CLI (see `CLAUDE.md` in the repository root and the subagents in `.claude/agents/`). The agentic workflows below cover repository housekeeping only (issue triage, documentation updates, PR review).
 
 ---
 
@@ -11,7 +11,12 @@ AI-assisted development is **not** done via GitHub Actions in this repository. D
 1. [ci.yml — CI: Build & Test](#1-ciyml--ci-build--test)
 2. [release.yml — Release Pipeline](#2-releaseyml--release-pipeline)
 3. [ui-tests.yml — Playwright UI Tests (standalone)](#3-ui-testsyml--playwright-ui-tests-standalone)
-4. [Secrets Reference](#4-secrets-reference)
+4. [compile-workflows.yml — Compile Agentic Workflows](#4-compile-workflowsyml--compile-agentic-workflows)
+5. [issue-triage.md — Issue Triage Agent](#5-issue-triagemd--issue-triage-agent)
+6. [daily-doc-updater.md — Daily Documentation Updater Agent](#6-daily-doc-updatermd--daily-documentation-updater-agent)
+7. [copilot-review.yml — Automatic Copilot PR Review](#7-copilot-reviewyml--automatic-copilot-pr-review)
+8. [Shared Imports](#8-shared-imports)
+9. [Secrets Reference](#9-secrets-reference)
 
 ---
 
@@ -139,13 +144,181 @@ Runs the full Playwright end-to-end UI test suite against a live Polarion Docker
 
 ### Relationship to `release.yml`
 
-`release.yml` contains its own `ui-tests` job that acts as a hard release gate (`fail-on-error: true`, 30-day artifact retention). This standalone workflow runs on **every pull request targeting `main`** that touches source or test files (paths filter: `src/**`, `tests/ui/**`, `pom.xml`, `META-INF/**`, `plugin.xml`) — including non-release PRs — providing pre-merge feedback. PRs that only change `.github/` files (documentation, workflows) skip this workflow. When a **release PR** is merged, the release pipeline's `ui-tests` gate controls whether the release is published.
+`release.yml` contains its own `ui-tests` job that acts as a hard release gate (`fail-on-error: true`, 30-day artifact retention). This standalone workflow runs on **every pull request targeting `main`** that touches source or test files (paths filter: `src/**`, `tests/ui/**`, `pom.xml`, `META-INF/**`, `plugin.xml`) — including non-release PRs — providing pre-merge feedback. PRs that only change `.github/` files (documentation, workflows, agent prompts) skip this workflow. When a **release PR** is merged, the release pipeline's `ui-tests` gate controls whether the release is published.
 
 ---
 
-## 4. Secrets Reference
+## 4. `compile-workflows.yml` — Compile Agentic Workflows
 
-| Secret           | Used by                                 | How to create                                                                                              |
-| ---------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `PACKAGES_TOKEN` | `ci.yml`, `release.yml`, `ui-tests.yml` | PAT → _Scopes: `read:packages`_. Required only if the Polarion JARs are in a different org than this repo. |
-| `RELEASE_TOKEN`  | `release.yml`                           | PAT → _Scopes: `repo`_. Required when `main` is a protected branch (default `GITHUB_TOKEN` cannot push).   |
+### Purpose
+
+Keeps the compiled `.lock.yml` files in sync with their `.md` source files. GitHub's Agentic Workflow runtime executes `.lock.yml` files (not `.md`); this workflow regenerates them automatically using the `gh aw compile` command whenever a source file changes.
+
+### Trigger
+
+| Event               | Condition                                          |
+| ------------------- | -------------------------------------------------- |
+| `push`              | Any `.md` file changed inside `.github/workflows/` |
+| `pull_request`      | Any `.md` file changed inside `.github/workflows/` |
+| `workflow_dispatch` | Manual                                             |
+
+### Jobs
+
+| Job       | What it does                                                                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compile` | Installs the `gh-aw` CLI extension, runs `gh aw compile`, and auto-commits changed `.lock.yml` files on direct pushes to `main` with a `[skip ci]` commit. |
+
+### Outputs
+
+- Updated `.lock.yml` files committed back to the branch (push events only).
+- On pull requests: diff is computed but not committed (lets you review changes before merging).
+
+### Secrets needed
+
+`GITHUB_TOKEN` (automatic — no additional secrets required).
+
+### Setup required
+
+The repository must allow Actions to create pull requests:  
+_Settings → Actions → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"_
+
+---
+
+## 5. `issue-triage.md` — Issue Triage Agent
+
+**Files:** `.github/workflows/issue-triage.md` (source) + `.github/workflows/issue-triage.lock.yml` (compiled, do not edit)
+
+### Purpose
+
+An AI agentic workflow that automatically triages newly opened issues. It reads the issue title and body, assigns a label, and posts an acknowledgement comment — reducing maintainer toil for routine issue intake. It does **not** implement issues — implementation is done locally via the Claude Code CLI (see `CLAUDE.md`).
+
+### Trigger
+
+| Event    | Condition                   |
+| -------- | --------------------------- |
+| `issues` | Types: `opened`, `reopened` |
+
+### What the agent does
+
+1. Classifies the issue as **bug**, **enhancement**, **question**, **documentation**, or **duplicate**.
+2. Applies the matching label via the GitHub Issues API.
+3. Posts a concise comment (max 5 sentences) that greets the reporter, explains the label choice, and asks for any missing context (e.g. reproduction steps for bugs, missing context for questions).
+
+> The comment is written in **the same language as the issue** (English, German, etc.).
+
+### Secrets needed
+
+| Secret                 | Purpose                                                       |
+| ---------------------- | ------------------------------------------------------------- |
+| `COPILOT_GITHUB_TOKEN` | Required by the `gh-aw` runtime to call the AI model          |
+| `GH_AW_GITHUB_TOKEN`   | GitHub MCP server token for reading/writing issues and labels |
+
+### Notes
+
+- The compiled `.lock.yml` is auto-regenerated by `compile-workflows.yml` whenever `issue-triage.md` is modified. **Never edit the `.lock.yml` directly.**
+- Labels must exist on the repository before the agent can apply them. The labels `bug`, `enhancement`, `question`, `documentation`, and `duplicate` are GitHub defaults and exist on every new repository.
+
+---
+
+## 6. `daily-doc-updater.md` — Daily Documentation Updater Agent
+
+**Files:** `.github/workflows/daily-doc-updater.md` (source) + `.github/workflows/daily-doc-updater.lock.yml` (compiled, do not edit)
+
+### Purpose
+
+An AI agentic workflow that scans recently merged pull requests and commits, identifies undocumented changes, and opens a draft PR to update the project documentation. Reduces documentation drift over time.
+
+### Trigger
+
+| Event               | Condition                           |
+| ------------------- | ----------------------------------- |
+| `schedule`          | Every Friday at ~21:07 UTC (weekly) |
+| `workflow_dispatch` | Manual                              |
+
+### What the agent does
+
+1. Searches for PRs merged in the last 24 hours.
+2. Analyses changes for new features, removals, and breaking changes.
+3. Reads documentation guidelines from `.github/instructions/documentation.instructions.md`.
+4. Updates Markdown/MDX files under `docs/` accordingly.
+5. Opens a PR labelled `documentation, automation` with `auto-merge: true`.
+
+### Outputs
+
+- A GitHub pull request with documentation updates (if changes are found).
+
+### Secrets needed
+
+| Secret                   | Purpose                                    |
+| ------------------------ | ------------------------------------------ |
+| `COPILOT_GITHUB_TOKEN`   | AI model access for the `gh-aw` runtime    |
+| `GH_AW_GITHUB_TOKEN`     | GitHub MCP server                          |
+| `GH_AW_CI_TRIGGER_TOKEN` | Trigger downstream CI from the agent's PRs |
+
+### Notes
+
+- **This workflow expects a `docs/` directory** (Astro Starlight layout: `docs/src/content/docs/`). If this directory does not exist in the repository the agent will find nothing to update and the run will produce no PR.
+- The compiled `.lock.yml` is auto-regenerated by `compile-workflows.yml`. **Never edit it directly.**
+
+---
+
+## 7. `copilot-review.yml` — Automatic Copilot PR Review
+
+**File:** `.github/workflows/copilot-review.yml`
+
+### Purpose
+
+Requests GitHub Copilot as a reviewer automatically on every non-draft pull request
+targeting `main`. Copilot posts an AI code review as a standard GitHub PR review,
+giving every PR a second set of eyes.
+
+### Trigger
+
+| Event          | Condition                                            |
+| -------------- | ---------------------------------------------------- |
+| `pull_request` | Types: `opened`, `ready_for_review`, `reopened`; branch: `main`  |
+
+The workflow is skipped for draft PRs (`github.event.pull_request.draft == false`).
+When a draft is converted to ready-for-review the `ready_for_review` event fires and
+Copilot review is requested at that point.
+
+### What it does
+
+1. Calls the GitHub Reviews API (`pulls.requestReviewers`) with `github-copilot[bot]`.
+2. If the repository does not have Copilot code review enabled it logs a warning and
+   exits cleanly (workflow stays green, no noise).
+
+### Outputs
+
+- A Copilot-authored pull request review on every eligible PR.
+
+### Secrets needed
+
+`GITHUB_TOKEN` (automatic — no additional secrets required).
+
+### Setup required
+
+Enable Copilot code review in repository settings:  
+_Settings → Copilot → Code review → Enable_
+
+---
+
+## 8. Shared Imports
+
+The `shared/` sub-folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
+
+| File             | Imported by            | Purpose                                                            |
+| ---------------- | ---------------------- | ------------------------------------------------------------------ |
+| `shared/mood.md` | `daily-doc-updater.md` | Tone/style instructions for the AI agent. Currently a placeholder. |
+
+---
+
+## 9. Secrets Reference
+
+| Secret                   | Used by                                 | How to create                                                                                              |
+| ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `PACKAGES_TOKEN`         | `ci.yml`, `release.yml`, `ui-tests.yml` | PAT → _Scopes: `read:packages`_. Required only if the Polarion JARs are in a different org than this repo. |
+| `RELEASE_TOKEN`          | `release.yml`                           | PAT → _Scopes: `repo`_. Required when `main` is a protected branch (default `GITHUB_TOKEN` cannot push).   |
+| `COPILOT_GITHUB_TOKEN`   | `issue-triage`, `daily-doc-updater`     | Provided by the `gh-aw` runtime — usually a GitHub App token, not a personal PAT.                          |
+| `GH_AW_GITHUB_TOKEN`     | `issue-triage`, `daily-doc-updater`     | GitHub App installation token for the MCP server used by agentic workflows.                                |
+| `GH_AW_CI_TRIGGER_TOKEN` | `daily-doc-updater`                     | Token allowing the agent to trigger CI on PRs it creates.                                                  |
