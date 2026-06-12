@@ -15,7 +15,7 @@ tested.
 1. Read the changed production code so your tests verify real behaviour, not the plan's
    assumptions.
 2. Study existing tests first and match their structure, naming, and helpers:
-   - Unit tests: JUnit 5 in `src/test/java`
+   - Unit tests: JUnit 4 in `src/test/java`
    - UI tests: Playwright (TypeScript) in `tests/ui/tests/`, with helpers in
      `tests/ui/helpers/` and fixtures in `tests/ui/fixtures/`
 3. Write the unit tests from the plan: one test per execution path, including error

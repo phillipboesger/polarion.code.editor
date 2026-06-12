@@ -17,7 +17,7 @@ the running Polarion container.
 - **Minimum supported versions:** Polarion 2512, Java 21
 - **Backend:** Java 21, Maven, OSGi (Hivemind module descriptor)
 - **Frontend:** Vanilla HTML/JS/CSS + Monaco Editor — **no npm packages, no bundlers**
-- **Tests:** JUnit 5 (unit) + Playwright (end-to-end, Node.js)
+- **Tests:** JUnit 4 (unit) + Playwright (end-to-end, Node.js)
 
 ## Project Structure
 
@@ -25,7 +25,7 @@ the running Polarion container.
 |---|---|
 | `src/main/java` | Java backend (OSGi bundles, Servlet endpoints) |
 | `src/main/webapp` | Frontend (HTML/JS/CSS, Monaco Editor — vanilla JS only) |
-| `src/test/java` | JUnit 5 unit tests |
+| `src/test/java` | JUnit 4 unit tests |
 | `tests/ui/` | Playwright end-to-end tests (Node.js) |
 | `META-INF/hivemodule.xml` | OSGi descriptor — service/component registration |
 | `plugin.xml` | Polarion extension points (navigation entries, webapp mount) |
