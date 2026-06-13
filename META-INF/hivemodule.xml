@@ -15,4 +15,25 @@
 		<extenders extender="CodeEditorNavigationExtender"/>
 	</contribution>
 
+	<!--
+		Registers the two custom Code Editor permissions with Polarion's security framework.
+		The GenericPermissionFactory constructs a plain com.polarion.platform.security.Permission
+		for any id under the "boesger.codeeditor" prefix (boesger.codeeditor.read / .write), which
+		lets ISecurityService.constructPermission(...) resolve them and hasPermission(...) evaluate
+		grants/denies stored in .polarion/security/permissions.xml with native global->project
+		inheritance. Without this contribution constructPermission throws and access cannot be checked.
+	-->
+	<service-point id="CodeEditorPermissionFactory" interface="com.polarion.platform.spi.security.IPermissionFactory">
+		<invoke-factory>
+			<construct class="com.polarion.platform.spi.security.GenericPermissionFactory">
+				<set-object property="permissionClass" value="class:com.polarion.platform.security.Permission"/>
+				<set property="description" value="Code Editor plugin access: 'boesger.codeeditor.read' (browse and open files), 'boesger.codeeditor.write' (create, modify, rename and delete files)."/>
+			</construct>
+		</invoke-factory>
+	</service-point>
+
+	<contribution configuration-id="com.polarion.platform.security.permissionFactories">
+		<factory prefix="boesger.codeeditor" service="CodeEditorPermissionFactory"/>
+	</contribution>
+
 </module>

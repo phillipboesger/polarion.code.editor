@@ -3628,6 +3628,28 @@
         </div>
     </div>
   </div>
+
+  <script>
+    /* Permissions-editor injection auto-loader.
+     * When this page is loaded as the iframe of Polarion's Administration SPA, inject
+     * permissions-injection.js into the parent window so the two custom Code Editor
+     * permissions appear on the Permissions Management page. Same-origin and idempotent
+     * (the script checks for [data-cepi-parent] before acting). */
+    (function () {
+      if (window === window.top) return; // standalone page, nothing to inject
+      try {
+        var parentDoc = window.parent.document;
+        if (!parentDoc) return;
+        if (parentDoc.getElementById("cepi-permissions-script")) return; // already injected
+        var s = parentDoc.createElement("script");
+        s.id = "cepi-permissions-script";
+        s.src = "/polarion/code-editor/resources/permissions-injection.js";
+        (parentDoc.head || parentDoc.documentElement).appendChild(s);
+      } catch (e) {
+        /* cross-origin guard – ignore */
+      }
+    })();
+  </script>
 </body>
 
 </html>

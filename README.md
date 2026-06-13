@@ -198,10 +198,48 @@ This is useful for scripted exports or CI pipelines that need to retrieve reposi
 
 ## Permissions
 
-The plugin currently does **not** define dedicated Polarion permissions yet.
+The plugin defines two custom Polarion permissions that behave exactly like the built‑in ones —
+no extra configuration is required:
 
-- A dedicated permission model is planned for a future release.
-- Until then, there is no separate `read`/`write` permission matrix provided by this plugin.
+| Permission | Controls |
+| :--- | :--- |
+| `boesger.codeeditor.read` | Browsing the repository tree and opening / downloading files (all `GET` endpoints). |
+| `boesger.codeeditor.write` | Creating, modifying, renaming and deleting files (`PUT` / `POST` / `DELETE` endpoints). |
+
+### Managing them
+
+Once the plugin is deployed, both permissions appear under
+**Administration → User Management → Permissions Management** as a **Code Editor** group with
+*Permission to READ* / *Permission to WRITE* rows, at **both the Global and Project scope** —
+there is nothing to enable or import. Grant or deny them per role just like any standard Polarion
+permission, then **Save**.
+
+> Polarion's Permissions editor only lists the permission areas built into the platform, so the
+> plugin surfaces its two rows there itself (the Code Editor admin page injects a small script that
+> adds them and reads/writes their grants through the plugin). The grants are stored in Polarion's
+> own `permissions.xml`, so enforcement is fully native — see *Enforcement* below.
+
+Polarion resolves them with its native rules:
+
+- **Inheritance:** a permission set in the Global scope applies to every project; a Project‑scope
+  setting overrides the Global one for that project (project is checked first, then global).
+- **Grant vs. deny:** an explicit deny at the same level wins over a grant only across levels —
+  if grant and deny both apply at the *same* level, grant wins; a **project deny overrides a
+  global grant**.
+- **Admin:** a global `admin` always has every permission and cannot be denied.
+
+### Enforcement
+
+The plugin checks these permissions on every request via Polarion's `ISecurityService`:
+
+- A user without `read` receives **HTTP 403** on read endpoints (the editor shows no files).
+- A user without `write` receives **HTTP 403** on save / rename / delete.
+- Unauthenticated requests receive **HTTP 401**. The `/health` endpoint stays reachable for any
+  authenticated user.
+
+Grants live in Polarion's own `.polarion/security/permissions.xml` (global and per‑project), so
+inheritance and grant/deny resolution are handled natively by Polarion. The plugin only adds the
+two rows to the editor and persists their grants; editing them requires administrator rights.
 
 ---
 

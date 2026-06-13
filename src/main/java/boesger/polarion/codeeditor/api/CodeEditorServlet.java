@@ -17,18 +17,29 @@ import org.apache.commons.io.IOUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.core.PlatformContext;
+import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
+import com.polarion.subterra.base.data.identification.ContextId;
+import com.polarion.subterra.base.data.identification.IContextId;
 
 import boesger.polarion.codeeditor.exception.CodeEditorException;
 import boesger.polarion.codeeditor.model.RepoFile;
+import boesger.polarion.codeeditor.security.CodeEditorPermission;
 import boesger.polarion.codeeditor.service.CodeEditorService;
+import boesger.polarion.codeeditor.service.PermissionsService;
 
 /**
  * HTTP entry point for the Code Editor plugin.
  * Routes GET / PUT / DELETE / POST requests to {@link boesger.polarion.codeeditor.service.CodeEditorService}.
- * All endpoints require an authenticated Polarion session; unauthenticated requests receive HTTP 401.
+ * <p>
+ * Access is enforced with Polarion's native security framework: unauthenticated requests receive
+ * HTTP 401, requests from users lacking {@code boesger.codeeditor.read} (for GET) or
+ * {@code boesger.codeeditor.write} (for PUT / DELETE / POST) receive HTTP 403. Permission checks
+ * are scoped to the request's {@code projectId} (project scope) or the global scope when absent;
+ * {@link ISecurityService#hasPermission} resolves grant/deny and project&rarr;global inheritance.
  */
 public class CodeEditorServlet extends HttpServlet {
 
@@ -39,15 +50,144 @@ public class CodeEditorServlet extends HttpServlet {
 	private static final String PARAM_PROJECT_ID = "projectId";
 	private static final String PATH_CONFIG_FILE = "/config/file/"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
+	private static final String PATH_PERMISSIONS = "/permissions"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
+	private static final String MSG_FORBIDDEN_WRITE = "Missing Code Editor write permission";
+	private static final String MSG_FORBIDDEN_MANAGE = "Permission management requires administrator rights";
+	private static final String ROLE_ADMIN = "admin";
+	private static final String ROLE_PROJECT_ADMIN = "project_admin";
 
 	private ISecurityService securityService;
+	private IPermission readPermission;
+	private IPermission writePermission;
 
 	@Override
 	public void init() throws ServletException {
 		super.init();
 		securityService = PlatformContext.getPlatform().lookupService(ISecurityService.class);
+		readPermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_READ);
+		writePermission = constructPermissionSafely(CodeEditorPermission.PERMISSION_WRITE);
 		log.info("CodeEditorServlet initialized.");
+	}
+
+	/**
+	 * Constructs a Polarion permission from its id, tolerating an unregistered permission.
+	 * Construction succeeds once the permission factory in {@code hivemodule.xml} is loaded; a
+	 * {@code null} result (logged as an error) makes {@link #hasPermission} deny access (fail closed).
+	 *
+	 * @param permissionId the fully qualified permission id, never {@code null}
+	 * @return the constructed permission, or {@code null} if no factory is registered for it
+	 */
+	private IPermission constructPermissionSafely(String permissionId) {
+		try {
+			return securityService.constructPermission(permissionId);
+		}
+		catch(RuntimeException e) {
+			log.error("Could not construct permission '" + permissionId
+					+ "'. Is the permission factory registered in hivemodule.xml? Access will be denied.", e);
+			return null;
+		}
+	}
+
+	/**
+	 * Checks whether the current user holds the given permission in the relevant scope.
+	 * The check uses the project context when {@code projectId} is present and the global context
+	 * otherwise; Polarion resolves project&rarr;global inheritance and grant/deny internally, so a
+	 * single call is authoritative (a project-scope deny is not re-granted by the global scope).
+	 *
+	 * @param permission the permission to check; {@code null} (unregistered) always denies
+	 * @param projectId  the project id for project scope, or {@code null}/empty for global scope
+	 * @return {@code true} if the permission is granted in the resolved scope, {@code false} otherwise
+	 */
+	private boolean hasPermission(IPermission permission, String projectId) {
+		if(permission == null) {
+			return false;
+		}
+		IContextId contextId = (projectId != null && !projectId.isEmpty())
+				? ContextId.getContextIdFromContext(projectId)
+				: ContextId.getGlobalContextId();
+		try {
+			return securityService.hasPermission(permission, contextId);
+		}
+		catch(RuntimeException e) {
+			log.error("Permission check failed for context '" + contextId + "'. Access denied.", e);
+			return false;
+		}
+	}
+
+	/**
+	 * Reads the current Code Editor grants for the scope and writes them as JSON.
+	 * Backs the Permissions-editor injection; requires permission-management rights (else 403).
+	 *
+	 * @param projectId the project scope, or {@code null}/empty for global scope
+	 * @param resp      the response to write the grants JSON to
+	 * @throws IOException if writing the response fails
+	 */
+	private void handleGetPermissions(String projectId, HttpServletResponse resp) throws IOException {
+		if(!canManagePermissions(projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_MANAGE);
+			return;
+		}
+		Map<String, Map<String, Boolean>> grants = new PermissionsService(projectId).loadGrants();
+		Map<String, Object> result = new HashMap<>();
+		result.put("grants", grants);
+		sendJson(resp, gson.toJson(result));
+	}
+
+	/**
+	 * Persists Code Editor grants supplied as JSON into the scope's permissions.xml.
+	 * Requires permission-management rights in the relevant scope (else 403).
+	 *
+	 * @param req       the request whose body holds {@code {"grants": {permId: {role: bool}}}}
+	 * @param projectId the project scope, or {@code null}/empty for global scope
+	 * @param resp      the response to confirm the save on
+	 * @throws IOException         if reading the body or writing the response fails
+	 * @throws CodeEditorException if persisting to the repository fails
+	 */
+	private void handlePostPermissions(HttpServletRequest req, String projectId, HttpServletResponse resp)
+			throws IOException, CodeEditorException {
+		if(!canManagePermissions(projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_MANAGE);
+			return;
+		}
+		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		GrantsRequest grantsReq = gson.fromJson(body, new TypeToken<GrantsRequest>() {
+		}.getType());
+		if(grantsReq == null || grantsReq.grants == null) {
+			sendErrorSafely(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing grants");
+			return;
+		}
+		new PermissionsService(projectId).saveGrants(grantsReq.grants);
+		sendJson(resp, "{\"status\":\"saved\"}");
+	}
+
+	/**
+	 * Checks whether the current user may manage Code Editor grants in the given scope.
+	 * Editing grants is an administrative action, so this requires the global {@code admin}
+	 * role, or the {@code project_admin} / {@code admin} role within the project scope.
+	 *
+	 * @param projectId the project scope, or {@code null}/empty for global scope
+	 * @return {@code true} if the current user may manage permissions in that scope
+	 */
+	private boolean canManagePermissions(String projectId) {
+		String user = securityService.getCurrentUser();
+		if(user == null) {
+			return false;
+		}
+		try {
+			if(securityService.getRolesForUser(user, ContextId.getGlobalContextId()).contains(ROLE_ADMIN)) {
+				return true;
+			}
+			if(projectId != null && !projectId.isEmpty()) {
+				var roles = securityService.getRolesForUser(user, ContextId.getContextIdFromContext(projectId));
+				return roles.contains(ROLE_PROJECT_ADMIN) || roles.contains(ROLE_ADMIN);
+			}
+			return false;
+		}
+		catch(RuntimeException e) {
+			log.error("Could not resolve roles for permission management; denying.", e);
+			return false;
+		}
 	}
 
 	@Override
@@ -62,9 +202,17 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
+		if(!"/health".equals(pathInfo) && !PATH_PERMISSIONS.equals(pathInfo) && !hasPermission(readPermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
+			return;
+		}
+
 		try {
 			if("/health".equals(pathInfo)) {
 				sendResponse(resp, "OK", 200);
+			}
+			else if(PATH_PERMISSIONS.equals(pathInfo)) {
+				handleGetPermissions(projectId, resp);
 			}
 			else if("/config/list".equals(pathInfo)) {
 				handleListConfigs(projectId, resp);
@@ -101,6 +249,11 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+			return;
+		}
+
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
@@ -129,6 +282,11 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
+		if(!hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+			return;
+		}
+
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
@@ -154,8 +312,16 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
+		if(!PATH_PERMISSIONS.equals(pathInfo) && !hasPermission(writePermission, projectId)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_WRITE);
+			return;
+		}
+
 		try {
-			if("/config/rename".equals(pathInfo)) {
+			if(PATH_PERMISSIONS.equals(pathInfo)) {
+				handlePostPermissions(req, projectId, resp);
+			}
+			else if("/config/rename".equals(pathInfo)) {
 				handlePostRename(req, projectId, resp);
 			}
 			else {
@@ -306,5 +472,10 @@ public class CodeEditorServlet extends HttpServlet {
 	private static class RenameRequest {
 		String oldName;
 		String newName;
+	}
+
+	/** Request body for {@code POST /permissions}: {@code {"grants": {permId: {role: bool}}}}. */
+	private static class GrantsRequest {
+		Map<String, Map<String, Boolean>> grants;
 	}
 }

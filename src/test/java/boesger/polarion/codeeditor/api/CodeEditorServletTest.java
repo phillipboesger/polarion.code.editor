@@ -11,11 +11,15 @@ import javax.servlet.http.HttpServletResponse;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
+import com.polarion.platform.security.IPermission;
 import com.polarion.platform.security.ISecurityService;
+import com.polarion.subterra.base.data.identification.IContextId;
 
 public class CodeEditorServletTest {
 
@@ -30,15 +34,37 @@ public class CodeEditorServletTest {
 	@Mock
 	private ISecurityService securityService;
 
+	private IPermission readPermission;
+	private IPermission writePermission;
+
 	@Before
 	public void setUp() throws Exception {
 		MockitoAnnotations.openMocks(this);
 		servlet = new CodeEditorServlet();
 		when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
 
-		java.lang.reflect.Field securityServiceField = CodeEditorServlet.class.getDeclaredField("securityService");
-		securityServiceField.setAccessible(true);
-		securityServiceField.set(servlet, securityService);
+		injectField("securityService", securityService);
+
+		// init() is not invoked in unit tests (no Polarion platform), so the permission fields are
+		// injected directly. The default baseline grants access; denied-case tests override hasPermission.
+		readPermission = mock(IPermission.class);
+		writePermission = mock(IPermission.class);
+		injectField("readPermission", readPermission);
+		injectField("writePermission", writePermission);
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(true);
+	}
+
+	/**
+	 * Sets a private field on the servlet under test via reflection.
+	 *
+	 * @param fieldName the declared field name on {@link CodeEditorServlet}
+	 * @param value     the value to assign
+	 * @throws Exception if the field cannot be accessed or set
+	 */
+	private void injectField(String fieldName, Object value) throws Exception {
+		java.lang.reflect.Field field = CodeEditorServlet.class.getDeclaredField(fieldName);
+		field.setAccessible(true);
+		field.set(servlet, value);
 	}
 
 	@Test
@@ -231,5 +257,74 @@ public class CodeEditorServletTest {
 		servlet.doGet(request, response);
 
 		verify(response).sendError(HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
+	}
+
+	@Test
+	public void testDoGet_whenReadDenied_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/list");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
+	}
+
+	@Test
+	public void testDoGetHealth_whenReadDenied_shouldStillReturnOk() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/health");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doGet(request, response);
+
+		verify(response).setStatus(HttpServletResponse.SC_OK);
+	}
+
+	@Test
+	public void testDoPut_whenWriteDenied_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/new.json");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doPut(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+	}
+
+	@Test
+	public void testDoDelete_whenWriteDenied_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/old.json");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doDelete(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+	}
+
+	@Test
+	public void testDoPost_whenWriteDenied_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/rename");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doPost(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+	}
+
+	@Test
+	public void testDoGet_whenPermissionUnregistered_shouldReturn403() throws Exception {
+		// Fail closed: when the permission factory is not registered the field is null and access is
+		// denied without consulting the security service (no admin-role bypass).
+		injectField("readPermission", null);
+		when(request.getPathInfo()).thenReturn("/config/list");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(true);
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
 	}
 }
