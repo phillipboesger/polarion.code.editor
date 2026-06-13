@@ -10,6 +10,8 @@ on:
 
 permissions: read-all
 
+engine: claude
+
 network: defaults
 
 tools:
