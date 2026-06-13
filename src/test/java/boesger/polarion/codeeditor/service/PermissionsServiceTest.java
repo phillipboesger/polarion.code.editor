@@ -96,9 +96,12 @@ public class PermissionsServiceTest {
 
 		assertTrue("native permission preserved", xml.contains("com.polarion.security.login"));
 		assertTrue("flat code-editor grant preserved", xml.contains("permission=\"boesger.codeeditor.read\""));
-		assertTrue("custom set definition written", xml.contains("id=\"cepi-set-abc\""));
-		assertTrue("set grant written with @set syntax",
-				xml.contains("@cepi-set-abc.boesger.codeeditor.read"));
+		assertTrue("custom set stored in plugin block", xml.contains("<cepi-set"));
+		assertTrue("set id written", xml.contains("id=\"cepi-set-abc\""));
+		assertTrue("set grant stored as cepi-grant", xml.contains("perm=\"boesger.codeeditor.read\""));
+		assertFalse("must NOT emit a native <customset> (crashes Polarion's editor)",
+				xml.contains("<customset"));
+		assertFalse("must NOT emit @set grants", xml.contains("@cepi-set-abc"));
 	}
 
 	@Test
