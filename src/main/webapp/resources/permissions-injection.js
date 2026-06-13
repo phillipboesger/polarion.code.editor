@@ -501,6 +501,7 @@
             var data = JSON.parse(xhr.responseText);
             if (data && data.grants) {
               _grantedMap = data.grants;
+              if (Array.isArray(data.customSets)) _customSets = data.customSets;
               callback(true);
             } else {
               callback(false);
@@ -537,7 +538,8 @@
         });
       }
     });
-    var body = JSON.stringify({ grants: filteredGrants });
+    // Custom sets are persisted to permissions.xml alongside the flat grants.
+    var body = JSON.stringify({ grants: filteredGrants, customSets: _customSets });
     try {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
@@ -547,22 +549,17 @@
   }
 
   function loadCustomSets() {
-    try {
-      var stored = localStorage.getItem("cepi-custom-sets");
-      if (stored) _customSets = JSON.parse(stored);
-    } catch (e) {
-      _customSets = [];
-    }
+    // Custom sets are loaded from the backend together with the grants
+    // (see _fetchGrantsFromBackend); no local storage is used.
   }
 
   function saveCustomSets() {
-    try {
-      localStorage.setItem("cepi-custom-sets", JSON.stringify(_customSets));
-    } catch (e) {}
+    // Persist custom sets to permissions.xml via the backend (same POST as grants).
+    _pushGrantsToBackend();
   }
 
   function genId() {
-    return "set-" + Math.random().toString(36).slice(2, 9);
+    return "cepi-set-" + Math.random().toString(36).slice(2, 9);
   }
 
   /* ── Group detail panel (click on "Code Editor" row body) ───────────── */

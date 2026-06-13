@@ -128,9 +128,10 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_MANAGE);
 			return;
 		}
-		Map<String, Map<String, Boolean>> grants = new PermissionsService(projectId).loadGrants();
+		PermissionsService svc = new PermissionsService(projectId);
 		Map<String, Object> result = new HashMap<>();
-		result.put("grants", grants);
+		result.put("grants", svc.loadGrants());
+		result.put("customSets", svc.loadCustomSets());
 		sendJson(resp, gson.toJson(result));
 	}
 
@@ -157,7 +158,9 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing grants");
 			return;
 		}
-		new PermissionsService(projectId).saveGrants(grantsReq.grants);
+		PermissionsService svc = new PermissionsService(projectId);
+		svc.saveGrants(grantsReq.grants);
+		svc.saveCustomSets(grantsReq.customSets);
 		sendJson(resp, "{\"status\":\"saved\"}");
 	}
 
@@ -474,8 +477,9 @@ public class CodeEditorServlet extends HttpServlet {
 		String newName;
 	}
 
-	/** Request body for {@code POST /permissions}: {@code {"grants": {permId: {role: bool}}}}. */
+	/** Request body for {@code POST /permissions}: grants plus optional custom sets. */
 	private static class GrantsRequest {
 		Map<String, Map<String, Boolean>> grants;
+		List<PermissionsService.CustomSet> customSets;
 	}
 }

@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -52,6 +54,9 @@ public class PermissionsService {
 	/** Prefix used for both Code Editor permission IDs. */
 	private static final String CEPI_PERMISSION_PREFIX = "boesger.codeeditor.";
 
+	/** Id prefix marking a {@code <customset>} as owned by the Code Editor plugin. */
+	private static final String CEPI_SET_ID_PREFIX = "cepi-";
+
 	private final String projectId;
 
 	public PermissionsService(String projectId) {
@@ -94,6 +99,46 @@ public class PermissionsService {
 		}
 		catch(Exception e) {
 			throw new CodeEditorException("Failed to save permissions: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Reads the Code Editor custom permission sets persisted in permissions.xml.
+	 * A set is a {@code <customset>} whose id starts with {@value #CEPI_SET_ID_PREFIX}, together with
+	 * its per-role grants stored as {@code @<setId>.boesger.codeeditor.*} grant/deny entries.
+	 *
+	 * @return the list of custom sets (never {@code null}; empty when none or on read error)
+	 */
+	public List<CustomSet> loadCustomSets() {
+		try {
+			String xml = readPermissionsXml();
+			if(xml == null) return new ArrayList<>();
+			return parseCustomSets(xml);
+		}
+		catch(Exception e) {
+			log.warn("Could not load custom sets from permissions.xml: " + e.getMessage());
+			return new ArrayList<>();
+		}
+	}
+
+	/**
+	 * Persists the Code Editor custom permission sets into permissions.xml, replacing any previously
+	 * stored Code Editor sets. Other content (native permissions, flat Code Editor grants) is preserved.
+	 *
+	 * @param sets the custom sets to store (a {@code null} list is treated as empty)
+	 * @throws CodeEditorException if persisting to the repository fails
+	 */
+	public void saveCustomSets(List<CustomSet> sets) throws CodeEditorException {
+		try {
+			String xml = readPermissionsXml();
+			String updated = mergeCustomSets(xml, sets != null ? sets : new ArrayList<>());
+			writePermissionsXml(updated);
+		}
+		catch(CodeEditorException e) {
+			throw e;
+		}
+		catch(Exception e) {
+			throw new CodeEditorException("Failed to save custom sets: " + e.getMessage(), e);
 		}
 	}
 
@@ -311,5 +356,228 @@ public class PermissionsService {
 		StringWriter sw = new StringWriter();
 		t.transform(new DOMSource(doc), new StreamResult(sw));
 		return sw.toString();
+	}
+
+	// ── Custom set parsing / merging ─────────────────────────────────────────
+
+	/**
+	 * Parses the Code Editor custom sets (definitions plus their {@code @set} grants) from the XML.
+	 *
+	 * @param xml the permissions.xml content
+	 * @return the parsed custom sets in document order
+	 * @throws ParserConfigurationException if the XML parser cannot be created
+	 * @throws SAXException                 if the XML is malformed
+	 * @throws IOException                  if reading the XML fails
+	 */
+	private List<CustomSet> parseCustomSets(String xml)
+			throws ParserConfigurationException, SAXException, IOException {
+		Document doc = parseDocument(xml);
+		Map<String, CustomSet> byId = new LinkedHashMap<>();
+
+		NodeList sets = doc.getElementsByTagName("customset");
+		for(int i = 0; i < sets.getLength(); i++) {
+			Node n = sets.item(i);
+			if(n.getNodeType() != Node.ELEMENT_NODE) continue;
+			Element el = (Element) n;
+			String id = el.getAttribute("id");
+			if(id == null || !id.startsWith(CEPI_SET_ID_PREFIX)) continue;
+			CustomSet set = new CustomSet();
+			set.id = id;
+			set.name = el.getAttribute("title");
+			set.filter = el.getTextContent() != null ? el.getTextContent().trim() : "";
+			set.grants = new LinkedHashMap<>();
+			byId.put(id, set);
+		}
+
+		NodeList roles = doc.getElementsByTagName("role");
+		for(int i = 0; i < roles.getLength(); i++) {
+			Node rn = roles.item(i);
+			if(rn.getNodeType() != Node.ELEMENT_NODE) continue;
+			Element roleEl = (Element) rn;
+			String roleName = roleEl.getAttribute("name");
+			if(roleName != null && !roleName.isBlank()) {
+				collectSetGrantsFromRole(roleEl, roleName, byId);
+			}
+		}
+		return new ArrayList<>(byId.values());
+	}
+
+	/**
+	 * Collects {@code @<setId>.boesger.codeeditor.*} grant/deny entries of one role into their sets.
+	 *
+	 * @param roleEl   the {@code <role>} element
+	 * @param roleName the role name
+	 * @param byId     the sets being assembled, keyed by set id
+	 */
+	private void collectSetGrantsFromRole(Element roleEl, String roleName, Map<String, CustomSet> byId) {
+		for(String tag : new String[] { "grant", "deny" }) {
+			NodeList nodes = roleEl.getElementsByTagName(tag);
+			for(int j = 0; j < nodes.getLength(); j++) {
+				Node n = nodes.item(j);
+				if(n.getNodeType() != Node.ELEMENT_NODE) continue;
+				String perm = ((Element) n).getAttribute("permission");
+				if(perm == null || !perm.startsWith("@" + CEPI_SET_ID_PREFIX)) continue;
+				int dot = perm.indexOf('.');
+				if(dot <= 1) continue;
+				String setId = perm.substring(1, dot);
+				String permId = perm.substring(dot + 1);
+				if(!permId.startsWith(CEPI_PERMISSION_PREFIX)) continue;
+				CustomSet set = byId.get(setId);
+				if(set == null) continue;
+				set.grants.computeIfAbsent(permId, k -> new LinkedHashMap<>())
+						.put(roleName, "grant".equals(tag));
+			}
+		}
+	}
+
+	/**
+	 * Replaces the Code Editor custom sets (definitions and {@code @set} grants) in the document with
+	 * the supplied ones, preserving all other content, and serialises the result.
+	 *
+	 * @param existingXml the current permissions.xml, or {@code null} to start a new document
+	 * @param sets        the custom sets to write
+	 * @return the serialised, updated XML
+	 * @throws ParserConfigurationException if the XML parser cannot be created
+	 * @throws SAXException                 if the existing XML is malformed
+	 * @throws IOException                  if reading the XML fails
+	 * @throws TransformerException         if serialisation fails
+	 */
+	private String mergeCustomSets(String existingXml, List<CustomSet> sets)
+			throws ParserConfigurationException, SAXException, IOException, TransformerException {
+		Document doc;
+		Element root;
+		if(existingXml != null) {
+			doc = parseDocument(existingXml);
+			root = doc.getDocumentElement();
+		}
+		else {
+			doc = newDocument();
+			root = doc.createElement("permissions");
+			doc.appendChild(root);
+		}
+
+		removeCepiCustomSets(root);
+
+		for(CustomSet set : sets) {
+			if(set == null || set.id == null || !set.id.startsWith(CEPI_SET_ID_PREFIX)) continue;
+			Element el = doc.createElement("customset");
+			el.setAttribute("id", set.id);
+			el.setAttribute("title", set.name != null ? set.name : "");
+			el.setTextContent(set.filter != null ? set.filter : "");
+			root.appendChild(doc.createTextNode("\n    "));
+			root.appendChild(el);
+		}
+
+		Map<String, Map<String, Boolean>> byRole = new LinkedHashMap<>();
+		for(CustomSet set : sets) {
+			if(set == null || set.grants == null || set.id == null) continue;
+			set.grants.forEach((permId, roleMap) -> {
+				if(roleMap == null) return;
+				roleMap.forEach((roleName, value) -> {
+					if(value == null) return;
+					byRole.computeIfAbsent(roleName, k -> new LinkedHashMap<>())
+							.put("@" + set.id + "." + permId, value);
+				});
+			});
+		}
+		byRole.forEach((roleName, permMap) -> {
+			if(permMap.isEmpty()) return;
+			Element roleEl = doc.createElement("role");
+			roleEl.setAttribute("name", roleName);
+			permMap.forEach((perm, value) -> {
+				Element entry = doc.createElement(Boolean.TRUE.equals(value) ? "grant" : "deny");
+				entry.setAttribute("permission", perm);
+				roleEl.appendChild(entry);
+			});
+			root.appendChild(doc.createTextNode("\n    "));
+			root.appendChild(roleEl);
+		});
+		root.appendChild(doc.createTextNode("\n"));
+		return serialise(doc);
+	}
+
+	/**
+	 * Removes Code Editor custom set definitions and their {@code @set} grants, dropping roles that
+	 * become empty, while leaving all other content untouched.
+	 *
+	 * @param root the {@code <permissions>} root element
+	 */
+	private void removeCepiCustomSets(Element root) {
+		List<Node> setsToRemove = new ArrayList<>();
+		NodeList sets = root.getElementsByTagName("customset");
+		for(int i = 0; i < sets.getLength(); i++) {
+			Node n = sets.item(i);
+			if(n.getNodeType() == Node.ELEMENT_NODE
+					&& ((Element) n).getAttribute("id").startsWith(CEPI_SET_ID_PREFIX)) {
+				setsToRemove.add(n);
+			}
+		}
+		removeNodesWithLeadingText(setsToRemove);
+
+		List<Node> rolesToRemove = new ArrayList<>();
+		NodeList roles = root.getElementsByTagName("role");
+		for(int i = 0; i < roles.getLength(); i++) {
+			Node rn = roles.item(i);
+			if(rn.getNodeType() != Node.ELEMENT_NODE) continue;
+			Element roleEl = (Element) rn;
+			List<Node> grantsToRemove = new ArrayList<>();
+			NodeList children = roleEl.getChildNodes();
+			for(int j = 0; j < children.getLength(); j++) {
+				Node c = children.item(j);
+				if(c.getNodeType() != Node.ELEMENT_NODE) continue;
+				String perm = ((Element) c).getAttribute("permission");
+				if(perm != null && perm.startsWith("@" + CEPI_SET_ID_PREFIX)) {
+					grantsToRemove.add(c);
+				}
+			}
+			grantsToRemove.forEach(roleEl::removeChild);
+			if(!hasElementChild(roleEl)) {
+				rolesToRemove.add(roleEl);
+			}
+		}
+		removeNodesWithLeadingText(rolesToRemove);
+	}
+
+	/**
+	 * Returns whether the element has at least one child element.
+	 *
+	 * @param el the element to inspect
+	 * @return {@code true} if the element has an element child
+	 */
+	private boolean hasElementChild(Element el) {
+		NodeList children = el.getChildNodes();
+		for(int i = 0; i < children.getLength(); i++) {
+			if(children.item(i).getNodeType() == Node.ELEMENT_NODE) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Removes each node together with a preceding whitespace text node, to keep formatting tidy.
+	 *
+	 * @param nodes the nodes to remove
+	 */
+	private void removeNodesWithLeadingText(List<Node> nodes) {
+		for(Node n : nodes) {
+			Node parent = n.getParentNode();
+			if(parent == null) continue;
+			Node prev = n.getPreviousSibling();
+			if(prev != null && prev.getNodeType() == Node.TEXT_NODE) {
+				parent.removeChild(prev);
+			}
+			parent.removeChild(n);
+		}
+	}
+
+	/** A Code Editor custom permission set: a named, query-defined set with per-role grants. */
+	public static class CustomSet {
+		/** Set id; always starts with {@value #CEPI_SET_ID_PREFIX}. */
+		public String id;
+		/** Human-readable set name (stored as the {@code title} attribute). */
+		public String name;
+		/** Lucene/query filter text defining the set. */
+		public String filter;
+		/** Per-permission, per-role grants: {@code permId → { role → true|false }}. */
+		public Map<String, Map<String, Boolean>> grants;
 	}
 }
