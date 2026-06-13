@@ -2,6 +2,8 @@
 
 This document describes every workflow and agentic workflow in this repository: what it does, when it runs, how it is triggered, what secrets it needs, and what it produces.
 
+**Note on AI-assisted development:** Feature implementation by AI is **not** done via GitHub Actions in this repository — it happens locally with the Claude Code CLI (see `CLAUDE.md` in the repository root and the subagents in `.claude/agents/`). The agentic workflows below cover repository housekeeping only (issue triage, documentation updates) and run on the **Claude Code engine** (`engine: claude`, secret `ANTHROPIC_API_KEY`), not GitHub Copilot. The one remaining Copilot touch-point is `copilot-review.yml`, which only *requests* Copilot as a PR reviewer.
+
 ---
 
 ## Table of Contents
@@ -12,10 +14,9 @@ This document describes every workflow and agentic workflow in this repository: 
 4. [compile-workflows.yml — Compile Agentic Workflows](#4-compile-workflowsyml--compile-agentic-workflows)
 5. [issue-triage.md — Issue Triage Agent](#5-issue-triagemd--issue-triage-agent)
 6. [daily-doc-updater.md — Daily Documentation Updater Agent](#6-daily-doc-updatermd--daily-documentation-updater-agent)
-7. [claude-agent.yml — Claude Code Agent (Multi-Agent)](#7-claude-agentyml--claude-code-agent-multi-agent)
-8. [copilot-review.yml — Automatic Copilot PR Review](#8-copilot-reviewyml--automatic-copilot-pr-review)
-9. [Shared Imports](#9-shared-imports)
-10. [Secrets Reference](#10-secrets-reference)
+7. [copilot-review.yml — Automatic Copilot PR Review](#7-copilot-reviewyml--automatic-copilot-pr-review)
+8. [Shared Imports](#8-shared-imports)
+9. [Secrets Reference](#9-secrets-reference)
 
 ---
 
@@ -169,8 +170,13 @@ Keeps the compiled `.lock.yml` files in sync with their `.md` source files. GitH
 
 ### Outputs
 
-- Updated `.lock.yml` files committed back to the branch (push events only).
-- On pull requests: diff is computed but not committed (lets you review changes before merging).
+- Updated `.lock.yml` files committed back to the branch (direct pushes to `main` only).
+- On pull requests and feature-branch pushes: diff is computed but not committed (lets you review changes before merging).
+
+### Known limitations
+
+- The default `GITHUB_TOKEN` cannot push changes to files under `.github/workflows/`. If the auto-commit on `main` ever needs to push regenerated lock files, the workflow will fail until it is given a PAT with the `workflow` scope.
+- Newer `gh-aw` compiler versions can produce different lock files than the committed ones (e.g. requiring new secrets such as `ANTHROPIC_API_KEY`). Such changes need a deliberate, reviewed recompile — do not blindly regenerate.
 
 ### Secrets needed
 
@@ -189,7 +195,7 @@ _Settings → Actions → Workflow permissions → "Allow GitHub Actions to crea
 
 ### Purpose
 
-An AI agentic workflow (GitHub Copilot) that automatically triages newly opened issues. It reads the issue title and body, assigns a label, and posts an acknowledgement comment — reducing maintainer toil for routine issue intake.
+An AI agentic workflow (powered by the **Claude Code** engine, `engine: claude`) that automatically triages newly opened issues. It reads the issue title and body, assigns a label, and posts an acknowledgement comment — reducing maintainer toil for routine issue intake. It does **not** implement issues — implementation is done locally via the Claude Code CLI (see `CLAUDE.md`).
 
 ### Trigger
 
@@ -207,10 +213,10 @@ An AI agentic workflow (GitHub Copilot) that automatically triages newly opened 
 
 ### Secrets needed
 
-| Secret                 | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| `COPILOT_GITHUB_TOKEN` | Required by the `gh-aw` runtime to call the Copilot AI model  |
-| `GH_AW_GITHUB_TOKEN`   | GitHub MCP server token for reading/writing issues and labels |
+| Secret               | Purpose                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`  | Anthropic API key used by the Claude Code engine (`gh-aw`)    |
+| `GH_AW_GITHUB_TOKEN` | GitHub MCP server token for reading/writing issues and labels |
 
 ### Notes
 
@@ -225,7 +231,7 @@ An AI agentic workflow (GitHub Copilot) that automatically triages newly opened 
 
 ### Purpose
 
-An AI agentic workflow that scans recently merged pull requests and commits, identifies undocumented changes, and opens a draft PR to update the project documentation. Reduces documentation drift over time.
+An AI agentic workflow (powered by the **Claude Code** engine, `engine: claude`) that scans recently merged pull requests and commits, identifies undocumented changes, and opens a draft PR to update the project documentation. Reduces documentation drift over time. The doc PR it opens still requests a Copilot review (`reviewers: [copilot]`), matching `copilot-review.yml`.
 
 ### Trigger
 
@@ -248,11 +254,11 @@ An AI agentic workflow that scans recently merged pull requests and commits, ide
 
 ### Secrets needed
 
-| Secret                   | Purpose                                    |
-| ------------------------ | ------------------------------------------ |
-| `COPILOT_GITHUB_TOKEN`   | Copilot AI model access                    |
-| `GH_AW_GITHUB_TOKEN`     | GitHub MCP server                          |
-| `GH_AW_CI_TRIGGER_TOKEN` | Trigger downstream CI from the agent's PRs |
+| Secret                   | Purpose                                                    |
+| ------------------------ | ---------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`      | Anthropic API key used by the Claude Code engine (`gh-aw`) |
+| `GH_AW_GITHUB_TOKEN`     | GitHub MCP server                                          |
+| `GH_AW_CI_TRIGGER_TOKEN` | Trigger downstream CI from the agent's PRs                 |
 
 ### Notes
 
@@ -261,60 +267,7 @@ An AI agentic workflow that scans recently merged pull requests and commits, ide
 
 ---
 
-## 7. `claude-agent.yml` — Claude Code Agent (Multi-Agent)
-
-**File:** `.github/workflows/claude-agent.yml`
-**Prompts:** `.github/agents/main.md` (shared project context) + `.github/agents/implementer.md` (orchestrator loop); subagent templates in `.github/agents/planner.md`, `.github/agents/reviewer.md`, `.github/agents/debugger.md`
-
-### Purpose
-
-Fully autonomous feature implementation triggered by adding the `ai-implement` label to a GitHub Issue. The agent works through a structured multi-agent loop: plan → implement → build → code-review → deploy → UI verify → fix → PR.
-
-### Multi-Agent Architecture
-
-The Claude Code Agent acts as an **orchestrator** and spawns specialized subagents at key phases:
-
-| Subagent | `subagent_type` | When spawned | Purpose |
-|---|---|---|---|
-| Planning agent | `plan` | Before any code | Analyzes the issue, designs classes/methods, lists tests to write |
-| Code review agent | `claude` | After unit tests are green | Reviews changed files for OSGi correctness, security, thread safety |
-| Debugging agent | `claude` | When Playwright tests fail | Analyzes failure output, identifies root cause, suggests minimal fix |
-
-This ensures the main agent never starts writing code without a plan, never deploys unreviewed code, and gets targeted help when UI tests fail rather than guessing.
-
-### Trigger
-
-| Event    | Condition                          |
-| -------- | ---------------------------------- |
-| `issues` | Label `ai-implement` added to issue |
-
-### Implementation Loop
-
-1. **Plan** – spawn planning subagent, read the output
-2. **Branch** – `claude/issue-<NUMBER>-<title>`
-3. **Implement** – edit files per plan
-4. **Unit tests** – `mvn verify` (repeat until green)
-5. **Code review** – spawn review subagent, fix findings, re-run tests
-6. **Package & deploy** – `mvn package -DskipTests` + `redeploy.sh`
-7. **Playwright tests** – `npm run test:ci` (spawn debug subagent on failure)
-8. **PR** – only when both test suites are green; opens as draft
-
-### Outputs
-
-- A draft pull request on a `claude/issue-*` branch
-- Playwright HTML report uploaded as artifact `playwright-report`
-- Issue comments: agent-started notification and agent-finished summary with run link
-
-### Secrets needed
-
-| Secret | Purpose |
-|---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Authenticates the Claude Code CLI |
-| `PACKAGES_TOKEN` | Pull Polarion JARs from GitHub Packages and the Polarion Docker image from GHCR |
-
----
-
-## 8. `copilot-review.yml` — Automatic Copilot PR Review
+## 7. `copilot-review.yml` — Automatic Copilot PR Review
 
 **File:** `.github/workflows/copilot-review.yml`
 
@@ -322,7 +275,7 @@ This ensures the main agent never starts writing code without a plan, never depl
 
 Requests GitHub Copilot as a reviewer automatically on every non-draft pull request
 targeting `main`. Copilot posts an AI code review as a standard GitHub PR review,
-giving every PR (including those opened by the Claude Code Agent) a second set of eyes.
+giving every PR a second set of eyes.
 
 ### Trigger
 
@@ -355,42 +308,22 @@ _Settings → Copilot → Code review → Enable_
 
 ---
 
-## 9. Shared Imports
+## 8. Shared Imports
 
-The `shared/` sub-folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
+The `.github/workflows/shared/` folder contains Markdown files that are imported by agentic workflows via the `imports:` frontmatter directive.
 
-| File                              | Imported by                              | Purpose                                                                                                                        |
-| --------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `shared/mood.md`                  | `daily-doc-updater.md`                   | Tone/style instructions for the AI agent. Currently a placeholder.                                                             |
-| `shared/docs-server-lifecycle.md` | _(not imported by any current workflow)_ | Instructions for starting/stopping an Astro Starlight preview server. Kept for reference if a doc-preview step is added later. |
+| File                                | Imported by            | Purpose                                                            |
+| ----------------------------------- | ---------------------- | ------------------------------------------------------------------ |
+| `.github/workflows/shared/mood.md`  | `daily-doc-updater.md` | Tone/style instructions for the AI agent. Currently a placeholder. |
 
 ---
 
-## 10. Secrets Reference
+## 9. Secrets Reference
 
 | Secret                   | Used by                                 | How to create                                                                                              |
 | ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `PACKAGES_TOKEN`         | `ci.yml`, `release.yml`, `ui-tests.yml` | PAT → _Scopes: `read:packages`_. Required only if the Polarion JARs are in a different org than this repo. |
 | `RELEASE_TOKEN`          | `release.yml`                           | PAT → _Scopes: `repo`_. Required when `main` is a protected branch (default `GITHUB_TOKEN` cannot push).   |
-| `COPILOT_GITHUB_TOKEN`   | `issue-triage`, `daily-doc-updater`     | Provided by the `gh-aw` runtime — usually a GitHub App token, not a personal PAT.                          |
+| `ANTHROPIC_API_KEY`      | `issue-triage`, `daily-doc-updater`     | Anthropic API key for the Claude Code engine that powers the gh-aw agentic workflows.                      |
 | `GH_AW_GITHUB_TOKEN`     | `issue-triage`, `daily-doc-updater`     | GitHub App installation token for the MCP server used by agentic workflows.                                |
 | `GH_AW_CI_TRIGGER_TOKEN` | `daily-doc-updater`                     | Token allowing the agent to trigger CI on PRs it creates.                                                  |
-
----
-
-## Cleanup Notes
-
-The following issues were identified during the workflow audit (April 2026):
-
-### `shared/docs-server-lifecycle.md` was removed
-
-This file was not imported by any workflow and has been deleted.
-
-### `create-labels.yml` was removed
-
-This was a one-time setup utility to create the `release:patch/minor/major` labels. The labels are now permanently present on the repository and the workflow is no longer needed. To recreate the labels (e.g. after a fork), run the `gh label create` commands listed in the `release.yml` setup section above.
-This file is not imported by any workflow in the repository. It was likely copied from the `gh-aw` template. Remove it or keep it only if a doc-preview step is planned.
-
-### `daily-doc-updater` targets a non-existent `docs/` directory
-
-The agent searches `docs/src/content/docs/` which does not exist in this project. The weekly run will find nothing to do. Either add the docs directory, or disable the workflow until documentation is set up.

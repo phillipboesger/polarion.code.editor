@@ -95,5 +95,5 @@ npm test
 ## Code Style
 
 - Follow the existing code style in each file.
-- Use `boesger.polarion.copilot.core.logger.CopilotLogger` for all logging — no `System.out` or raw `java.util.logging`.
+- Use `com.polarion.core.util.logging.Logger` for all logging — no `System.out` or raw `java.util.logging`.
 - Keep pull requests focused: one concern per PR makes review faster.
