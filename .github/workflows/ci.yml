@@ -45,7 +45,8 @@ jobs:
           }
           probe() { # artifactId version classpath-regex
             local art="$1" ver="$2" rx="$3"
-            curl -sS -H "$AUTH" -o /tmp/a.jar "$BASE/$art/$ver/$art-$ver.jar" 2>/dev/null || { echo "    [dl-fail] $art:$ver"; return; }
+            # -L: GitHub Packages 302-redirects jar downloads to blob storage.
+            curl -fsSL -H "$AUTH" -o /tmp/a.jar "$BASE/$art/$ver/$art-$ver.jar" 2>/dev/null || { echo "    [dl-fail] $art:$ver"; return; }
             if unzip -l /tmp/a.jar >/dev/null 2>&1; then
               local hit; hit=$(unzip -l /tmp/a.jar | grep -iE "$rx" | head -3)
               [ -n "$hit" ] && { echo "    [FOUND] $art:$ver"; echo "$hit" | sed 's/^/        /'; } || echo "    [absent] $art:$ver"

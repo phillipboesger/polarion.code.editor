@@ -254,6 +254,17 @@
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Polarion bundles are "exploded": their implementation classes live in an
+         embedded jar that the mirror publishes as a separate artifact
+         com.polarion:<bundle>.<embedded-jar>. The com.polarion.platform.persistence.*
+         classes (e.g. UnresolvableObjectException) are in this embedded jar, not in
+         the platform.persistence bundle wrapper above. -->
+    <dependency>
+      <groupId>com.polarion</groupId>
+      <artifactId>platform.persistence.platform-persistence</artifactId>
+      <version>${polarion.version}</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>com.polarion</groupId>
       <artifactId>platform.repository</artifactId>
@@ -286,6 +297,15 @@
     <dependency>
       <groupId>com.polarion</groupId>
       <artifactId>subterra.base</artifactId>
+      <version>${subterra.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Embedded jar of the subterra.base bundle (see note above): provides the
+         com.polarion.subterra.base.data.* packages, e.g.
+         com.polarion.subterra.base.data.identification.IContextId. -->
+    <dependency>
+      <groupId>com.polarion</groupId>
+      <artifactId>subterra.base.subterra-base-data</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>
