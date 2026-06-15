@@ -15,6 +15,28 @@ on:
     branches: [main]
 
 jobs:
+  # TEMPORARY diagnostic: lists the versions actually published in the
+  # polarion-ootb-plugins mirror for the artifacts whose version we are unsure
+  # about (subterra*). Removed once the correct versions are pinned in pom.xml.
+  discover-deps:
+    name: Discover available dependency versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Query maven-metadata.xml from the mirror
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          BASE="https://maven.pkg.github.com/phillipboesger/polarion-ootb-plugins/com/polarion"
+          for art in subterra.base.data subterra.base.core platform; do
+            echo "==================== $art ===================="
+            curl -sS -H "Authorization: Bearer ${PACKAGES_TOKEN}" \
+              "$BASE/$art/maven-metadata.xml" || echo "(request failed for $art)"
+            echo
+          done
+
   test:
     name: Build & Test
     runs-on: ubuntu-latest
