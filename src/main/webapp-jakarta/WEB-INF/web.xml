@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  javax variant of the web deployment descriptor (Polarion 2512 / Tomcat 9).
+  Jakarta variant of the web deployment descriptor (Polarion 2606 / Tomcat 11).
 
-  Tomcat 9 uses Jakarta EE 8 / Servlet 3.1 with the legacy javax.* namespace.
-  The Jakarta twin used for Polarion 2606 / Tomcat 11 lives at
-  src/main/webapp-jakarta/WEB-INF/web.xml; keep the two in sync (only the
-  descriptor namespace/version and the Servlet API package should differ).
-  The active Maven profile (polarion-2512 vs polarion-2606) selects which one
-  is packaged into the JAR.
+  Polarion 2606 ships Apache Tomcat 11 (Jakarta EE 11 / Servlet 6.1), which only
+  accepts descriptors in the https://jakarta.ee/xml/ns/jakartaee namespace.
+  Keep this file in sync with src/main/webapp/WEB-INF/web.xml (the javax /
+  Servlet 3.x variant used for Polarion 2512 / Tomcat 9); the only intended
+  differences are the descriptor namespace/version and the Servlet API package.
 -->
-<web-app xmlns="http://java.sun.com/xml/ns/javaee"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" version="3.0">
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_1.xsd"
+	version="6.1">
 
 	<display-name>CodeEditor</display-name>
 

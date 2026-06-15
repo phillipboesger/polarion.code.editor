@@ -46,7 +46,9 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build plugin JAR
+      # The polarion-docker image runs Polarion 2512 (Tomcat 9 / javax), so the
+      # default profile produces the matching JAR (…-polarion2512.jar).
+      - name: Build plugin JAR (Polarion 2512 / javax)
         run: mvn --batch-mode package -DskipTests
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -63,7 +65,7 @@ jobs:
 
       - name: Deploy plugin JAR into extensions volume
         run: |
-          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
+          JAR_NAME=$(ls target/*polarion2512*.jar | head -1 | xargs basename)
           echo "Deploying: $JAR_NAME"
           docker run --rm \
             -v polarion_extensions:/ext \

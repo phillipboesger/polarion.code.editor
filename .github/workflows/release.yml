@@ -260,7 +260,9 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build plugin JAR
+      # The polarion-docker image runs Polarion 2512 (Tomcat 9 / javax), so the
+      # default profile produces the matching JAR (…-polarion2512.jar).
+      - name: Build plugin JAR (Polarion 2512 / javax)
         run: mvn --batch-mode package -DskipTests
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -273,7 +275,7 @@ jobs:
 
       - name: Deploy plugin JAR into extensions volume
         run: |
-          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
+          JAR_NAME=$(ls target/*polarion2512*.jar | head -1 | xargs basename)
           echo "Deploying: $JAR_NAME"
           docker run --rm \
             -v polarion_extensions:/ext \
@@ -426,8 +428,21 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Build release artifact (tests already passed)
-        run: mvn --batch-mode -DskipTests package
+      # Produce BOTH platform JARs for the release. Clean builds (stashing the
+      # first artifact) avoid any cross-contamination of compiled classes / web.xml
+      # between the javax and jakarta variants.
+      #   …-polarion2512.jar -> Polarion 2512 (Tomcat 9 / javax)
+      #   …-polarion2606.jar -> Polarion 2606 (Tomcat 11 / jakarta)
+      - name: Build release artifacts for Polarion 2512 and 2606 (tests already passed)
+        run: |
+          STASH="${RUNNER_TEMP:-/tmp}/release-jars"
+          mkdir -p "$STASH"
+          mvn --batch-mode -DskipTests clean package
+          cp target/*polarion2512*.jar "$STASH"/
+          mvn --batch-mode -DskipTests -Ppolarion-2606 clean package
+          cp "$STASH"/*polarion2512*.jar target/
+          echo "Release artifacts:"
+          ls -1 target/*.jar
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}

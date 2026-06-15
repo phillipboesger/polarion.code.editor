@@ -1,5 +1,16 @@
 package boesger.polarion.codeeditor.api;
 
+// ============================================================================
+// DUAL-PLATFORM SERVLET — jakarta.servlet variant (Polarion 2606 / Tomcat 11).
+//
+// This file has a javax twin at:
+//   src/main/java-javax/boesger/polarion/codeeditor/api/CodeEditorServlet.java
+// The two files MUST stay identical except for the "javax.servlet" <->
+// "jakarta.servlet" package prefix. Parity is enforced at build time by
+// CodeEditorServletVariantParityTest. Exactly one variant is compiled per
+// build, selected by the Maven profile (polarion-2512 vs polarion-2606).
+// ============================================================================
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -8,10 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.IOUtils;
 
