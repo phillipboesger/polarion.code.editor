@@ -15,54 +15,6 @@ on:
     branches: [main]
 
 jobs:
-  # TEMPORARY diagnostic: locate which mirror artifact actually contains the two
-  # classes the compile cannot find. Polarion bundles are "exploded" (multiple
-  # embedded jars) and the publisher splits each embedded jar into a separate
-  # artifact com.polarion:<bundle>.<jarbase>. Removed once coordinates are pinned.
-  discover-deps:
-    name: Locate Polarion classes in mirror
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Find artifacts containing the missing classes
-        env:
-          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          set -u
-          BASE="https://maven.pkg.github.com/phillipboesger/polarion-ootb-plugins/com/polarion"
-          AUTH="Authorization: Bearer ${PACKAGES_TOKEN}"
-
-          names() {
-            for page in 1 2 3 4 5 6 7 8 9 10; do
-              resp=$(curl -sS -H "$AUTH" -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/users/phillipboesger/packages?package_type=maven&per_page=100&page=${page}")
-              n=$(echo "$resp" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
-              echo "$resp" | python3 -c "import sys,json;[print(p['name']) for p in json.load(sys.stdin)]" 2>/dev/null || true
-              [ "$n" -lt 100 ] && break
-            done
-          }
-          probe() { # artifactId version classpath-regex
-            local art="$1" ver="$2" rx="$3"
-            # -L: GitHub Packages 302-redirects jar downloads to blob storage.
-            curl -fsSL -H "$AUTH" -o /tmp/a.jar "$BASE/$art/$ver/$art-$ver.jar" 2>/dev/null || { echo "    [dl-fail] $art:$ver"; return; }
-            if unzip -l /tmp/a.jar >/dev/null 2>&1; then
-              local hit; hit=$(unzip -l /tmp/a.jar | grep -iE "$rx" | head -3)
-              [ -n "$hit" ] && { echo "    [FOUND] $art:$ver"; echo "$hit" | sed 's/^/        /'; } || echo "    [absent] $art:$ver"
-            else echo "    [not-a-jar] $art:$ver"; fi
-          }
-
-          ALL="$(names)"
-          echo "### UnresolvableObjectException — probing every com.polarion.platform* artifact (v3.25.12) ###"
-          echo "$ALL" | grep -iE '^com\.polarion\.platform' | while read -r pkg; do
-            probe "${pkg#com.polarion.}" 3.25.12 "com/polarion/platform/persistence/UnresolvableObjectException"
-          done
-          echo "### IContextId — probing every com.polarion.subterra* artifact (v5.25.12) ###"
-          echo "$ALL" | grep -iE '^com\.polarion\.subterra' | while read -r pkg; do
-            probe "${pkg#com.polarion.}" 5.25.12 "com/polarion/subterra/base/data/identification/IContextId"
-          done
-
   test:
     name: Build & Test
     runs-on: ubuntu-latest
