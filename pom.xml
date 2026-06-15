@@ -278,15 +278,14 @@
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Subterra base bundle (OSGi bundle com.polarion.subterra.base). It is a
+         single bundle in the mirror and provides every com.polarion.subterra.base.*
+         package the plugin uses (base.location.*, base.data.identification.*, …).
+         (The old Avasis registry split it into synthetic subterra.base.data /
+         subterra.base.core artifacts, which do not exist in our own mirror.) -->
     <dependency>
       <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.data</artifactId>
-      <version>${subterra.version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.core</artifactId>
+      <artifactId>subterra.base</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>

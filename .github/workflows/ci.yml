@@ -15,36 +15,6 @@ on:
     branches: [main]
 
 jobs:
-  # TEMPORARY diagnostic: lists the versions actually published in the
-  # polarion-ootb-plugins mirror for the artifacts whose version we are unsure
-  # about (subterra*). Removed once the correct versions are pinned in pom.xml.
-  discover-deps:
-    name: Discover available dependency versions
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Query maven-metadata.xml from the mirror
-        env:
-          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          BASE="https://maven.pkg.github.com/phillipboesger/polarion-ootb-plugins/com/polarion"
-          for art in subterra.base subterra subterra.base.data platform.persistence platform; do
-            echo "==================== $art ===================="
-            curl -sS -H "Authorization: Bearer ${PACKAGES_TOKEN}" \
-              "$BASE/$art/maven-metadata.xml" || echo "(request failed for $art)"
-            echo
-          done
-          echo "==================== maven packages matching 'subterra' ===================="
-          for page in 1 2 3 4 5; do
-            resp=$(curl -sS -H "Authorization: Bearer ${PACKAGES_TOKEN}" -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/users/phillipboesger/packages?package_type=maven&per_page=100&page=${page}")
-            n=$(echo "$resp" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
-            echo "$resp" | python3 -c "import sys,json;[print(p['name']) for p in json.load(sys.stdin)]" 2>/dev/null | grep -i subterra || true
-            [ "$n" -lt 100 ] && break
-          done
-
   test:
     name: Build & Test
     runs-on: ubuntu-latest
