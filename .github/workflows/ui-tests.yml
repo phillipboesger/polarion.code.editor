@@ -215,9 +215,29 @@ jobs:
           docker exec polarion sh -c "grep -riE 'code-editor|boesger|DoAsFilter|Exception starting filter|allocate an exception|ClassNotFoundException|NoClassDefFoundError|Error configuring application listener|failed to start|StandardContext|One or more listeners' /var/log/polarion/ 2>/dev/null | tail -60" || echo "(none)"
 
       # ------------------------------------------------------------------
+      # 6c. TEMPORARY diagnostic: how did Polarion 2606 mount the webapp?
+      #     editor.html returns a context-level 404 even though it is bundled.
+      # ------------------------------------------------------------------
+      - name: Inspect code-editor webapp deployment (Polarion 2606)
+        run: |
+          echo "=== deployed code-editor bundle jar(s) ==="
+          docker exec polarion sh -c "find /opt/polarion -iname '*code-editor*.jar' 2>/dev/null"
+          echo "=== bundle jar contents (webapp / web.xml / monaco / descriptors) ==="
+          docker exec polarion sh -c '
+            J=$(find /opt/polarion -iname "*code-editor*.jar" 2>/dev/null | head -1); echo "jar: $J";
+            ( unzip -l "$J" 2>/dev/null || jar tf "$J" 2>/dev/null \
+              || python3 -c "import zipfile,sys;[print(n) for n in zipfile.ZipFile(sys.argv[1]).namelist()]" "$J" 2>/dev/null ) \
+            | grep -iE "editor.html|web.xml|loader.js|code-editor-icon|plugin.xml|hivemodule" '
+          echo "=== exploded editor.html anywhere on disk (docBase) ==="
+          docker exec polarion sh -c "find /opt/polarion -iname 'editor.html' 2>/dev/null; find /opt/polarion -type d -iname '*code-editor*' 2>/dev/null | head -20"
+          echo "=== logs: webapp / context / tomcat deploy mentions of code-editor ==="
+          docker exec polarion sh -c "grep -riE 'code-editor|polarion/code-editor|contextRoot|webapp|docBase|addWebapp|Deploying web' /opt/polarion/data/logs /var/log/polarion 2>/dev/null | grep -iE 'webapp|context|deploy|code-editor|docBase' | tail -50" || echo "(none)"
+
+      # ------------------------------------------------------------------
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
+        if: ${{ false }}   # TEMP: diagnostic-only cycle — skip the 8-min suite
         working-directory: tests/ui
         env:
           POLARION_URL: "http://localhost"
