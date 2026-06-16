@@ -64,14 +64,21 @@ jobs:
           docker volume create polarion_repo
           docker volume create polarion_extensions
 
-      - name: Deploy plugin JAR into extensions volume
+      - name: Deploy plugin as an exploded bundle dir into extensions volume
         run: |
           JAR_NAME=$(ls target/*polarion2606*.jar | head -1 | xargs basename)
-          echo "Deploying: $JAR_NAME"
+          VER=$(echo "$JAR_NAME" | sed -E 's/.*code-editor-([0-9][0-9.]*)-polarion2606\.jar/\1/')
+          DIR_NAME="boesger.polarion.code-editor_${VER}"
+          echo "Deploying exploded bundle '$DIR_NAME' from $JAR_NAME"
+          # Polarion 2606 / Tomcat 11 only mounts a plugin webapp when its
+          # contextRoot (src/main/webapp) resolves to a REAL directory on disk.
+          # A JAR'd bundle keeps the webapp inside the archive (no docBase) so the
+          # context is silently skipped. Install the bundle EXPLODED, exactly like
+          # the core webapp plugins (e.g. com.polarion.alm.wiki_x.y.z/).
           docker run --rm \
             -v polarion_extensions:/ext \
             -v "$(pwd)/target:/src" \
-            alpine sh -c "mkdir -p /ext/custom/eclipse/plugins && cp /src/${JAR_NAME} /ext/custom/eclipse/plugins/"
+            alpine sh -c "apk add --no-cache unzip >/dev/null && mkdir -p /ext/custom/eclipse/plugins/${DIR_NAME} && unzip -oq /src/${JAR_NAME} -d /ext/custom/eclipse/plugins/${DIR_NAME} && echo 'exploded contents:' && ls -1 /ext/custom/eclipse/plugins/${DIR_NAME}"
 
       # ------------------------------------------------------------------
       # 4. Start the Polarion container
@@ -220,36 +227,17 @@ jobs:
       # ------------------------------------------------------------------
       - name: Inspect code-editor webapp deployment (Polarion 2606)
         run: |
-          echo "=== ALL mounted webapps (is polarion/code-editor among them?) ==="
-          docker exec polarion sh -c "grep -rhoE 'WebappContribution\[[^]]*\]' /opt/polarion/data/logs 2>/dev/null | sort -u" || echo "(none)"
-          echo
-          echo "=== OUR deployed bundle: MANIFEST.MF + plugin.xml ==="
-          docker exec polarion sh -c '
-            J=$(find /opt/polarion -iname "*code-editor*.jar" 2>/dev/null | head -1); echo "jar: $J";
-            echo "--- MANIFEST.MF ---"; unzip -p "$J" META-INF/MANIFEST.MF 2>/dev/null;
-            echo "--- plugin.xml ---";   unzip -p "$J" plugin.xml 2>/dev/null'
-          echo
-          echo "=== WORKING core plugin (contextRoot=src/main/webapp): com.polarion.alm.wiki ==="
-          docker exec polarion sh -c '
-            for P in $(find /opt/polarion/polarion/plugins -maxdepth 1 -iname "com.polarion.alm.wiki*" 2>/dev/null | head -2); do
-              echo "## $P";
-              if [ -d "$P" ]; then
-                echo "--- MANIFEST.MF ---"; grep -iE "Bundle-|Require-Bundle|Eclipse-|Service-Component|Provide" "$P/META-INF/MANIFEST.MF" 2>/dev/null;
-                echo "--- plugin.xml (webapps ext) ---"; cat "$P/plugin.xml" 2>/dev/null | head -60;
-              else
-                echo "--- MANIFEST.MF ---"; unzip -p "$P" META-INF/MANIFEST.MF 2>/dev/null | grep -iE "Bundle-|Require-Bundle|Eclipse-|Service-Component|Provide";
-                echo "--- plugin.xml ---"; unzip -p "$P" plugin.xml 2>/dev/null | head -60;
-              fi
-            done'
-          echo
-          echo "=== timing: webapp-mount phase vs our bundle add; + resolve/active state ==="
-          docker exec polarion sh -c "grep -hnE 'TomcatAppServer.start\(\)|Add bundle boesger|boesger.*(RESOLVED|ACTIVE|STARTING)|not be resolved|Could not resolve|Bundle boesger' /opt/polarion/data/logs/main/*.log 2>/dev/null | grep -iE 'boesger|TomcatAppServer.start..:' | head -20" || echo "(none)"
+          echo "=== is polarion/code-editor now mounted? ==="
+          docker exec polarion sh -c "grep -rhoE 'WebappContribution\[[^]]*\]' /opt/polarion/data/logs 2>/dev/null | sort -u | grep -i code-editor" \
+            && echo '  -> MOUNTED' || echo '  -> NOT mounted'
+          echo "=== editor.html (basic-auth; 200/HTML expected if served) ==="
+          curl -s -u admin:admin -o /tmp/eh -w 'HTTP %{http_code}\n' "http://localhost/polarion/code-editor/editor.html" || true
+          head -c 160 /tmp/eh 2>/dev/null; echo
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
-        if: ${{ false }}   # TEMP: diagnostic-only cycle
         working-directory: tests/ui
         env:
           POLARION_URL: "http://localhost"

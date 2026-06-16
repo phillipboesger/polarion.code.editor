@@ -213,6 +213,14 @@
               <Bundle-Vendor>${project.organization.name}</Bundle-Vendor>
               <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload,com.google.gson</Require-Bundle>
               <Import-Package>org.apache.log4j</Import-Package>
+              <!-- The editor webapp is contributed via plugin.xml with
+                   contextRoot="src/main/webapp". Polarion/Tomcat can only mount a
+                   plugin webapp when that contextRoot is a real directory on disk
+                   (a JAR'd bundle keeps it inside the archive, so the context never
+                   mounts on Polarion 2606 / Tomcat 11). Mark the bundle dir-shaped,
+                   like the core webapp plugins (e.g. com.polarion.alm.wiki), so it
+                   is installed exploded. -->
+              <Eclipse-BundleShape>dir</Eclipse-BundleShape>
             </manifestEntries>
           </archive>
         </configuration>
