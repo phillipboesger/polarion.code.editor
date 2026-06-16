@@ -24,8 +24,6 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import org.apache.commons.io.IOUtils;
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.polarion.core.util.logging.Logger;
@@ -115,7 +113,7 @@ public class CodeEditorServlet extends HttpServlet {
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
-				String content = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+				String content = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 				handleUpdateFile(projectId, fileName, content, resp);
 			}
 			else {
@@ -181,7 +179,7 @@ public class CodeEditorServlet extends HttpServlet {
 
 	private void handlePostRename(HttpServletRequest req, String projectId, HttpServletResponse resp)
 			throws IOException, CodeEditorException {
-		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		String body = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 		RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
 
 		if(renameReq == null || renameReq.oldName == null || renameReq.newName == null) {

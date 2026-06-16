@@ -243,7 +243,6 @@ jobs:
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
-        if: ${{ false }}   # TEMP: diagnostic-only cycle (confirm webapp mounts first)
         working-directory: tests/ui
         env:
           POLARION_URL: "http://localhost"
