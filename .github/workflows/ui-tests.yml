@@ -230,14 +230,15 @@ jobs:
             | grep -iE "editor.html|web.xml|loader.js|code-editor-icon|plugin.xml|hivemodule" '
           echo "=== exploded editor.html anywhere on disk (docBase) ==="
           docker exec polarion sh -c "find /opt/polarion -iname 'editor.html' 2>/dev/null; find /opt/polarion -type d -iname '*code-editor*' 2>/dev/null | head -20"
-          echo "=== logs: webapp / context / tomcat deploy mentions of code-editor ==="
-          docker exec polarion sh -c "grep -riE 'code-editor|polarion/code-editor|contextRoot|webapp|docBase|addWebapp|Deploying web' /opt/polarion/data/logs /var/log/polarion 2>/dev/null | grep -iE 'webapp|context|deploy|code-editor|docBase' | tail -50" || echo "(none)"
+          echo "=== ALL mounted webapps (is polarion/code-editor among them?) ==="
+          docker exec polarion sh -c "grep -rhoE 'WebappContribution\[[^]]*\]' /opt/polarion/data/logs 2>/dev/null | sort -u" || echo "(none)"
+          echo "=== code-editor specific log lines (bundle / webapp / error / warn) ==="
+          docker exec polarion sh -c "grep -riE 'code-editor' /opt/polarion/data/logs /var/log/polarion 2>/dev/null | grep -ivE 'TXLOGGER|Summary for' | tail -40" || echo "(none)"
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
-        if: ${{ false }}   # TEMP: diagnostic-only cycle — skip the 8-min suite
         working-directory: tests/ui
         env:
           POLARION_URL: "http://localhost"
