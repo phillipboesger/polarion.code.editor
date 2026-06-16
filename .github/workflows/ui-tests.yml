@@ -192,6 +192,27 @@ jobs:
           fi
 
       # ------------------------------------------------------------------
+      # 6b. TEMPORARY diagnostic: smoke-test the plugin's HTTP surface in the
+      #     running Polarion 2606 to localise the editor-SPA timeout (auth /
+      #     DoAsFilter vs. project 'drivepilot' vs. Monaco resources vs. API).
+      # ------------------------------------------------------------------
+      - name: Diagnose plugin HTTP surface (Polarion 2606)
+        run: |
+          B="http://localhost/polarion/code-editor"
+          probe() { # label url
+            local code; code=$(curl -s -u admin:admin -o /tmp/body -w '%{http_code}' "$2" || echo "ERR")
+            echo "[$1] HTTP $code  ($(wc -c </tmp/body 2>/dev/null || echo 0) bytes)  $2"
+            head -c 300 /tmp/body 2>/dev/null | tr '\n' ' '; echo; echo "----"
+          }
+          probe "editor.html"          "$B/editor.html"
+          probe "monaco loader"        "$B/resources/lib/monaco-editor/min/vs/loader.js"
+          probe "api/health"           "$B/api/health"
+          probe "api/list (global)"    "$B/api/config/list"
+          probe "api/list drivepilot"  "$B/api/config/list?projectId=drivepilot"
+          echo "=== polarion.log: code-editor / boesger / servlet lines ==="
+          docker exec polarion sh -c "grep -iE 'code-editor|boesger|CodeEditorServlet|DoAsFilter' /var/log/polarion/polarion.log | tail -40" || echo "(none)"
+
+      # ------------------------------------------------------------------
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
