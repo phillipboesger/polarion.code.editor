@@ -25,14 +25,18 @@
   </scm>
 
   <!--
-    Polarion platform JARs are published to GitHub Packages.
+    Polarion platform JARs are consumed from our own private GitHub Packages
+    Maven mirror (phillipboesger/polarion-ootb-plugins), which republishes every
+    OOTB Polarion bundle straight from a licensed install ZIP. Coordinates follow
+    the OSGi bundle: groupId "com.polarion", artifactId = Bundle-SymbolicName with
+    the leading "com.polarion." stripped, version = Bundle-Version (e.g. 3.25.12).
     CI authenticates via the PACKAGES_TOKEN secret (PAT with read:packages).
     The server id "github" is injected by actions/setup-java in the CI workflow.
   -->
   <repositories>
     <repository>
       <id>github</id>
-      <url>https://maven.pkg.github.com/avasis-solutions/masterPom-plugins</url>
+      <url>https://maven.pkg.github.com/phillipboesger/polarion-ootb-plugins</url>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
@@ -45,10 +49,35 @@
     <maven.compiler.release>21</maven.compiler.release>
     <!-- OSGi Bundle-Version must not contain SNAPSHOT; keep in sync with project.version -->
     <manifest.version>1.5.0</manifest.version>
+
+    <!--
+      DUAL-PLATFORM BUILD (Polarion 2512 *and* 2606)
+
+      Polarion 2606 upgraded the embedded servlet container from Tomcat 9
+      (Jakarta EE 8, javax.servlet) to Tomcat 11 (Jakarta EE 11, jakarta.servlet,
+      Servlet 6.1). A single compiled artifact cannot satisfy both namespaces, so
+      this project produces two JARs via the polarion-2512 / polarion-2606
+      profiles (see the <profiles> section):
+
+        * boesger.polarion.code-editor-<ver>-polarion2512.jar  -> Polarion 2512 (javax)
+        * boesger.polarion.code-editor-<ver>-polarion2606.jar  -> Polarion 2606 (jakarta)
+
+      Both variants compile against the SAME, namespace-stable Polarion platform
+      API below (3.25.12). Those APIs are forward-compatible and the OSGi
+      Require-Bundle version acts as a *minimum* floor, so the 2606 JAR resolves
+      cleanly against the higher 3.26.6 bundles at runtime. Only the Servlet API
+      (javax vs jakarta) and the web.xml descriptor differ between the two JARs.
+      To instead compile natively against the 2606 platform JARs, override
+      -Dpolarion.version=3.26.6 -Dsubterra.version=5.26.6 (requires those bundles
+      to be published in the polarion-ootb-plugins registry).
+    -->
     <!-- Polarion platform version used for OSGi Require-Bundle and compilation -->
     <polarion.version>3.25.12</polarion.version>
     <!-- subterra versioning follows a separate scheme; 5.25.12 aligns with 3.25.12 -->
     <subterra.version>5.25.12</subterra.version>
+
+    <!-- Output-name discriminator; overridden to "polarion2606" by that profile. -->
+    <polarion.target>polarion2512</polarion.target>
   </properties>
 
   <build>
@@ -68,6 +97,9 @@
           <exclude>resources/lib/monaco-editor/dev/**</exclude>
           <exclude>resources/lib/monaco-editor/esm/**</exclude>
           <exclude>resources/lib/monaco-editor/min-maps/**</exclude>
+          <!-- web.xml is namespace-specific (javax vs jakarta); the active
+               polarion-2512 / polarion-2606 profile contributes the right one. -->
+          <exclude>WEB-INF/web.xml</exclude>
         </excludes>
       </resource>
       <resource>
@@ -134,6 +166,12 @@
             <releaseProfiles>release</releaseProfiles>
           </configuration>
         </plugin>
+        <!-- Adds the namespace-specific servlet source root per platform profile. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>3.6.0</version>
+        </plugin>
       </plugins>
     </pluginManagement>
 
@@ -165,7 +203,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
-          <finalName>${project.groupId}.${project.artifactId}-${project.version}</finalName>
+          <finalName>${project.groupId}.${project.artifactId}-${project.version}-${polarion.target}</finalName>
           <archive>
             <manifestEntries>
               <Bundle-ManifestVersion>2</Bundle-ManifestVersion>
@@ -173,8 +211,16 @@
               <Bundle-SymbolicName>${project.groupId}.${project.artifactId};singleton:=true</Bundle-SymbolicName>
               <Bundle-Version>${manifest.version}</Bundle-Version>
               <Bundle-Vendor>${project.organization.name}</Bundle-Vendor>
-              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload,com.google.gson</Require-Bundle>
+              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,com.google.gson</Require-Bundle>
               <Import-Package>org.apache.log4j</Import-Package>
+              <!-- The editor webapp is contributed via plugin.xml with
+                   contextRoot="src/main/webapp". Polarion/Tomcat can only mount a
+                   plugin webapp when that contextRoot is a real directory on disk
+                   (a JAR'd bundle keeps it inside the archive, so the context never
+                   mounts on Polarion 2606 / Tomcat 11). Mark the bundle dir-shaped,
+                   like the core webapp plugins (e.g. com.polarion.alm.wiki), so it
+                   is installed exploded. -->
+              <Eclipse-BundleShape>dir</Eclipse-BundleShape>
             </manifestEntries>
           </archive>
         </configuration>
@@ -216,6 +262,17 @@
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Polarion bundles are "exploded": their implementation classes live in an
+         embedded jar that the mirror publishes as a separate artifact
+         com.polarion:<bundle>.<embedded-jar>. The com.polarion.platform.persistence.*
+         classes (e.g. UnresolvableObjectException) are in this embedded jar, not in
+         the platform.persistence bundle wrapper above. -->
+    <dependency>
+      <groupId>com.polarion</groupId>
+      <artifactId>platform.persistence.platform-persistence</artifactId>
+      <version>${polarion.version}</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>com.polarion</groupId>
       <artifactId>platform.repository</artifactId>
@@ -240,44 +297,37 @@
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Subterra base bundle (OSGi bundle com.polarion.subterra.base). It is a
+         single bundle in the mirror and provides every com.polarion.subterra.base.*
+         package the plugin uses (base.location.*, base.data.identification.*, …).
+         (The old Avasis registry split it into synthetic subterra.base.data /
+         subterra.base.core artifacts, which do not exist in our own mirror.) -->
     <dependency>
       <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.data</artifactId>
+      <artifactId>subterra.base</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Embedded jar of the subterra.base bundle (see note above): provides the
+         com.polarion.subterra.base.data.* packages, e.g.
+         com.polarion.subterra.base.data.identification.IContextId. -->
     <dependency>
       <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.core</artifactId>
+      <artifactId>subterra.base.subterra-base-data</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>
 
-    <!-- ===== Servlet API (provided by Polarion / Tomcat) ===== -->
-    <dependency>
-      <groupId>javax.servlet</groupId>
-      <artifactId>javax.servlet-api</artifactId>
-      <version>3.1.0</version>
-      <scope>provided</scope>
-    </dependency>
+    <!-- ===== Servlet API =====
+         Provided by Polarion / Tomcat at runtime. The concrete namespace is
+         platform-specific and therefore declared in the polarion-2512
+         (javax.servlet) / polarion-2606 (jakarta.servlet) profiles below. -->
 
     <!-- ===== Third-party (provided by OSGi runtime) ===== -->
     <dependency>
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
       <version>2.10.1</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>commons-io</groupId>
-      <artifactId>commons-io</artifactId>
-      <version>2.15.1</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>commons-fileupload</groupId>
-      <artifactId>commons-fileupload</artifactId>
-      <version>1.5</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -334,5 +384,118 @@
     </dependency>
 
   </dependencies>
+
+  <!--
+    ============================================================================
+    Platform profiles — produce one JAR per Polarion servlet namespace.
+    ============================================================================
+      mvn clean package                       -> Polarion 2512 JAR (javax, default)
+      mvn clean package -P polarion-2512      -> Polarion 2512 JAR (javax, explicit)
+      mvn clean package -P polarion-2606      -> Polarion 2606 JAR (jakarta)
+
+    Each profile selects the matching servlet source root (src/main/java-javax
+    vs src/main/java-jakarta — kept in lock-step by CodeEditorServletVariantParityTest),
+    the matching web.xml, the matching Servlet API, and the output-name suffix.
+  -->
+  <profiles>
+    <profile>
+      <!-- Polarion 2512 / Tomcat 9 / Jakarta EE 8 — javax.servlet -->
+      <id>polarion-2512</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <resources>
+          <resource>
+            <directory>src/main/webapp/WEB-INF</directory>
+            <includes>
+              <include>web.xml</include>
+            </includes>
+            <targetPath>src/main/webapp/WEB-INF</targetPath>
+          </resource>
+        </resources>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>add-javax-servlet-source</id>
+                <phase>generate-sources</phase>
+                <goals>
+                  <goal>add-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/main/java-javax</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+      <dependencies>
+        <dependency>
+          <groupId>javax.servlet</groupId>
+          <artifactId>javax.servlet-api</artifactId>
+          <version>3.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+
+    <profile>
+      <!-- Polarion 2606 / Tomcat 11 / Jakarta EE 11 — jakarta.servlet (Servlet 6.1) -->
+      <id>polarion-2606</id>
+      <properties>
+        <polarion.target>polarion2606</polarion.target>
+        <!-- The unit tests (CodeEditorServletTest) are written against javax.servlet
+             and run in the default profile; skip them here so the javax test sources
+             do not break the jakarta compile. Logic parity of the servlet itself is
+             covered by CodeEditorServletVariantParityTest in the default build. -->
+        <maven.test.skip>true</maven.test.skip>
+      </properties>
+      <build>
+        <resources>
+          <resource>
+            <directory>src/main/webapp-jakarta/WEB-INF</directory>
+            <includes>
+              <include>web.xml</include>
+            </includes>
+            <targetPath>src/main/webapp/WEB-INF</targetPath>
+          </resource>
+        </resources>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>add-jakarta-servlet-source</id>
+                <phase>generate-sources</phase>
+                <goals>
+                  <goal>add-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/main/java-jakarta</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+      <dependencies>
+        <dependency>
+          <groupId>jakarta.servlet</groupId>
+          <artifactId>jakarta.servlet-api</artifactId>
+          <version>6.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 
 </project>

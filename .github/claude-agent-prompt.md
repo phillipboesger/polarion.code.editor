@@ -11,13 +11,19 @@ Then open a pull request.
 
 ## Project Overview
 
-An OSGi server-side plugin for Polarion ALM. Builds to a single JAR deployed into the
-running Polarion container. Minimum: Polarion 2512, Java 21.
+An OSGi server-side plugin for Polarion ALM. Builds to **two** JARs deployed into the
+running Polarion container — `…-polarion2512.jar` (Tomcat 9 / `javax.servlet`) and
+`…-polarion2606.jar` (Tomcat 11 / `jakarta.servlet`), selected by the `polarion-2512`
+(default) and `polarion-2606` Maven profiles. Supported: Polarion 2512 and 2606, Java 21.
 
 ## Project Structure
 
-- `src/main/java` – Java backend (OSGi, Servlets)
-- `src/main/webapp` – Frontend (HTML/JS/CSS, Monaco Editor, vanilla JS only)
+- `src/main/java` – Java backend (OSGi, namespace-agnostic logic)
+- `src/main/java-javax` / `src/main/java-jakarta` – the two `CodeEditorServlet` variants
+  (kept identical except the servlet namespace; `CodeEditorServletVariantParityTest`
+  fails the build if they drift — edit both)
+- `src/main/webapp` – Frontend (HTML/JS/CSS, Monaco Editor, vanilla JS only); the
+  Jakarta `web.xml` twin lives in `src/main/webapp-jakarta`
 - `src/test/java` – JUnit unit tests
 - `tests/ui/` – Playwright UI tests (Node.js)
 - `META-INF/plugin.xml` – OSGi descriptor

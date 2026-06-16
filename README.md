@@ -54,19 +54,26 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 ## Compatibility Policy
 
-**Minimum supported versions: Polarion 2512 / Java 21**
+**Supported: Polarion 2512 and Polarion 2606 — Java 21 or later**
 
-This plugin requires **Polarion 2512 or later** and **Java 21 or later**. Older versions of Polarion and Java are explicitly not supported, and there are no plans to backport compatibility.
+Polarion 2606 replaced the embedded **Tomcat 9** servlet container with **Tomcat 11**, which moves the servlet API from the legacy `javax.servlet` namespace to `jakarta.servlet` (Jakarta EE 11 / Servlet 6.1). The two namespaces are mutually incompatible, so each release ships **two JARs built from the same source** — install the one that matches your Polarion version:
+
+| Polarion release            | Servlet container                              | JAR to install                                              |
+| --------------------------- | ---------------------------------------------- | ---------------------------------------------------------- |
+| **2512** (Tomcat 9, javax)  | Jakarta EE 8 / Servlet 3.1                      | `boesger.polarion.code-editor-<version>-polarion2512.jar`  |
+| **2606** (Tomcat 11, jakarta) | Jakarta EE 11 / Servlet 6.1                   | `boesger.polarion.code-editor-<version>-polarion2606.jar`  |
+
+> **Heads-up:** installing the wrong JAR makes the plugin fail to load — the servlet classes resolve against a namespace the running Polarion doesn't provide. If the Code Editor entry doesn't appear after a restart, double-check you deployed the JAR matching your Polarion version.
+
+Both variants require **Java 21 or later**.
 
 ### Why not older versions?
 
-Technically, supporting older Polarion releases (e.g., those still running Java 17) would not require significant effort. However, this is a **deliberate design decision**:
+Polarion releases before 2512 (e.g., those still running Java 17) are explicitly **not** supported, and there are no plans to backport compatibility. This is a **deliberate design decision**:
 
-- This is a new plugin built on a freshly set up build pipeline. Starting with legacy constraints from day one adds unnecessary overhead without any meaningful benefit.
+- This is a plugin built on a freshly set up build pipeline. Starting with legacy constraints from day one adds unnecessary overhead without any meaningful benefit.
 - The strategy is **not** to always chase the absolute latest Polarion release, but to **anchor to the current Java LTS version** (Java 21) and maintain that baseline going forward.
-- Polarion 2512 may feel recent today — but within a few months it will be mainstream across most production deployments, and the version gap will naturally disappear.
-
-If you are still on an older Polarion version, the recommended path is to upgrade your Polarion installation rather than waiting for a backport.
+- If you are still on an older Polarion version, the recommended path is to upgrade your Polarion installation rather than waiting for a backport.
 
 ---
 
@@ -94,20 +101,24 @@ If you are still on an older Polarion version, the recommended path is to upgrad
 
 ### Requirements
 
-| Requirement  | Version         |
-| ------------ | --------------- |
-| Polarion ALM | 2512 or later   |
-| Java         | JDK 21 or later |
+| Requirement  | Version                  |
+| ------------ | ------------------------ |
+| Polarion ALM | 2512 **or** 2606         |
+| Java         | JDK 21 or later          |
 
 ### 1. Deploy to Polarion
 
-Copy the JAR into your Polarion plugins directory:
+Copy the JAR **matching your Polarion version** into your Polarion plugins directory:
 
 ```bash
-cp target/boesger.polarion.code-editor-*.jar <POLARION_HOME>/polarion/plugins/
+# Polarion 2512 (Tomcat 9 / javax.servlet)
+cp target/boesger.polarion.code-editor-*-polarion2512.jar <POLARION_HOME>/polarion/plugins/
+
+# Polarion 2606 (Tomcat 11 / jakarta.servlet)
+cp target/boesger.polarion.code-editor-*-polarion2606.jar <POLARION_HOME>/polarion/plugins/
 ```
 
-Then **restart the Polarion server**.
+Deploy only **one** of them — the one that matches your running Polarion release (see the [Compatibility Policy](#compatibility-policy)). Then **restart the Polarion server**.
 
 ### 2. Verify
 
