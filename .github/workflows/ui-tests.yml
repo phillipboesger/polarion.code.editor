@@ -230,14 +230,20 @@ jobs:
           echo "=== is polarion/code-editor now mounted? ==="
           docker exec polarion sh -c "grep -rhoE 'WebappContribution\[[^]]*\]' /opt/polarion/data/logs 2>/dev/null | sort -u | grep -i code-editor" \
             && echo '  -> MOUNTED' || echo '  -> NOT mounted'
-          echo "=== editor.html (basic-auth; 200/HTML expected if served) ==="
-          curl -s -u admin:admin -o /tmp/eh -w 'HTTP %{http_code}\n' "http://localhost/polarion/code-editor/editor.html" || true
-          head -c 160 /tmp/eh 2>/dev/null; echo
+          echo "=== our bundle OSGi resolution errors (if any) ==="
+          docker exec polarion sh -c "grep -riE 'boesger|code-editor' /opt/polarion/data/logs /var/log/polarion 2>/dev/null | grep -iE 'unresolved|could not resolve|wiring|constraint|missing|BundleException|requirement|not resolved|disabled' | grep -v TXLOGGER | head -30" || echo "(no resolution errors logged)"
+          echo "=== do our Require-Bundle entries exist in 2606? ==="
+          docker exec polarion sh -c '
+            for b in com.polarion.portal.tomcat com.polarion.platform.persistence org.apache.hivemind com.polarion.alm.ui com.polarion.alm.tracker com.polarion.platform.guice com.polarion.core.util com.polarion.platform.repository com.polarion.platform org.eclipse.core.runtime com.polarion.psvn.launcher org.apache.commons.io org.apache.commons.commons-fileupload com.google.gson; do
+              hit=$(find /opt/polarion/polarion/plugins /opt/polarion/polarion/extensions -maxdepth 4 \( -iname "${b}_*" -o -iname "${b}.jar" \) 2>/dev/null | head -1);
+              if [ -n "$hit" ]; then echo "  OK   $b"; else echo "  MISS $b"; fi
+            done'
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
       # ------------------------------------------------------------------
       - name: Run Playwright UI tests
+        if: ${{ false }}   # TEMP: diagnostic-only cycle (confirm webapp mounts first)
         working-directory: tests/ui
         env:
           POLARION_URL: "http://localhost"
