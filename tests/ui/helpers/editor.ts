@@ -1,4 +1,4 @@
-import { Page, Frame, expect } from '@playwright/test';
+import { Page, Frame, expect, ConsoleMessage, Response, Request } from '@playwright/test';
 import { BASE_URL } from './auth';
 
 export const EDITOR_URL = `${BASE_URL}/polarion/code-editor/editor.html`;
@@ -71,14 +71,57 @@ export async function openEditor(page: Page, projectId?: string): Promise<Frame>
 
   await page.goto(spaUrl, { waitUntil: 'domcontentloaded' });
 
+  // --- TEMP DIAGNOSTIC (remove once the 2606 editor-iframe boot is fixed) ----
+  // Capture console errors / failed sub-resource loads in the editor iframe so
+  // a window.editor timeout reveals *why* (webapp context down → login page, vs
+  // Monaco resources 404, vs a JS error).
+  const consoleLogs: string[] = [];
+  const badResponses: string[] = [];
+  const onConsole = (m: ConsoleMessage) => {
+    const t = m.type();
+    if (t === 'error' || t === 'warning') consoleLogs.push(`[${t}] ${m.text()}`);
+  };
+  const onResponse = (r: Response) => {
+    if (r.status() >= 400) badResponses.push(`${r.status()} ${r.url()}`);
+  };
+  const onRequestFailed = (r: Request) =>
+    badResponses.push(`FAILED ${r.failure()?.errorText ?? ''} ${r.url()}`);
+  page.on('console', onConsole);
+  page.on('response', onResponse);
+  page.on('requestfailed', onRequestFailed);
+  // --------------------------------------------------------------------------
+
   const editorFrame = await editorFramePromise;
   // Wait for Monaco's require() callback to complete – window.editor is set
   // right before setupResizer() is called, so this guarantees the resizer
   // (and all other JS initialisation) has run before the test interacts.
-  await editorFrame.waitForFunction(
-    () => !!(globalThis as Record<string, unknown>)['editor'],
-    { timeout: process.env.CI ? 30_000 : 15_000 }
-  );
+  try {
+    await editorFrame.waitForFunction(
+      () => !!(globalThis as Record<string, unknown>)['editor'],
+      { timeout: process.env.CI ? 30_000 : 15_000 }
+    );
+  } catch (err) {
+    let snap: unknown = '(frame.evaluate failed)';
+    try {
+      snap = await editorFrame.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        require: typeof (globalThis as Record<string, unknown>)['require'],
+        monaco: typeof (globalThis as Record<string, unknown>)['monaco'],
+        editor: typeof (globalThis as Record<string, unknown>)['editor'],
+        scripts: Array.from(document.scripts).map(s => s.src).filter(Boolean),
+        bodyStart: document.body ? document.body.innerText.slice(0, 200) : '(no body)',
+      }));
+    } catch { /* frame may be detached */ }
+    console.log('=== OPEN_EDITOR_DIAG snapshot ===\n' + JSON.stringify(snap, null, 2));
+    console.log('=== OPEN_EDITOR_DIAG console(error/warn) ===\n' + consoleLogs.slice(0, 30).join('\n'));
+    console.log('=== OPEN_EDITOR_DIAG bad/failed responses ===\n' + badResponses.slice(0, 40).join('\n'));
+    throw err;
+  } finally {
+    page.off('console', onConsole);
+    page.off('response', onResponse);
+    page.off('requestfailed', onRequestFailed);
+  }
   return editorFrame;
 }
 

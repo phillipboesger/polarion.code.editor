@@ -209,8 +209,10 @@ jobs:
           probe "api/health"           "$B/api/health"
           probe "api/list (global)"    "$B/api/config/list"
           probe "api/list drivepilot"  "$B/api/config/list?projectId=drivepilot"
-          echo "=== polarion.log: code-editor / boesger / servlet lines ==="
-          docker exec polarion sh -c "grep -iE 'code-editor|boesger|CodeEditorServlet|DoAsFilter' /var/log/polarion/polarion.log | tail -40" || echo "(none)"
+          echo "=== polarion log dir ==="
+          docker exec polarion sh -c "ls -la /var/log/polarion/ 2>/dev/null; ls -la /opt/polarion/data/logs 2>/dev/null" || true
+          echo "=== logs: code-editor / webapp context / filter / classload errors ==="
+          docker exec polarion sh -c "grep -riE 'code-editor|boesger|DoAsFilter|Exception starting filter|allocate an exception|ClassNotFoundException|NoClassDefFoundError|Error configuring application listener|failed to start|StandardContext|One or more listeners' /var/log/polarion/ 2>/dev/null | tail -60" || echo "(none)"
 
       # ------------------------------------------------------------------
       # 7. Run Playwright tests
