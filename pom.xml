@@ -5,7 +5,7 @@
 
   <groupId>boesger.polarion</groupId>
   <artifactId>code-editor</artifactId>
-  <version>1.5.0</version>
+  <version>1.5.1</version>
   <packaging>jar</packaging>
 
   <name>Polarion Code Editor Plugin</name>
@@ -48,7 +48,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>21</maven.compiler.release>
     <!-- OSGi Bundle-Version must not contain SNAPSHOT; keep in sync with project.version -->
-    <manifest.version>1.5.0</manifest.version>
+    <manifest.version>1.5.1</manifest.version>
 
     <!--
       DUAL-PLATFORM BUILD (Polarion 2512 *and* 2606)
