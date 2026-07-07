@@ -500,18 +500,24 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     const compact = '{"ctx":true}';
     await setEditorContent(frame, compact);
 
+    // Focus the editor pane first so Format Document has an active editor to act
+    // on (mirrors the stable keyboard-shortcut test). Without this, on slower
+    // environments — e.g. the Polarion 2512 leg — clicking the context-menu item
+    // can run before the editor regains focus and the action silently no-ops.
+    await frame.locator('#editor-container').click();
+
     // Right-click inside the editor to open the Monaco context menu
     await frame.locator('.monaco-editor').first().click({ button: 'right' });
 
     // The "Format Document" action should appear in the context menu
     const menuItem = frame.locator('.monaco-menu .action-item').filter({ hasText: 'Format Document' }).first();
-    await expect(menuItem).toBeVisible({ timeout: 5_000 });
+    await expect(menuItem).toBeVisible({ timeout: 8_000 });
 
     // Click the menu item and verify formatting was applied
     await menuItem.click();
 
     await expect
-      .poll(() => getEditorContent(frame), { timeout: 8_000 })
+      .poll(() => getEditorContent(frame), { timeout: 15_000 })
       .not.toBe(compact);
 
     const formatted = await getEditorContent(frame);

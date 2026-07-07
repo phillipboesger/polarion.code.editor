@@ -224,7 +224,7 @@ jobs:
           retention-days: 30
 
   ui-tests:
-    name: Playwright UI Tests (Release Gate)
+    name: Playwright UI Tests Release Gate (Polarion ${{ matrix.polarion }})
     needs: []
     if: |
       github.event_name == 'workflow_dispatch' ||
@@ -246,6 +246,18 @@ jobs:
       packages: read
       checks: write
 
+    strategy:
+      # Gate the release on every supported Polarion release independently.
+      fail-fast: false
+      matrix:
+        include:
+          - polarion: "2512" # Tomcat 9 / javax
+            profile: "" # default Maven profile
+            image: ghcr.io/phillipboesger/polarion-docker:v2512
+          - polarion: "2606" # Tomcat 11 / jakarta (Servlet 6.1)
+            profile: "-Ppolarion-2606"
+            image: ghcr.io/phillipboesger/polarion-docker:v2606
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -260,8 +272,10 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build plugin JAR
-        run: mvn --batch-mode package -DskipTests
+      # Build the JAR variant whose servlet namespace (javax / jakarta) matches
+      # this matrix leg's container.
+      - name: Build plugin JAR (Polarion ${{ matrix.polarion }})
+        run: mvn --batch-mode ${{ matrix.profile }} package
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
@@ -271,14 +285,18 @@ jobs:
           docker volume create polarion_repo
           docker volume create polarion_extensions
 
-      - name: Deploy plugin JAR into extensions volume
+      - name: Deploy plugin as an exploded bundle dir into extensions volume
         run: |
-          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
-          echo "Deploying: $JAR_NAME"
+          JAR_NAME=$(ls target/*polarion${{ matrix.polarion }}*.jar | head -1 | xargs basename)
+          VER=$(echo "$JAR_NAME" | sed -E 's/.*code-editor-([0-9][0-9.]*)-polarion${{ matrix.polarion }}\.jar/\1/')
+          DIR_NAME="boesger.polarion.code-editor_${VER}"
+          echo "Deploying exploded bundle '$DIR_NAME' from $JAR_NAME"
+          # Install EXPLODED so the bundled webapp resolves to a real docBase dir
+          # (required by Tomcat 11 / 2606; harmless for Tomcat 9 / 2512).
           docker run --rm \
             -v polarion_extensions:/ext \
             -v "$(pwd)/target:/src" \
-            alpine sh -c "mkdir -p /ext/custom/eclipse/plugins && cp /src/${JAR_NAME} /ext/custom/eclipse/plugins/"
+            alpine sh -c "apk add --no-cache unzip >/dev/null && mkdir -p /ext/custom/eclipse/plugins/${DIR_NAME} && unzip -oq /src/${JAR_NAME} -d /ext/custom/eclipse/plugins/${DIR_NAME} && echo 'exploded contents:' && ls -1 /ext/custom/eclipse/plugins/${DIR_NAME}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -288,7 +306,7 @@ jobs:
           password: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Pull Polarion image
-        run: docker pull ghcr.io/phillipboesger/polarion-docker:latest
+        run: docker pull ${{ matrix.image }}
 
       - name: Start Polarion container
         run: |
@@ -304,7 +322,7 @@ jobs:
             -e JDWP_ENABLED=false \
             --volume polarion_repo:/opt/polarion/data/svn \
             --volume polarion_extensions:/opt/polarion/polarion/extensions \
-            ghcr.io/phillipboesger/polarion-docker:latest
+            ${{ matrix.image }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -382,7 +400,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: release-playwright-report
+          name: release-playwright-report-${{ matrix.polarion }}
           path: tests/ui/playwright-report/
           retention-days: 30
 
@@ -426,8 +444,21 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Build release artifact (tests already passed)
-        run: mvn --batch-mode -DskipTests package
+      # Produce BOTH platform JARs for the release. Clean builds (stashing the
+      # first artifact) avoid any cross-contamination of compiled classes / web.xml
+      # between the javax and jakarta variants.
+      #   …-polarion2512.jar -> Polarion 2512 (Tomcat 9 / javax)
+      #   …-polarion2606.jar -> Polarion 2606 (Tomcat 11 / jakarta)
+      - name: Build release artifacts for Polarion 2512 and 2606 (tests already passed)
+        run: |
+          STASH="${RUNNER_TEMP:-/tmp}/release-jars"
+          mkdir -p "$STASH"
+          mvn --batch-mode -DskipTests clean package
+          cp target/*polarion2512*.jar "$STASH"/
+          mvn --batch-mode -DskipTests -Ppolarion-2606 clean package
+          cp "$STASH"/*polarion2512*.jar target/
+          echo "Release artifacts:"
+          ls -1 target/*.jar
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}

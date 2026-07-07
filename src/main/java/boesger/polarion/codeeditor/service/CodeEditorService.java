@@ -12,8 +12,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import org.apache.commons.io.IOUtils;
-
 import com.polarion.core.util.logging.Logger;
 import com.polarion.platform.repository.config.RepositoryConfigurationException;
 import com.polarion.platform.service.repository.IRepositoryReadOnlyConnection;
@@ -201,7 +199,7 @@ public class CodeEditorService {
 	public String loadFileContent(ILocation fileLocation) throws IllegalArgumentException, IOException {
 		StringWriter writer = new StringWriter();
 		try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
-			IOUtils.copy(fileContent, writer, StandardCharsets.UTF_8);
+			writer.write(new String(fileContent.readAllBytes(), StandardCharsets.UTF_8));
 		}
 		return writer.toString();
 	}
@@ -219,7 +217,7 @@ public class CodeEditorService {
 	public byte[] getFileBytes(String fileName) throws IllegalArgumentException, IOException {
 		ILocation fileLocation = getFileRepoLocation(this.projectId, fileName);
 		try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
-			return IOUtils.toByteArray(fileContent);
+			return fileContent.readAllBytes();
 		}
 	}
 
@@ -290,7 +288,7 @@ public class CodeEditorService {
 		if(loadContent) {
 			StringWriter writer = new StringWriter();
 			try(InputStream fileContent = repoConnection.getContent(fileLocation)) {
-				IOUtils.copy(fileContent, writer, StandardCharsets.UTF_8);
+				writer.write(new String(fileContent.readAllBytes(), StandardCharsets.UTF_8));
 			}
 			content = writer.toString();
 		}

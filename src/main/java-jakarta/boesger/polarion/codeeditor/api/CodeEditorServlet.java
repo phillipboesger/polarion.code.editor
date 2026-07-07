@@ -1,5 +1,16 @@
 package boesger.polarion.codeeditor.api;
 
+// ============================================================================
+// DUAL-PLATFORM SERVLET — jakarta.servlet variant (Polarion 2606 / Tomcat 11).
+//
+// This file has a javax twin at:
+//   src/main/java-javax/boesger/polarion/codeeditor/api/CodeEditorServlet.java
+// The two files MUST stay identical except for the "javax.servlet" <->
+// "jakarta.servlet" package prefix. Parity is enforced at build time by
+// CodeEditorServletVariantParityTest. Exactly one variant is compiled per
+// build, selected by the Maven profile (polarion-2512 vs polarion-2606).
+// ============================================================================
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -8,12 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.apache.commons.io.IOUtils;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -104,7 +113,7 @@ public class CodeEditorServlet extends HttpServlet {
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
-				String content = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+				String content = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 				handleUpdateFile(projectId, fileName, content, resp);
 			}
 			else {
@@ -170,7 +179,7 @@ public class CodeEditorServlet extends HttpServlet {
 
 	private void handlePostRename(HttpServletRequest req, String projectId, HttpServletResponse resp)
 			throws IOException, CodeEditorException {
-		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		String body = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 		RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
 
 		if(renameReq == null || renameReq.oldName == null || renameReq.newName == null) {
