@@ -51,36 +51,39 @@
     <manifest.version>1.5.1</manifest.version>
 
     <!--
-      DUAL-PLATFORM BUILD (Polarion 2512 *and* 2606)
+      DUAL-PLATFORM BUILD (Polarion 2512 *and* 2606) — single source tree
 
       Polarion 2606 upgraded the embedded servlet container from Tomcat 9
       (Jakarta EE 8, javax.servlet) to Tomcat 11 (Jakarta EE 11, jakarta.servlet,
-      Servlet 6.1). A single compiled artifact cannot satisfy both namespaces, so
-      this project produces two JARs via the polarion-2512 / polarion-2606
-      profiles (see the <profiles> section):
+      Servlet 6.1). Sources stay javax.servlet-only (see CodeEditorServlet.java
+      and src/main/webapp/WEB-INF/web.xml); org.eclipse.transformer:transformer-maven-plugin
+      rewrites the compiled bytecode + web.xml at build time to produce a jakarta
+      sibling jar. A maven-antrun-plugin step then renames the two build outputs
+      so the *default* (no-classifier) jar is the 2606/jakarta build and the
+      legacy javax build carries a -pre2606 suffix — 2606 is the primary target
+      going forward; the -pre2606 jar exists only for the Polarion 2512 transition
+      window and will be dropped once those installs are retired:
 
-        * boesger.polarion.code-editor-<ver>-polarion2512.jar  -> Polarion 2512 (javax)
-        * boesger.polarion.code-editor-<ver>-polarion2606.jar  -> Polarion 2606 (jakarta)
+        * boesger.polarion.code-editor-<ver>.jar          -> Polarion 2606 (jakarta, default)
+        * boesger.polarion.code-editor-<ver>-pre2606.jar  -> Polarion 2512 (javax, legacy)
 
       Both variants compile against the SAME, namespace-stable Polarion platform
       API below (3.25.12). Those APIs are forward-compatible and the OSGi
       Require-Bundle version acts as a *minimum* floor, so the 2606 JAR resolves
-      cleanly against the higher 3.26.6 bundles at runtime. Only the Servlet API
-      (javax vs jakarta) and the web.xml descriptor differ between the two JARs.
-      To instead compile natively against the 2606 platform JARs, override
-      -Dpolarion.version=3.26.6 -Dsubterra.version=5.26.6 (requires those bundles
-      to be published in the polarion-ootb-plugins registry).
+      cleanly against the higher 3.26.6 bundles at runtime.
     -->
     <!-- Polarion platform version used for OSGi Require-Bundle and compilation -->
     <polarion.version>3.25.12</polarion.version>
     <!-- subterra versioning follows a separate scheme; 5.25.12 aligns with 3.25.12 -->
     <subterra.version>5.25.12</subterra.version>
-
-    <!-- Output-name discriminator; overridden to "polarion2606" by that profile. -->
-    <polarion.target>polarion2512</polarion.target>
   </properties>
 
+  <!-- Top-level (not plugin-scoped) so ${project.build.finalName} resolves to the
+       real on-disk jar name everywhere it's referenced below, including in the
+       transformer-maven-plugin and maven-antrun-plugin executions. -->
   <build>
+    <finalName>${project.groupId}.${project.artifactId}-${project.version}</finalName>
+
     <resources>
       <resource>
         <directory>META-INF</directory>
@@ -97,9 +100,6 @@
           <exclude>resources/lib/monaco-editor/dev/**</exclude>
           <exclude>resources/lib/monaco-editor/esm/**</exclude>
           <exclude>resources/lib/monaco-editor/min-maps/**</exclude>
-          <!-- web.xml is namespace-specific (javax vs jakarta); the active
-               polarion-2512 / polarion-2606 profile contributes the right one. -->
-          <exclude>WEB-INF/web.xml</exclude>
         </excludes>
       </resource>
       <resource>
@@ -166,11 +166,15 @@
             <releaseProfiles>release</releaseProfiles>
           </configuration>
         </plugin>
-        <!-- Adds the namespace-specific servlet source root per platform profile. -->
         <plugin>
-          <groupId>org.codehaus.mojo</groupId>
-          <artifactId>build-helper-maven-plugin</artifactId>
-          <version>3.6.0</version>
+          <groupId>org.eclipse.transformer</groupId>
+          <artifactId>transformer-maven-plugin</artifactId>
+          <version>1.0.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-antrun-plugin</artifactId>
+          <version>3.1.0</version>
         </plugin>
       </plugins>
     </pluginManagement>
@@ -203,7 +207,6 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
-          <finalName>${project.groupId}.${project.artifactId}-${project.version}-${polarion.target}</finalName>
           <archive>
             <manifestEntries>
               <Bundle-ManifestVersion>2</Bundle-ManifestVersion>
@@ -237,6 +240,71 @@
             --add-opens java.base/java.lang.reflect=ALL-UNNAMED
           </argLine>
         </configuration>
+      </plugin>
+      <!--
+        Rewrites the javax.servlet bytecode (and, via the text-master override,
+        WEB-INF/web.xml) of the plain maven-jar-plugin output to jakarta.servlet /
+        Servlet 6.1, producing a classified sibling jar. <bundles>-</bundles> keeps
+        Bundle-SymbolicName/Bundle-Name identical to the javax jar — the 2606 jar
+        must keep the same plugin identity as the pre2606 one.
+      -->
+      <plugin>
+        <groupId>org.eclipse.transformer</groupId>
+        <artifactId>transformer-maven-plugin</artifactId>
+        <configuration>
+          <rules>
+            <jakartaDefaults>true</jakartaDefaults>
+            <bundles>-</bundles>
+            <texts>
+              <text>${project.basedir}/src/main/transformer/text-master.properties</text>
+            </texts>
+          </rules>
+          <classifier>polarion2606</classifier>
+          <artifact>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>${project.artifactId}</artifactId>
+          </artifact>
+        </configuration>
+        <executions>
+          <execution>
+            <id>jakarta-2606-jar</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!--
+        The jakarta build above becomes the default (no-classifier) artifact and
+        the plain javax build becomes the -pre2606 legacy artifact, by simply
+        renaming the two files already produced in target/ — see the DUAL-PLATFORM
+        BUILD note in <properties> above for why. Must run after the transformer
+        execution (declaration order within the same phase). This rename is
+        package-phase-terminal: do not run "mvn install"/"mvn deploy" after it in
+        the same build, since the transformer's attached -polarion2606 artifact
+        file no longer exists once this step moves it.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>swap-default-to-jakarta</id>
+            <phase>package</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <move file="${project.build.directory}/${project.build.finalName}.jar"
+                      tofile="${project.build.directory}/${project.build.finalName}-pre2606.jar"/>
+                <move file="${project.build.directory}/${project.build.finalName}-polarion2606.jar"
+                      tofile="${project.build.directory}/${project.build.finalName}.jar"/>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
@@ -318,10 +386,16 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- ===== Servlet API =====
-         Provided by Polarion / Tomcat at runtime. The concrete namespace is
-         platform-specific and therefore declared in the polarion-2512
-         (javax.servlet) / polarion-2606 (jakarta.servlet) profiles below. -->
+    <!-- ===== Servlet API (provided by Polarion / Tomcat) =====
+         Source compiles against javax.servlet only; transformer-maven-plugin
+         rewrites the compiled bytecode to jakarta.servlet for the 2606 jar
+         (see the DUAL-PLATFORM BUILD note in <properties> above). -->
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>3.1.0</version>
+      <scope>provided</scope>
+    </dependency>
 
     <!-- ===== Third-party (provided by OSGi runtime) ===== -->
     <dependency>
@@ -384,118 +458,5 @@
     </dependency>
 
   </dependencies>
-
-  <!--
-    ============================================================================
-    Platform profiles — produce one JAR per Polarion servlet namespace.
-    ============================================================================
-      mvn clean package                       -> Polarion 2512 JAR (javax, default)
-      mvn clean package -P polarion-2512      -> Polarion 2512 JAR (javax, explicit)
-      mvn clean package -P polarion-2606      -> Polarion 2606 JAR (jakarta)
-
-    Each profile selects the matching servlet source root (src/main/java-javax
-    vs src/main/java-jakarta — kept in lock-step by CodeEditorServletVariantParityTest),
-    the matching web.xml, the matching Servlet API, and the output-name suffix.
-  -->
-  <profiles>
-    <profile>
-      <!-- Polarion 2512 / Tomcat 9 / Jakarta EE 8 — javax.servlet -->
-      <id>polarion-2512</id>
-      <activation>
-        <activeByDefault>true</activeByDefault>
-      </activation>
-      <build>
-        <resources>
-          <resource>
-            <directory>src/main/webapp/WEB-INF</directory>
-            <includes>
-              <include>web.xml</include>
-            </includes>
-            <targetPath>src/main/webapp/WEB-INF</targetPath>
-          </resource>
-        </resources>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>add-javax-servlet-source</id>
-                <phase>generate-sources</phase>
-                <goals>
-                  <goal>add-source</goal>
-                </goals>
-                <configuration>
-                  <sources>
-                    <source>src/main/java-javax</source>
-                  </sources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-      <dependencies>
-        <dependency>
-          <groupId>javax.servlet</groupId>
-          <artifactId>javax.servlet-api</artifactId>
-          <version>3.1.0</version>
-          <scope>provided</scope>
-        </dependency>
-      </dependencies>
-    </profile>
-
-    <profile>
-      <!-- Polarion 2606 / Tomcat 11 / Jakarta EE 11 — jakarta.servlet (Servlet 6.1) -->
-      <id>polarion-2606</id>
-      <properties>
-        <polarion.target>polarion2606</polarion.target>
-        <!-- The unit tests (CodeEditorServletTest) are written against javax.servlet
-             and run in the default profile; skip them here so the javax test sources
-             do not break the jakarta compile. Logic parity of the servlet itself is
-             covered by CodeEditorServletVariantParityTest in the default build. -->
-        <maven.test.skip>true</maven.test.skip>
-      </properties>
-      <build>
-        <resources>
-          <resource>
-            <directory>src/main/webapp-jakarta/WEB-INF</directory>
-            <includes>
-              <include>web.xml</include>
-            </includes>
-            <targetPath>src/main/webapp/WEB-INF</targetPath>
-          </resource>
-        </resources>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>add-jakarta-servlet-source</id>
-                <phase>generate-sources</phase>
-                <goals>
-                  <goal>add-source</goal>
-                </goals>
-                <configuration>
-                  <sources>
-                    <source>src/main/java-jakarta</source>
-                  </sources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-      <dependencies>
-        <dependency>
-          <groupId>jakarta.servlet</groupId>
-          <artifactId>jakarta.servlet-api</artifactId>
-          <version>6.1.0</version>
-          <scope>provided</scope>
-        </dependency>
-      </dependencies>
-    </profile>
-  </profiles>
 
 </project>

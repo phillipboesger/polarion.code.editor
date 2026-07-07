@@ -21,8 +21,8 @@ body:
       label: Installed JAR variant
       description: Which JAR did you deploy? It must match your Polarion version (see the Compatibility Policy in the README).
       options:
-        - "…-polarion2512.jar (Polarion 2512 / Tomcat 9 / javax)"
-        - "…-polarion2606.jar (Polarion 2606 / Tomcat 11 / jakarta)"
+        - "…<version>.jar (default — Polarion 2606 / Tomcat 11 / jakarta)"
+        - "…<version>-pre2606.jar (legacy — Polarion 2512 / Tomcat 9 / javax)"
         - "Not sure"
     validations:
       required: true

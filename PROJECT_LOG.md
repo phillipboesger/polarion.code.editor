@@ -6,6 +6,27 @@ Most recent entries appear first. Older entries may be moved to PROJECT_LOG_ARCH
 
 <!-- entries below -->
 
+## 2026-07-07 — Single-source Eclipse Transformer build, replacing the dual Maven profiles
+
+**Branch**: feat/2606-single-source-transformer
+**What was done**: Replaced the 2026-06-15 dual-Maven-profile / duplicated-source-tree approach (below) with a single javax.servlet source tree and `org.eclipse.transformer:transformer-maven-plugin`, which rewrites the compiled bytecode + `web.xml` to jakarta.servlet/Servlet 6.1 at build time. One `mvn package` now always produces both JARs; there is no more `-Ppolarion-2606` flag to remember or forget. Also inverted the artifact-naming convention: the **default (no-classifier) jar is now the 2606/jakarta build** and the **`-pre2606` jar is the legacy 2512/javax build** — 2606 is the primary target going forward, and `-pre2606` exists only for the transition window.
+**Changed files**:
+- `pom.xml` — removed the `<profiles>` section, `build-helper-maven-plugin`, and `polarion.target`/finalName-suffix property; promoted `<finalName>` to top-level `<build><finalName>` (was plugin-scoped, which would have silently broken `${project.build.finalName}`-based tooling); added `transformer-maven-plugin` (classifier `polarion2606`, `<bundles>-</bundles>`, custom `<texts>` override) and a `maven-antrun-plugin` rename step that swaps the transformer output to be the default artifact and the plain javax output to `-pre2606`; restored the base `javax.servlet-api:3.1.0` dependency; removed the `WEB-INF/web.xml` resource-exclude (only one `web.xml` now).
+- `src/main/java/boesger/polarion/codeeditor/api/CodeEditorServlet.java` — restored to `src/main/java` (was `src/main/java-javax`); `src/main/java-jakarta` twin deleted.
+- `src/main/webapp/WEB-INF/web.xml` — single source again (was the javax twin); `src/main/webapp-jakarta` deleted.
+- `src/main/transformer/{text-master,web-xml-6_1}.properties` — new; Eclipse Transformer rules retargeting `web.xml` to Jakarta EE 11 / Servlet 6.1 (`jakartaDefaults` alone only reaches Servlet 5.0, and doesn't map the `version="3.0"` / `java.sun.com` namespace this project's `web.xml` used).
+- `src/test/java/.../CodeEditorServletVariantParityTest.java` — deleted (pure source-text diff between the two variants; nothing left to compare with one source tree).
+- `.github/workflows/{ci,ui-tests,release}.yml` — single `mvn package`/`mvn verify` (no more `-Ppolarion-2606` matrix leg); jar selection now explicit (`-pre2606.jar` vs the rest) instead of profile-driven or `head -1` ASCII-sort-dependent.
+- `README.md`, `CONTRIBUTING.md`, `.github/WORKFLOWS.md`, `.github/claude-agent-prompt.md`, `.github/ISSUE_TEMPLATE/bug_report.yml` — updated for the single-build/new-naming convention.
+**Preserved as-is (real 2606 requirements independent of the duplication mechanism, confirmed unaffected by this refactor)**:
+- `META-INF/hivemodule.xml`'s removed `NavigationExtender` contribution (Polarion 2606 dropped that interface; HiveMind FATALs the whole module otherwise) — this file was never duplicated, so no change was needed.
+- `CodeEditorService.java`'s Java-21-builtins IO handling and the corresponding manifest `Require-Bundle` change (commons-io/commons-fileupload are absent as OSGi bundles on 2606) — untouched, was never namespace-duplicated code.
+- `Eclipse-BundleShape: dir` in the manifest (2606/Tomcat 11 only mounts a webapp whose contextRoot is a real on-disk directory) — kept unconditional, applies to both jars.
+**New knowledge**: see the `polarion-2606-jakarta-migration` skill for the general transformer/antrun pattern this follows, including a finalName-scoping trap (must be `<build><finalName>`, not set only inside `maven-jar-plugin`'s own config) caught during planning, before it could break the build.
+**Open / Next steps**: full local `mvn package` could not be verified in the authoring session (local `gh` token lacked `read:packages` scope for the `polarion-ootb-plugins` mirror) — verified via CI on the feature branch instead.
+
+---
+
 ## 2026-06-15 — Dual-platform build (Polarion 2512 + 2606) and own dependency mirror
 
 **Branch**: claude/optimistic-carson-0i3h2b
