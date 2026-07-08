@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  javax variant of the web deployment descriptor (Polarion 2512 / Tomcat 9).
+  Single javax web deployment descriptor (Polarion 2512 / Tomcat 9 namespace).
 
-  Tomcat 9 uses Jakarta EE 8 / Servlet 3.1 with the legacy javax.* namespace.
-  The Jakarta twin used for Polarion 2606 / Tomcat 11 lives at
-  src/main/webapp-jakarta/WEB-INF/web.xml; keep the two in sync (only the
-  descriptor namespace/version and the Servlet API package should differ).
-  The active Maven profile (polarion-2512 vs polarion-2606) selects which one
-  is packaged into the JAR.
+  org.eclipse.transformer:transformer-maven-plugin rewrites this file's
+  namespace/version/schema (via src/main/transformer/web-xml-6_1.properties)
+  to the Jakarta EE 11 / Servlet 6.1 descriptor for the default (2606) jar
+  at build time. Do not hand-maintain a separate jakarta copy of this file.
 -->
 <web-app xmlns="http://java.sun.com/xml/ns/javaee"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" version="3.0">

@@ -1,13 +1,15 @@
 # Spins up the Polarion Docker container, deploys the built plugin JAR,
 # waits for Polarion to be healthy, and runs all Playwright UI tests.
 #
-# Runs once per supported Polarion release (matrix), each against its matching
-# polarion-docker image and the matching plugin JAR variant:
+# A single `mvn package` produces both JARs from the one javax source tree
+# (see pom.xml's DUAL-PLATFORM BUILD note). Runs once per supported Polarion
+# release (matrix), each against its matching polarion-docker image and the
+# matching plugin JAR:
 #
 #   2512 -> ghcr.io/phillipboesger/polarion-docker:v2512  (Tomcat 9  / javax)
-#           …-polarion2512.jar  (default Maven profile)
+#           …-pre2606.jar   (legacy javax build)
 #   2606 -> ghcr.io/phillipboesger/polarion-docker:v2606  (Tomcat 11 / jakarta)
-#           …-polarion2606.jar  (-Ppolarion-2606 profile)
+#           …<version>.jar  (default build)
 #
 # Prerequisites / Secrets:
 #   PACKAGES_TOKEN – PAT with read:packages (same as used in ci.yml); also used
@@ -39,10 +41,8 @@ jobs:
       matrix:
         include:
           - polarion: "2512" # Tomcat 9 / javax
-            profile: "" # default Maven profile
             image: ghcr.io/phillipboesger/polarion-docker:v2512
           - polarion: "2606" # Tomcat 11 / jakarta (Servlet 6.1)
-            profile: "-Ppolarion-2606"
             image: ghcr.io/phillipboesger/polarion-docker:v2606
 
     steps:
@@ -53,9 +53,10 @@ jobs:
         uses: actions/checkout@v6
 
       # ------------------------------------------------------------------
-      # 2. Build the plugin JAR for this Polarion variant
-      #    (skip unit tests – handled by ci.yml). The deployed JAR namespace
-      #    (javax / jakarta) must match the container's servlet container.
+      # 2. Build the plugin JAR (skip unit tests – handled by ci.yml). One
+      #    `mvn package` produces both the default (2606/jakarta) jar and the
+      #    -pre2606 (2512/javax) jar; the deploy step below picks the one
+      #    matching this matrix leg's Polarion version.
       # ------------------------------------------------------------------
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -67,8 +68,8 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build plugin JAR (Polarion ${{ matrix.polarion }})
-        run: mvn --batch-mode ${{ matrix.profile }} package
+      - name: Build plugin JARs
+        run: mvn --batch-mode package
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
@@ -84,8 +85,16 @@ jobs:
 
       - name: Deploy plugin as an exploded bundle dir into extensions volume
         run: |
-          JAR_NAME=$(ls target/*polarion${{ matrix.polarion }}*.jar | head -1 | xargs basename)
-          VER=$(echo "$JAR_NAME" | sed -E 's/.*code-editor-([0-9][0-9.]*)-polarion${{ matrix.polarion }}\.jar/\1/')
+          # 2512 leg deploys the legacy -pre2606 (javax) jar; 2606 leg deploys
+          # the default jar (no suffix, jakarta) — explicit selection, not
+          # `ls`'s ASCII sort (which would put -pre2606.jar before the plain
+          # .jar since '-' < '.').
+          if [ "${{ matrix.polarion }}" = "2512" ]; then
+            JAR_NAME=$(ls target/*-pre2606.jar | head -1 | xargs basename)
+          else
+            JAR_NAME=$(ls target/*.jar | grep -v -- '-pre2606\.jar$' | grep -v '/original-' | head -1 | xargs basename)
+          fi
+          VER=$(echo "$JAR_NAME" | sed -E 's/^boesger\.polarion\.code-editor-([0-9][0-9.]*)(-pre2606)?\.jar$/\1/')
           DIR_NAME="boesger.polarion.code-editor_${VER}"
           echo "Deploying exploded bundle '$DIR_NAME' from $JAR_NAME"
           # Polarion 2606 / Tomcat 11 only mounts a plugin webapp when its

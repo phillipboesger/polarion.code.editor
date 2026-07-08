@@ -56,12 +56,12 @@ The **Polarion Code Editor** is a server-side OSGi plugin for Polarion ALM that 
 
 **Supported: Polarion 2512 and Polarion 2606 — Java 21 or later**
 
-Polarion 2606 replaced the embedded **Tomcat 9** servlet container with **Tomcat 11**, which moves the servlet API from the legacy `javax.servlet` namespace to `jakarta.servlet` (Jakarta EE 11 / Servlet 6.1). The two namespaces are mutually incompatible, so each release ships **two JARs built from the same source** — install the one that matches your Polarion version:
+Polarion 2606 replaced the embedded **Tomcat 9** servlet container with **Tomcat 11**, which moves the servlet API from the legacy `javax.servlet` namespace to `jakarta.servlet` (Jakarta EE 11 / Servlet 6.1). The two namespaces are mutually incompatible, so each release ships **two JARs built from the same javax source tree** (via Eclipse Transformer at Maven build time) — install the one that matches your Polarion version. **Polarion 2606 is the primary target and the default (no-suffix) JAR; the `-pre2606` JAR is a legacy build for the Polarion 2512 transition window and will be dropped once those installs are retired:**
 
-| Polarion release            | Servlet container                              | JAR to install                                              |
-| --------------------------- | ---------------------------------------------- | ---------------------------------------------------------- |
-| **2512** (Tomcat 9, javax)  | Jakarta EE 8 / Servlet 3.1                      | `boesger.polarion.code-editor-<version>-polarion2512.jar`  |
-| **2606** (Tomcat 11, jakarta) | Jakarta EE 11 / Servlet 6.1                   | `boesger.polarion.code-editor-<version>-polarion2606.jar`  |
+| Polarion release                        | Servlet container            | JAR to install                                        |
+| ---------------------------------------- | ----------------------------- | ------------------------------------------------------- |
+| **2606** (Tomcat 11, jakarta) — default  | Jakarta EE 11 / Servlet 6.1   | `boesger.polarion.code-editor-<version>.jar`             |
+| **2512** (Tomcat 9, javax) — legacy      | Jakarta EE 8 / Servlet 3.1    | `boesger.polarion.code-editor-<version>-pre2606.jar`      |
 
 > **Heads-up:** installing the wrong JAR makes the plugin fail to load — the servlet classes resolve against a namespace the running Polarion doesn't provide. If the Code Editor entry doesn't appear after a restart, double-check you deployed the JAR matching your Polarion version.
 
@@ -110,12 +110,14 @@ Polarion releases before 2512 (e.g., those still running Java 17) are explicitly
 
 Copy the JAR **matching your Polarion version** into your Polarion plugins directory:
 
-```bash
-# Polarion 2512 (Tomcat 9 / javax.servlet)
-cp target/boesger.polarion.code-editor-*-polarion2512.jar <POLARION_HOME>/polarion/plugins/
+Both JARs land in `target/` after `mvn package`; pick the file matching your Polarion version by name (the `-pre2606` suffix is the only difference):
 
-# Polarion 2606 (Tomcat 11 / jakarta.servlet)
-cp target/boesger.polarion.code-editor-*-polarion2606.jar <POLARION_HOME>/polarion/plugins/
+```bash
+# Polarion 2606 (Tomcat 11 / jakarta.servlet) — default JAR, no suffix
+cp target/boesger.polarion.code-editor-<version>.jar <POLARION_HOME>/polarion/plugins/
+
+# Polarion 2512 (Tomcat 9 / javax.servlet) — legacy JAR
+cp target/boesger.polarion.code-editor-<version>-pre2606.jar <POLARION_HOME>/polarion/plugins/
 ```
 
 Deploy only **one** of them — the one that matches your running Polarion release (see the [Compatibility Policy](#compatibility-policy)). Then **restart the Polarion server**.

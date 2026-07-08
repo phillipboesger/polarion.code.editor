@@ -29,16 +29,16 @@ Use [GitHub Discussions → Q&A](https://github.com/phillipboesger/polarion.code
 ### 🔧 Submitting Code Changes
 
 1. **Fork** the repository and create a feature branch from `main`.
-2. **Build locally** — you need Maven and JDK 21. The default profile builds the
-   Polarion 2512 (javax) JAR; add `-Ppolarion-2606` for the Polarion 2606 (jakarta) JAR:
+2. **Build locally** — you need Maven and JDK 21. One `mvn package` produces
+   both platform JARs from the single javax source tree:
    ```bash
-   mvn clean package -DskipTests                 # …-polarion2512.jar (Tomcat 9 / javax)
-   mvn clean package -DskipTests -Ppolarion-2606 # …-polarion2606.jar (Tomcat 11 / jakarta)
+   mvn clean package -DskipTests   # target/…-<version>.jar (2606/jakarta, default)
+                                    # target/…-<version>-pre2606.jar (2512/javax, legacy)
    ```
-   > The servlet exists as two source variants (`src/main/java-javax` and
-   > `src/main/java-jakarta`) kept identical except for the servlet namespace. If you
-   > touch `CodeEditorServlet`, change **both** — `CodeEditorServletVariantParityTest`
-   > fails the build otherwise.
+   > The servlet has one source file (`CodeEditorServlet.java`, javax.servlet
+   > only). `org.eclipse.transformer:transformer-maven-plugin` rewrites the
+   > compiled bytecode to jakarta.servlet for the default jar at build time —
+   > do not hand-write a separate jakarta variant.
 3. **Test your change** against a running Polarion 2512 **or** 2606 instance by deploying the matching JAR to `<POLARION_HOME>/polarion/plugins/` and restarting the server.
 4. **Open a Pull Request** against the `main` branch with a clear description of what you changed and why.
 
@@ -60,11 +60,11 @@ Use [GitHub Discussions → Q&A](https://github.com/phillipboesger/polarion.code
 | Node.js     | 18 or later      |
 | Polarion    | 2512 **or** 2606 |
 
-Build the JARs (one per Polarion platform — see the [Compatibility Policy](README.md#compatibility-policy)):
+Build the JARs (one build produces both — see the [Compatibility Policy](README.md#compatibility-policy)):
 
 ```bash
-mvn clean package -DskipTests                 # target/…-polarion2512.jar (Polarion 2512 / javax)
-mvn clean package -DskipTests -Ppolarion-2606 # target/…-polarion2606.jar (Polarion 2606 / jakarta)
+mvn clean package -DskipTests   # target/…-<version>.jar (Polarion 2606 / jakarta, default)
+                                 # target/…-<version>-pre2606.jar (Polarion 2512 / javax, legacy)
 ```
 
 Copy the artifact matching your Polarion version to your Polarion plugins directory and restart the server to pick up changes.
