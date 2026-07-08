@@ -452,8 +452,7 @@ jobs:
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       # A single build produces BOTH platform JARs for the release from the one
-      # javax source tree (transformer-maven-plugin + the antrun rename step in
-      # pom.xml):
+      # javax source tree (see pom.xml's DUAL-PLATFORM BUILD note):
       #   …<version>.jar          -> Polarion 2606 (Tomcat 11 / jakarta, default)
       #   …<version>-pre2606.jar  -> Polarion 2512 (Tomcat 9 / javax, legacy)
       - name: Build release artifacts (tests already passed)
