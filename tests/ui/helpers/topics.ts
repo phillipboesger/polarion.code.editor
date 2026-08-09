@@ -50,8 +50,18 @@ const DEFAULT_TOPIC_IDS = [
   'user_shortcuts',
 ] as const;
 
+/**
+ * Builds the REST URL for a repository file.
+ *
+ * Encodes each path SEGMENT separately instead of the whole path: a single
+ * encodeURIComponent() over a nested path turns its "/" into "%2F", and Tomcat
+ * rejects encoded slashes in a URL path by default, so the request never
+ * reaches the servlet and comes back 404. (helpers/editor.ts gets away with
+ * encodeURIComponent because the files it touches are flat names.)
+ */
 function apiUrl(fileName: string): string {
-  return `/polarion/code-editor/api/config/file/${encodeURIComponent(fileName)}`;
+  const encodedPath = fileName.split('/').map(encodeURIComponent).join('/');
+  return `/polarion/code-editor/api/config/file/${encodedPath}`;
 }
 
 function renderTopics(topicIds: readonly string[]): string {
