@@ -25,23 +25,42 @@ import { CODE_EDITOR_TOPIC_ID, enableCodeEditorTopic } from '../helpers/topics';
 /** Restores the Topics config to its pre-test state. Set in beforeAll. */
 let restoreTopics: (() => Promise<void>) | undefined;
 
-/** Opens the User View portal home and waits for the navigation to render. */
+/**
+ * Opens the User View portal home and waits for the navigation to render.
+ *
+ * The panel starts COLLAPSED, showing only a subset (Home, Documents & Pages,
+ * Work Items) behind a `polarion-NavigationPanel-ExpandCollapseButton`; the
+ * remaining topics do not exist in the DOM until it is clicked. Same shape as
+ * the collapsed GWT rows in the Administration tree.
+ */
 async function openUserView(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/polarion/#/`);
   await page.waitForLoadState('domcontentloaded');
   // The portal navigation is GWT-rendered; give the router time to paint it.
   await page.waitForTimeout(3_000);
+
+  const expandButton = page.locator('.polarion-NavigationPanel-ExpandCollapseButton').first();
+  if (await expandButton.count() > 0) {
+    await expandButton.click({ timeout: 10_000 }).catch(() => {/* already expanded */});
+    await page.waitForTimeout(1_500);
+  }
 }
 
 /**
- * The navigation entry, matched by the page URL the extender hands Polarion
- * (CodeEditorNavigationExtender.getPageUrl → /polarion/code-editor/editor.html).
- * Matching the href rather than the label proves the entry came from OUR
- * extender — the literal text "Code Editor" also appears in the Administration
- * tree, so a text-only locator could pass while the sidebar entry is absent.
+ * The navigation entry.
+ *
+ * Polarion renders each nav node as
+ *   <a class="polarion-JTreeNode-HyperlinkNode" data-debug-id="<label>" href="…">
+ * so `data-debug-id` scoped to the nav-node class is the deterministic handle —
+ * and scoping to that class keeps this from matching the Administration tree,
+ * where the literal text "Code Editor" also appears.
+ *
+ * Note the href is Polarion's SPA hash route, NOT the raw
+ * /polarion/code-editor/editor.html that the extender returns from
+ * getPageUrl(), so the href is asserted separately and loosely below.
  */
 function navEntry(page: Page) {
-  return page.locator('a[href*="code-editor"]');
+  return page.locator('a.polarion-JTreeNode-HyperlinkNode[data-debug-id="Code Editor"]');
 }
 
 test.describe.serial('Polarion User View – Code Editor navigation entry', () => {
@@ -91,11 +110,13 @@ test.describe.serial('Polarion User View – Code Editor navigation entry', () =
 
     await expect.poll(async () => navEntry(page).count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
-    // CodeEditorNavigationExtender.getPageUrl() returns
-    // /polarion/code-editor/editor.html, optionally with ?projectId=…
+    // CodeEditorNavigationExtender.getId() is "code-editor" and getPageUrl()
+    // returns /polarion/code-editor/editor.html. Polarion wraps nav targets in
+    // its own SPA hash route, so assert on the id fragment both forms share
+    // rather than on the raw editor.html path.
     const href = await navEntry(page).first().getAttribute('href');
     expect(href, 'navigation entry has no href').toBeTruthy();
-    expect(href).toContain('/polarion/code-editor/editor.html');
+    expect(href).toContain(CODE_EDITOR_TOPIC_ID);
   });
 
 });
