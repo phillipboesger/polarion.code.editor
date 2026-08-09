@@ -60,6 +60,14 @@ jobs:
   #
   # If this fails while "Build & Test" passes, the code has drifted onto API that
   # 2606 changed or removed; fix the source, do NOT bump polarion.version.
+  #
+  # Scope is `compile`, i.e. src/main only — the sources that actually ship.
+  # `test-compile` is deliberately NOT used: PolarionUtilsTest hand-implements
+  # ITransactionService (to dodge a Mockito inline-mock limitation), and that
+  # interface is namespace-dependent across platform versions —
+  # getTransaction()/getUserTransaction() return javax.transaction.* on 3.25.12
+  # but jakarta.transaction.* on 3.26.6, so the stub cannot compile against both.
+  # That is test scaffolding, not product code; src/main references neither.
   compile-2606:
     name: Compile against 2606 API (3.26.6)
     runs-on: ubuntu-latest
@@ -83,7 +91,7 @@ jobs:
 
       - name: Compile against Polarion 2606 platform JARs
         run: >-
-          mvn --batch-mode test-compile
+          mvn --batch-mode compile
           -Dpolarion.version=3.26.6
           -Dsubterra.version=5.26.6
         env:
