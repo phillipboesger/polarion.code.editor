@@ -6,6 +6,26 @@ Most recent entries appear first. Older entries may be moved to PROJECT_LOG_ARCH
 
 <!-- entries below -->
 
+## 2026-08-09 — Sidebar NavigationExtender restored (PR #47's removal premise was false), 2606 compile-check, User View test
+
+**Branch**: fix/2606-restore-navigation-extender (PR #50)
+**What was done**: PR #47 deleted the `customNavigationExtenders` sidebar contribution from `META-INF/hivemodule.xml` on the premise that Polarion 2606 had removed `com.polarion.alm.ui.server.navigation.NavigationExtender`. **That premise was false.** Disproven against a live 2606 container (platform 3.26.6): `NavigationExtender.class` and `NavigationExtenderNode.class` both ship in `com.polarion.alm.ui_3.26.6/ui.jar`; the `customNavigationExtenders` configuration-point still exists in that bundle's own `hivemodule.xml` under module id `com.polarion.xray.webui` — the *same* module providing `administrationPageExtenders`, which this plugin was already using successfully on 2606 the whole time; and `javap` shows the 2606 interface declaring exactly the six abstract methods `CodeEditorNavigationExtender` implements, so the class compiled against 3.25.12 binds unchanged. The startup FATAL blamed on the contribution was the duplicate-bundle loading documented in the 2026-04-19 entry below. The restored markup is byte-identical to the pre-#47 original. The false claim had also propagated into the file's own comment and `CLAUDE.md`; both corrected.
+**Changed files**:
+- `META-INF/hivemodule.xml` — restored the `CodeEditorNavigationExtender` service-point + `customNavigationExtenders` contribution; replaced the incorrect explanatory comment with the evidence above.
+- `.github/workflows/ci.yml` — new `compile-2606` job recompiling against `3.26.6`/`5.26.6` as verification only. Scoped to `compile` (src/main), not `test-compile`.
+- `tests/ui/tests/user-view-navigation.spec.ts`, `tests/ui/helpers/topics.ts` — new; assert the User View entry renders and links to the editor, enabling `<topic id="code-editor"/>` and restoring the previous Topics config.
+- `CLAUDE.md` — corrected the hivemodule section; documented the Require-Bundle floor rule.
+**New knowledge**:
+- **Verify an "API removed in version X" claim against the shipped bundle jar, not release notes or a prior PR's comment.** Unzip `com.polarion.*_<ver>/*.jar` in a running container, check the class AND the `configuration-point` AND the abstract-method set. `javap` is not installed in the polarion-docker image — `docker cp` the classes out first. A false claim of this shape self-propagates into comments and docs until something contradicts the platform itself.
+- **Never bump `polarion.version` to compile against a newer platform while a legacy jar ships**: a `Require-Bundle` version is a MINIMUM floor, so 3.26.6 would lock the `-pre2606` jar out of 2512. Use a separate verification-only job.
+- The new job immediately found a real API change: `ITransactionService.getTransaction()`/`getUserTransaction()` return `javax.transaction.*` on 3.25.12 but `jakarta.transaction.*` on 3.26.6. `src/main` references neither; only `PolarionUtilsTest`'s hand-written stub does, hence `compile` instead of `test-compile`.
+- `Import-Package: org.apache.log4j` resolves fine on 2606 via the `org.apache.logging.log4j.1.2-api_2.25.3` bridge (and no source uses log4j — the import is vestigial but harmless). No change made.
+- **Polarion re-reads `topics.xml` without a restart**, so a UI test can enable its topic at runtime and assert in the same run. Polarion renders nav nodes as `<a class="polarion-JTreeNode-HyperlinkNode" data-debug-id="<label>" href="/polarion/#/…">` — the href is Polarion's own SPA hash route, NOT the URL the extender returns from `getPageUrl()` — and the panel starts collapsed, hiding the remaining topics from the DOM until `.polarion-NavigationPanel-ExpandCollapseButton` is clicked.
+- The UI suite had covered only one of the plugin's two hivemodule contributions, which is why it stayed fully green while the sidebar entry was missing. When a plugin registers N extension points, check the suite covers N.
+**Open / Next steps**: local `mvn package` is still impossible (the `github` server entry in `~/.m2/settings.xml` has no valid `read:packages` PAT — 401 against the mirror), so everything here was verified via CI only. PR #50 kept as a draft pending an independent code review; the `/code-review` agent hit its session limit twice, so only a self-review has been done.
+
+---
+
 ## 2026-07-07 — Single-source Eclipse Transformer build, replacing the dual Maven profiles
 
 **Branch**: feat/2606-single-source-transformer
