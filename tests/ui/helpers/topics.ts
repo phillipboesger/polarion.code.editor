@@ -101,23 +101,38 @@ export async function deleteTopics(page: Page): Promise<void> {
 }
 
 /**
+ * What the Topics config looked like before enableCodeEditorTopic() touched it.
+ *
+ * `null` content means there was no file at all; `changed: false` means the
+ * topic was already enabled and nothing needs undoing.
+ */
+export type TopicsSnapshot = {
+  readonly content: string | null;
+  readonly changed: boolean;
+};
+
+/**
  * Ensures `<topic id="code-editor"/>` is present in the global Topics config.
  *
- * Returns a restore callback that puts the configuration back exactly as it
- * was — the previous file content, or deletion when there was no file before.
- * Call it in afterAll (see the workers: 1 note at the top of this file).
+ * Returns a snapshot to hand to restoreTopics() in afterAll (see the workers: 1
+ * note at the top of this file).
+ *
+ * Deliberately returns plain data rather than a closure over `page`: the setup
+ * page is typically created and closed inside beforeAll, and browser.newPage()
+ * owns its context — so a closure capturing that page would throw "target
+ * closed" during afterAll, and the restore would silently never happen.
  */
-export async function enableCodeEditorTopic(page: Page): Promise<() => Promise<void>> {
+export async function enableCodeEditorTopic(page: Page): Promise<TopicsSnapshot> {
   const original = await readTopics(page);
 
   if (original?.includes(`id="${CODE_EDITOR_TOPIC_ID}"`)) {
-    // Already enabled — nothing to change, nothing to restore.
-    return async () => {/* no-op */};
+    // Already enabled — nothing to change, nothing to undo.
+    return { content: original, changed: false };
   }
 
   if (original === null) {
     await writeTopics(page, renderTopics([...DEFAULT_TOPIC_IDS, CODE_EDITOR_TOPIC_ID]));
-    return async () => { await deleteTopics(page); };
+    return { content: null, changed: true };
   }
 
   // Insert the topic before the closing tag, preserving whatever else is there.
@@ -131,5 +146,22 @@ export async function enableCodeEditorTopic(page: Page): Promise<() => Promise<v
   ).not.toEqual(original);
 
   await writeTopics(page, patched);
-  return async () => { await writeTopics(page, original); };
+  return { content: original, changed: true };
+}
+
+/**
+ * Puts the Topics config back exactly as enableCodeEditorTopic() found it:
+ * the previous file content, or deletion when there was no file before.
+ *
+ * Pass a LIVE page — not the one the setup used, if that one has been closed.
+ */
+export async function restoreTopics(page: Page, snapshot: TopicsSnapshot | undefined): Promise<void> {
+  if (!snapshot?.changed) {
+    return;
+  }
+  if (snapshot.content === null) {
+    await deleteTopics(page);
+    return;
+  }
+  await writeTopics(page, snapshot.content);
 }

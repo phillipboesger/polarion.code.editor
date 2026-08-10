@@ -20,10 +20,10 @@
 import { test, expect } from '../fixtures';
 import type { Page } from '@playwright/test';
 import { BASE_URL, loginAsPolarionAdmin } from '../helpers/auth';
-import { CODE_EDITOR_TOPIC_ID, enableCodeEditorTopic } from '../helpers/topics';
+import { CODE_EDITOR_TOPIC_ID, enableCodeEditorTopic, restoreTopics, type TopicsSnapshot } from '../helpers/topics';
 
-/** Restores the Topics config to its pre-test state. Set in beforeAll. */
-let restoreTopics: (() => Promise<void>) | undefined;
+/** The Topics config as it was before beforeAll changed it. */
+let topicsSnapshot: TopicsSnapshot | undefined;
 
 /**
  * Opens the User View portal home and waits for the navigation to render.
@@ -69,16 +69,27 @@ test.describe.serial('Polarion User View – Code Editor navigation entry', () =
     const page = await browser.newPage();
     try {
       await loginAsPolarionAdmin(page);
-      restoreTopics = await enableCodeEditorTopic(page);
+      topicsSnapshot = await enableCodeEditorTopic(page);
     } finally {
       await page.close();
     }
   });
 
-  test.afterAll(async () => {
-    // workers: 1 — every other spec shares this Polarion instance's config.
-    await restoreTopics?.().catch(() => {/* best-effort */});
-    restoreTopics = undefined;
+  test.afterAll(async ({ browser }) => {
+    // workers: 1 — every other spec shares this Polarion instance's config, so
+    // the pre-test Topics config must be put back.
+    //
+    // A FRESH page is required: beforeAll's page is already closed, and
+    // browser.newPage() owns its context, so reusing it here would throw
+    // "target closed" and the restore would silently never happen.
+    const page = await browser.newPage();
+    try {
+      await loginAsPolarionAdmin(page);
+      await restoreTopics(page, topicsSnapshot);
+    } finally {
+      await page.close();
+      topicsSnapshot = undefined;
+    }
   });
 
   test('Code Editor entry is visible in the User View navigation', async ({ page }) => {
