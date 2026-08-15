@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Single javax web deployment descriptor (Polarion 2512 / Tomcat 9 namespace).
+
+  org.eclipse.transformer:transformer-maven-plugin rewrites this file's
+  namespace/version/schema (via src/main/transformer/web-xml-6_1.properties)
+  to the Jakarta EE 11 / Servlet 6.1 descriptor for the default (2606) jar
+  at build time. Do not hand-maintain a separate jakarta copy of this file.
+-->
 <web-app xmlns="http://java.sun.com/xml/ns/javaee"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" version="3.0">
 

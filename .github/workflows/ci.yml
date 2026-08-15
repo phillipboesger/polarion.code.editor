@@ -38,7 +38,11 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build & run tests
+      # Single build produces both JARs from the one javax source tree: the
+      # default (no-suffix) jar is the 2606/jakarta build (transformer-maven-plugin
+      # rewrites the bytecode + web.xml), the -pre2606 jar is the plain javax/2512
+      # build. Unit tests run once, against the javax source as compiled.
+      - name: Build & test (produces default 2606 jar + -pre2606 legacy jar)
         run: mvn --batch-mode verify
         env:
           GITHUB_ACTOR: ${{ github.actor }}

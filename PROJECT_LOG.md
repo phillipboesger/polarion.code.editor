@@ -6,6 +6,51 @@ Most recent entries appear first. Older entries may be moved to PROJECT_LOG_ARCH
 
 <!-- entries below -->
 
+## 2026-07-07 — Single-source Eclipse Transformer build, replacing the dual Maven profiles
+
+**Branch**: feat/2606-single-source-transformer
+**What was done**: Replaced the 2026-06-15 dual-Maven-profile / duplicated-source-tree approach (below) with a single javax.servlet source tree and `org.eclipse.transformer:transformer-maven-plugin`, which rewrites the compiled bytecode + `web.xml` to jakarta.servlet/Servlet 6.1 at build time. One `mvn package` now always produces both JARs; there is no more `-Ppolarion-2606` flag to remember or forget. Also inverted the artifact-naming convention: the **default (no-classifier) jar is now the 2606/jakarta build** and the **`-pre2606` jar is the legacy 2512/javax build** — 2606 is the primary target going forward, and `-pre2606` exists only for the transition window. A first iteration produced the jakarta jar under a `polarion2606` classifier and used a `maven-antrun-plugin` rename step to relabel it as the default artifact; a GitHub Copilot PR review correctly flagged this as non-standard (`mvn install`/`deploy` would fail since the renamed-away file no longer matched Maven's attached-artifact bookkeeping). Fixed by having each plugin produce its final artifact identity directly: `maven-jar-plugin` gets the `pre2606` classifier itself, and `transformer-maven-plugin` (with `<extensions>true</extensions>` + the plugin's `<classifier>-</classifier>` "no classifier" sentinel) becomes the project's PRIMARY artifact natively — no rename step, no intermediate `-polarion2606` filename ever created, `mvn install` verified clean in a sandbox project before applying to this repo.
+**Changed files**:
+- `pom.xml` — removed the `<profiles>` section, `build-helper-maven-plugin`, and `polarion.target`/finalName-suffix property; promoted `<finalName>` to top-level `<build><finalName>` (was plugin-scoped, which would have silently broken `${project.build.finalName}`-based tooling); added `transformer-maven-plugin` (`<extensions>true</extensions>`, `<classifier>-</classifier>`, `<bundles>-</bundles>`, custom `<texts>` override) producing the jakarta build as the primary artifact directly, and gave `maven-jar-plugin` the `pre2606` classifier for the javax build; restored the base `javax.servlet-api:3.1.0` dependency; removed the `WEB-INF/web.xml` resource-exclude (only one `web.xml` now).
+- `src/main/java/boesger/polarion/codeeditor/api/CodeEditorServlet.java` — restored to `src/main/java` (was `src/main/java-javax`); `src/main/java-jakarta` twin deleted.
+- `src/main/webapp/WEB-INF/web.xml` — single source again (was the javax twin); `src/main/webapp-jakarta` deleted.
+- `src/main/transformer/{text-master,web-xml-6_1}.properties` — new; Eclipse Transformer rules retargeting `web.xml` to Jakarta EE 11 / Servlet 6.1 (`jakartaDefaults` alone only reaches Servlet 5.0, and doesn't map the `version="3.0"` / `java.sun.com` namespace this project's `web.xml` used).
+- `src/test/java/.../CodeEditorServletVariantParityTest.java` — deleted (pure source-text diff between the two variants; nothing left to compare with one source tree).
+- `.github/workflows/{ci,ui-tests,release}.yml` — single `mvn package`/`mvn verify` (no more `-Ppolarion-2606` matrix leg); jar selection now explicit (`-pre2606.jar` vs the rest) instead of profile-driven or `head -1` ASCII-sort-dependent.
+- `README.md`, `CONTRIBUTING.md`, `.github/WORKFLOWS.md`, `.github/claude-agent-prompt.md`, `.github/ISSUE_TEMPLATE/bug_report.yml` — updated for the single-build/new-naming convention.
+**Preserved as-is (real 2606 requirements independent of the duplication mechanism, confirmed unaffected by this refactor)**:
+- `META-INF/hivemodule.xml`'s removed `NavigationExtender` contribution (Polarion 2606 dropped that interface; HiveMind FATALs the whole module otherwise) — this file was never duplicated, so no change was needed.
+- `CodeEditorService.java`'s Java-21-builtins IO handling and the corresponding manifest `Require-Bundle` change (commons-io/commons-fileupload are absent as OSGi bundles on 2606) — untouched, was never namespace-duplicated code.
+- `Eclipse-BundleShape: dir` in the manifest (2606/Tomcat 11 only mounts a webapp whose contextRoot is a real on-disk directory) — kept unconditional, applies to both jars.
+**New knowledge**: see the `polarion-2606-jakarta-migration` skill for the general transformer pattern this follows, including a finalName-scoping trap (must be `<build><finalName>`, not set only inside `maven-jar-plugin`'s own config) caught during planning, and the `<extensions>true</extensions>` + `<classifier>-</classifier>` mechanism for making the transformer output the primary artifact without any file-move step.
+**Open / Next steps**: full local `mvn package` could not be verified in the authoring session (local `gh` token lacked `read:packages` scope for the `polarion-ootb-plugins` mirror) — verified via CI on the feature branch instead.
+
+---
+
+## 2026-06-15 — Dual-platform build (Polarion 2512 + 2606) and own dependency mirror
+
+**Branch**: claude/optimistic-carson-0i3h2b
+**What was done**: Switched the Polarion platform dependency source from the Avasis GitHub Packages registry to our own private mirror (`phillipboesger/polarion-ootb-plugins`) and added Polarion 2606 support alongside 2512. Polarion 2606 upgraded Tomcat 9 → Tomcat 11 (Jakarta EE 11), moving the Servlet API from `javax.servlet` to `jakarta.servlet`, which is binary-incompatible with 2512. The project now produces **two JARs from one source tree** via Maven profiles.
+**Changed files**:
+- `pom.xml` — repository URL → `phillipboesger/polarion-ootb-plugins`; removed the base `javax.servlet-api` dependency; added `polarion-2512` (default, javax) and `polarion-2606` (jakarta, Servlet 6.1) profiles; per-profile servlet source root (build-helper `add-source`), servlet API, `web.xml`, and `-polarion2512`/`-polarion2606` finalName suffix; documented the 2606 = 3.26.6 / 5.26.6 bundle versions.
+- `src/main/java-javax/.../CodeEditorServlet.java` — moved here from `src/main/java` (javax variant).
+- `src/main/java-jakarta/.../CodeEditorServlet.java` — new jakarta twin (identical except namespace).
+- `src/main/webapp-jakarta/WEB-INF/web.xml` — new Jakarta EE 11 / Servlet 6.1 descriptor; base `web.xml` annotated as the javax twin and excluded from the base resource so each profile supplies its own.
+- `src/test/java/.../CodeEditorServletVariantParityTest.java` — fails the build if the two servlet variants diverge by anything other than the namespace prefix.
+- `.github/workflows/{ci,ui-tests,release}.yml` — CI now builds both variants; UI tests deploy the `polarion2606` JAR because the `polarion-docker:latest` image is Polarion 2606/Jakarta (it aborts startup on a javax extension: "Extensions that are not Jakarta compatible were found. The Startup cannot continue."); release publishes both JARs.
+- `README.md`, `CONTRIBUTING.md`, `.github/claude-agent-prompt.md`, `.github/ISSUE_TEMPLATE/bug_report.yml` — documented dual support, install-the-matching-JAR guidance, and a JAR-variant field in the bug template.
+**New knowledge**:
+- The OOTB mirror's Maven coordinates are NOT identical to Avasis. groupId is always `com.polarion`; artifactId = Bundle-SymbolicName minus `com.polarion.`; version = Bundle-Version. Crucially, Polarion bundles are *exploded* (multiple embedded jars): the publisher emits the bundle wrapper as `com.polarion:<bundle>` and each embedded jar as `com.polarion:<bundle>.<embedded-jar>`. So classes the code uses live in those extras, e.g. `com.polarion.platform.persistence.UnresolvableObjectException` → `com.polarion:platform.persistence.platform-persistence`, and `com.polarion.subterra.base.data.identification.IContextId` → `com.polarion:subterra.base.subterra-base-data`. Avasis had instead repackaged subterra as synthetic `subterra.base.data`/`subterra.base.core` artifacts that do not exist in our mirror.
+- To find which artifact carries a class, query `…/users/phillipboesger/packages?package_type=maven` for the names, then `curl -fsSL -H "Authorization: Bearer <PACKAGES_TOKEN>"` the candidate jar (GitHub Packages 302-redirects jar downloads to blob storage — `-L` is required) and `unzip -l | grep`.
+- `CodeEditorServlet` is the *only* main file coupled to the servlet namespace; `PolarionUtils` uses Polarion's own `ITransactionService` (not `javax.transaction`) and no code uses commons-fileupload. The migration surface is exactly one Java file + `web.xml`.
+- Both variants compile against the stable 3.25.12 platform API. OSGi `Require-Bundle` versions are minimum floors, so the 2606 JAR resolves against the higher 3.26.6 bundles at runtime; only the Servlet API (javax↔jakarta) and `web.xml` differ. Override `-Dpolarion.version=3.26.6 -Dsubterra.version=5.26.6` to compile natively against 2606 JARs once they are published in the mirror.
+- Build commands: `mvn clean package` (2512, default, runs tests + parity check) and `mvn clean package -Ppolarion-2606` (2606, jakarta; tests skipped by the profile).
+**Open / Next steps**:
+- Verify on a real Polarion 2606 install that the `com.polarion.portal.tomcat` bundle still exports `DoAsFilter` under the same FQN and that every `Require-Bundle` entry resolves (the unused `org.apache.commons.commons-fileupload` bundle was deliberately left in the manifest; drop it from the 2606 manifest if Tomcat 11/Jakarta renamed it).
+- The 2606 OOTB bundles ARE already in the mirror (platform `3.26.6`, subterra `5.26.6`), so the 2606 profile could optionally be switched to compile natively against them (`-Dpolarion.version=3.26.6 -Dsubterra.version=5.26.6`) instead of the stable 3.25.12 API.
+
+---
+
 ## 2026-04-19 — Release workflow now gates build on parallel test shards
 
 **Branch**: main

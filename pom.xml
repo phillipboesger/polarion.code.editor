@@ -5,7 +5,7 @@
 
   <groupId>boesger.polarion</groupId>
   <artifactId>code-editor</artifactId>
-  <version>1.5.0</version>
+  <version>1.5.1</version>
   <packaging>jar</packaging>
 
   <name>Polarion Code Editor Plugin</name>
@@ -25,14 +25,18 @@
   </scm>
 
   <!--
-    Polarion platform JARs are published to GitHub Packages.
+    Polarion platform JARs are consumed from our own private GitHub Packages
+    Maven mirror (phillipboesger/polarion-ootb-plugins), which republishes every
+    OOTB Polarion bundle straight from a licensed install ZIP. Coordinates follow
+    the OSGi bundle: groupId "com.polarion", artifactId = Bundle-SymbolicName with
+    the leading "com.polarion." stripped, version = Bundle-Version (e.g. 3.25.12).
     CI authenticates via the PACKAGES_TOKEN secret (PAT with read:packages).
     The server id "github" is injected by actions/setup-java in the CI workflow.
   -->
   <repositories>
     <repository>
       <id>github</id>
-      <url>https://maven.pkg.github.com/avasis-solutions/masterPom-plugins</url>
+      <url>https://maven.pkg.github.com/phillipboesger/polarion-ootb-plugins</url>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
@@ -44,14 +48,46 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>21</maven.compiler.release>
     <!-- OSGi Bundle-Version must not contain SNAPSHOT; keep in sync with project.version -->
-    <manifest.version>1.5.0</manifest.version>
+    <manifest.version>1.5.1</manifest.version>
+
+    <!--
+      DUAL-PLATFORM BUILD (Polarion 2512 *and* 2606) — single source tree
+
+      Polarion 2606 upgraded the embedded servlet container from Tomcat 9
+      (Jakarta EE 8, javax.servlet) to Tomcat 11 (Jakarta EE 11, jakarta.servlet,
+      Servlet 6.1). Sources stay javax.servlet-only (see CodeEditorServlet.java
+      and src/main/webapp/WEB-INF/web.xml); org.eclipse.transformer:transformer-maven-plugin
+      rewrites the compiled bytecode + web.xml at build time to produce a jakarta
+      sibling jar. maven-jar-plugin produces the javax build directly under the
+      -pre2606 classifier, and the transformer (with <extensions>true</extensions>
+      + <classifier>-</classifier>) produces the jakarta build directly as the
+      project's PRIMARY (no-classifier) artifact — no post-package rename step,
+      no intermediate "-polarion2606" file ever touches disk, and `mvn install`/
+      `mvn deploy` work correctly since Maven's primary-artifact bookkeeping is
+      set natively by the plugin instead of being faked with a file move. 2606 is
+      the primary target going forward; the -pre2606 jar exists only for the
+      Polarion 2512 transition window and will be dropped once those installs are
+      retired:
+
+        * boesger.polarion.code-editor-<ver>.jar          -> Polarion 2606 (jakarta, default)
+        * boesger.polarion.code-editor-<ver>-pre2606.jar  -> Polarion 2512 (javax, legacy)
+
+      Both variants compile against the SAME, namespace-stable Polarion platform
+      API below (3.25.12). Those APIs are forward-compatible and the OSGi
+      Require-Bundle version acts as a *minimum* floor, so the 2606 JAR resolves
+      cleanly against the higher 3.26.6 bundles at runtime.
+    -->
     <!-- Polarion platform version used for OSGi Require-Bundle and compilation -->
     <polarion.version>3.25.12</polarion.version>
     <!-- subterra versioning follows a separate scheme; 5.25.12 aligns with 3.25.12 -->
     <subterra.version>5.25.12</subterra.version>
   </properties>
 
+  <!-- Top-level (not plugin-scoped) so ${project.build.finalName} resolves to the
+       real on-disk jar name consistently across plugins. -->
   <build>
+    <finalName>${project.groupId}.${project.artifactId}-${project.version}</finalName>
+
     <resources>
       <resource>
         <directory>META-INF</directory>
@@ -134,6 +170,11 @@
             <releaseProfiles>release</releaseProfiles>
           </configuration>
         </plugin>
+        <plugin>
+          <groupId>org.eclipse.transformer</groupId>
+          <artifactId>transformer-maven-plugin</artifactId>
+          <version>1.0.0</version>
+        </plugin>
       </plugins>
     </pluginManagement>
 
@@ -165,7 +206,9 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
-          <finalName>${project.groupId}.${project.artifactId}-${project.version}</finalName>
+          <!-- javax build, produced directly under this classifier — see the
+               DUAL-PLATFORM BUILD note in <properties> above. -->
+          <classifier>pre2606</classifier>
           <archive>
             <manifestEntries>
               <Bundle-ManifestVersion>2</Bundle-ManifestVersion>
@@ -173,8 +216,16 @@
               <Bundle-SymbolicName>${project.groupId}.${project.artifactId};singleton:=true</Bundle-SymbolicName>
               <Bundle-Version>${manifest.version}</Bundle-Version>
               <Bundle-Vendor>${project.organization.name}</Bundle-Vendor>
-              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.platform.guice;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,org.apache.commons.io,org.apache.commons.commons-fileupload,com.google.gson</Require-Bundle>
+              <Require-Bundle>com.polarion.portal.tomcat,com.polarion.platform.persistence,org.apache.hivemind,com.polarion.alm.ui;bundle-version="${polarion.version}",com.polarion.alm.tracker;bundle-version="${polarion.version}",com.polarion.core.util;bundle-version="${polarion.version}",com.polarion.platform.repository;bundle-version="${polarion.version}",com.polarion.platform;bundle-version="${polarion.version}",org.eclipse.core.runtime,com.polarion.psvn.launcher,com.google.gson</Require-Bundle>
               <Import-Package>org.apache.log4j</Import-Package>
+              <!-- The editor webapp is contributed via plugin.xml with
+                   contextRoot="src/main/webapp". Polarion/Tomcat can only mount a
+                   plugin webapp when that contextRoot is a real directory on disk
+                   (a JAR'd bundle keeps it inside the archive, so the context never
+                   mounts on Polarion 2606 / Tomcat 11). Mark the bundle dir-shaped,
+                   like the core webapp plugins (e.g. com.polarion.alm.wiki), so it
+                   is installed exploded. -->
+              <Eclipse-BundleShape>dir</Eclipse-BundleShape>
             </manifestEntries>
           </archive>
         </configuration>
@@ -191,6 +242,47 @@
             --add-opens java.base/java.lang.reflect=ALL-UNNAMED
           </argLine>
         </configuration>
+      </plugin>
+      <!--
+        Rewrites the javax.servlet bytecode (and, via the text-master override,
+        WEB-INF/web.xml) of the -pre2606 maven-jar-plugin output to jakarta.servlet /
+        Servlet 6.1. <bundles>-</bundles> keeps Bundle-SymbolicName/Bundle-Name
+        identical to the javax jar — the 2606 jar must keep the same plugin
+        identity as the pre2606 one. <extensions>true</extensions> together with
+        <classifier>-</classifier> (the plugin's own "no classifier" sentinel)
+        makes this jar become the project's PRIMARY artifact directly — see the
+        DUAL-PLATFORM BUILD note in <properties> above. No post-package rename
+        step needed; `mvn install`/`mvn deploy` work correctly since Maven's
+        primary-artifact bookkeeping is set natively.
+      -->
+      <plugin>
+        <groupId>org.eclipse.transformer</groupId>
+        <artifactId>transformer-maven-plugin</artifactId>
+        <extensions>true</extensions>
+        <configuration>
+          <rules>
+            <jakartaDefaults>true</jakartaDefaults>
+            <bundles>-</bundles>
+            <texts>
+              <text>${project.basedir}/src/main/transformer/text-master.properties</text>
+            </texts>
+          </rules>
+          <classifier>-</classifier>
+          <artifact>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>${project.artifactId}</artifactId>
+            <classifier>pre2606</classifier>
+          </artifact>
+        </configuration>
+        <executions>
+          <execution>
+            <id>jakarta-2606-jar</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
@@ -213,6 +305,17 @@
     <dependency>
       <groupId>com.polarion</groupId>
       <artifactId>platform.persistence</artifactId>
+      <version>${polarion.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- Polarion bundles are "exploded": their implementation classes live in an
+         embedded jar that the mirror publishes as a separate artifact
+         com.polarion:<bundle>.<embedded-jar>. The com.polarion.platform.persistence.*
+         classes (e.g. UnresolvableObjectException) are in this embedded jar, not in
+         the platform.persistence bundle wrapper above. -->
+    <dependency>
+      <groupId>com.polarion</groupId>
+      <artifactId>platform.persistence.platform-persistence</artifactId>
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
@@ -240,20 +343,31 @@
       <version>${polarion.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Subterra base bundle (OSGi bundle com.polarion.subterra.base). It is a
+         single bundle in the mirror and provides every com.polarion.subterra.base.*
+         package the plugin uses (base.location.*, base.data.identification.*, …).
+         (The old Avasis registry split it into synthetic subterra.base.data /
+         subterra.base.core artifacts, which do not exist in our own mirror.) -->
     <dependency>
       <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.data</artifactId>
+      <artifactId>subterra.base</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Embedded jar of the subterra.base bundle (see note above): provides the
+         com.polarion.subterra.base.data.* packages, e.g.
+         com.polarion.subterra.base.data.identification.IContextId. -->
     <dependency>
       <groupId>com.polarion</groupId>
-      <artifactId>subterra.base.core</artifactId>
+      <artifactId>subterra.base.subterra-base-data</artifactId>
       <version>${subterra.version}</version>
       <scope>provided</scope>
     </dependency>
 
-    <!-- ===== Servlet API (provided by Polarion / Tomcat) ===== -->
+    <!-- ===== Servlet API (provided by Polarion / Tomcat) =====
+         Source compiles against javax.servlet only; transformer-maven-plugin
+         rewrites the compiled bytecode to jakarta.servlet for the 2606 jar
+         (see the DUAL-PLATFORM BUILD note in <properties> above). -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
@@ -266,18 +380,6 @@
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
       <version>2.10.1</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>commons-io</groupId>
-      <artifactId>commons-io</artifactId>
-      <version>2.15.1</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>commons-fileupload</groupId>
-      <artifactId>commons-fileupload</artifactId>
-      <version>1.5</version>
       <scope>provided</scope>
     </dependency>
     <dependency>

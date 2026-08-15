@@ -11,13 +11,22 @@ Then open a pull request.
 
 ## Project Overview
 
-An OSGi server-side plugin for Polarion ALM. Builds to a single JAR deployed into the
-running Polarion container. Minimum: Polarion 2512, Java 21.
+An OSGi server-side plugin for Polarion ALM. One `mvn package` builds to **two** JARs
+from a single javax.servlet source tree, deployed into the running Polarion container —
+the default `…<version>.jar` (Tomcat 11 / `jakarta.servlet`, Polarion 2606, primary
+target) and `…<version>-pre2606.jar` (Tomcat 9 / `javax.servlet`, Polarion 2512, legacy).
+`org.eclipse.transformer:transformer-maven-plugin` rewrites the compiled bytecode +
+`web.xml` to jakarta for the default jar at build time — do not hand-write a jakarta
+source variant. Supported: Polarion 2512 and 2606, Java 21.
 
 ## Project Structure
 
-- `src/main/java` – Java backend (OSGi, Servlets)
-- `src/main/webapp` – Frontend (HTML/JS/CSS, Monaco Editor, vanilla JS only)
+- `src/main/java` – Java backend (OSGi logic, including `CodeEditorServlet` —
+  javax.servlet only; the jakarta bytecode is produced by the build, not by source)
+- `src/main/webapp` – Frontend (HTML/JS/CSS, Monaco Editor, vanilla JS only);
+  `WEB-INF/web.xml` is javax-only source, rewritten to jakarta by the transformer
+- `src/main/transformer` – Eclipse Transformer text-substitution rules (web.xml
+  namespace/version rewrite for the 2606 build)
 - `src/test/java` – JUnit unit tests
 - `tests/ui/` – Playwright UI tests (Node.js)
 - `META-INF/plugin.xml` – OSGi descriptor

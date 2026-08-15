@@ -1,12 +1,20 @@
 # Spins up the Polarion Docker container, deploys the built plugin JAR,
 # waits for Polarion to be healthy, and runs all Playwright UI tests.
 #
-# Prerequisites / Secrets:
-#   PACKAGES_TOKEN – PAT with read:packages (same as used in ci.yml)
-#   GITHUB_TOKEN   – automatically injected by GitHub Actions
+# A single `mvn package` produces both JARs from the one javax source tree
+# (see pom.xml's DUAL-PLATFORM BUILD note). Runs once per supported Polarion
+# release (matrix), each against its matching polarion-docker image and the
+# matching plugin JAR:
 #
-# The Polarion image is pulled from:
-#   ghcr.io/phillipboesger/polarion-docker:latest
+#   2512 -> ghcr.io/phillipboesger/polarion-docker:v2512  (Tomcat 9  / javax)
+#           …-pre2606.jar   (legacy javax build)
+#   2606 -> ghcr.io/phillipboesger/polarion-docker:v2606  (Tomcat 11 / jakarta)
+#           …<version>.jar  (default build)
+#
+# Prerequisites / Secrets:
+#   PACKAGES_TOKEN – PAT with read:packages (same as used in ci.yml); also used
+#                    to pull the (restricted) polarion-docker images from GHCR.
+#   GITHUB_TOKEN   – automatically injected by GitHub Actions
 
 name: UI Tests – Playwright
 
@@ -17,7 +25,7 @@ on:
 
 jobs:
   ui-tests:
-    name: Playwright UI Tests (Polarion)
+    name: Playwright UI Tests (Polarion ${{ matrix.polarion }})
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -25,6 +33,17 @@ jobs:
       contents: read
       packages: read
       checks: write # required by dorny/test-reporter to write the test summary
+
+    strategy:
+      # Validate every supported Polarion release independently – one red leg
+      # must not cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - polarion: "2512" # Tomcat 9 / javax
+            image: ghcr.io/phillipboesger/polarion-docker:v2512
+          - polarion: "2606" # Tomcat 11 / jakarta (Servlet 6.1)
+            image: ghcr.io/phillipboesger/polarion-docker:v2606
 
     steps:
       # ------------------------------------------------------------------
@@ -34,7 +53,10 @@ jobs:
         uses: actions/checkout@v6
 
       # ------------------------------------------------------------------
-      # 2. Build the plugin JAR (skip unit tests – handled by ci.yml)
+      # 2. Build the plugin JAR (skip unit tests – handled by ci.yml). One
+      #    `mvn package` produces both the default (2606/jakarta) jar and the
+      #    -pre2606 (2512/javax) jar; the deploy step below picks the one
+      #    matching this matrix leg's Polarion version.
       # ------------------------------------------------------------------
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -46,8 +68,8 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: PACKAGES_TOKEN
 
-      - name: Build plugin JAR
-        run: mvn --batch-mode package -DskipTests
+      - name: Build plugin JARs
+        run: mvn --batch-mode package
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
@@ -61,14 +83,30 @@ jobs:
           docker volume create polarion_repo
           docker volume create polarion_extensions
 
-      - name: Deploy plugin JAR into extensions volume
+      - name: Deploy plugin as an exploded bundle dir into extensions volume
         run: |
-          JAR_NAME=$(ls target/*.jar | head -1 | xargs basename)
-          echo "Deploying: $JAR_NAME"
+          # 2512 leg deploys the legacy -pre2606 (javax) jar; 2606 leg deploys
+          # the default jar (no suffix, jakarta) — explicit selection, not
+          # `ls`'s ASCII sort (which would put -pre2606.jar before the plain
+          # .jar since '-' < '.').
+          if [ "${{ matrix.polarion }}" = "2512" ]; then
+            JAR_NAME=$(ls target/*-pre2606.jar | head -1 | xargs basename)
+          else
+            JAR_NAME=$(ls target/*.jar | grep -v -- '-pre2606\.jar$' | grep -v '/original-' | head -1 | xargs basename)
+          fi
+          VER=$(echo "$JAR_NAME" | sed -E 's/^boesger\.polarion\.code-editor-([0-9][0-9.]*)(-pre2606)?\.jar$/\1/')
+          DIR_NAME="boesger.polarion.code-editor_${VER}"
+          echo "Deploying exploded bundle '$DIR_NAME' from $JAR_NAME"
+          # Polarion 2606 / Tomcat 11 only mounts a plugin webapp when its
+          # contextRoot (src/main/webapp) resolves to a REAL directory on disk.
+          # A JAR'd bundle keeps the webapp inside the archive (no docBase) so the
+          # context is silently skipped. Install the bundle EXPLODED, exactly like
+          # the core webapp plugins (e.g. com.polarion.alm.wiki_x.y.z/). Tomcat 9
+          # (2512) mounts exploded bundles the same way, so one code path serves both.
           docker run --rm \
             -v polarion_extensions:/ext \
             -v "$(pwd)/target:/src" \
-            alpine sh -c "mkdir -p /ext/custom/eclipse/plugins && cp /src/${JAR_NAME} /ext/custom/eclipse/plugins/"
+            alpine sh -c "apk add --no-cache unzip >/dev/null && mkdir -p /ext/custom/eclipse/plugins/${DIR_NAME} && unzip -oq /src/${JAR_NAME} -d /ext/custom/eclipse/plugins/${DIR_NAME} && echo 'exploded contents:' && ls -1 /ext/custom/eclipse/plugins/${DIR_NAME}"
 
       # ------------------------------------------------------------------
       # 4. Start the Polarion container
@@ -81,7 +119,7 @@ jobs:
           password: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Pull Polarion image
-        run: docker pull ghcr.io/phillipboesger/polarion-docker:latest
+        run: docker pull ${{ matrix.image }}
 
       - name: Start Polarion container
         run: |
@@ -100,7 +138,7 @@ jobs:
             -e JDWP_ENABLED=false \
             --volume polarion_repo:/opt/polarion/data/svn \
             --volume polarion_extensions:/opt/polarion/polarion/extensions \
-            ghcr.io/phillipboesger/polarion-docker:latest
+            ${{ matrix.image }}
 
       # ------------------------------------------------------------------
       # 5. Install Node.js & Playwright
@@ -200,13 +238,14 @@ jobs:
         run: npm run test:ci
 
       # ------------------------------------------------------------------
-      # 8. Upload artefacts (always, so failures are inspectable)
+      # 8. Upload artefacts (always, so failures are inspectable).
+      #    Names carry the Polarion version so the two matrix legs don't clash.
       # ------------------------------------------------------------------
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.polarion }}
           path: tests/ui/playwright-report/
           retention-days: 14
 
@@ -214,7 +253,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.polarion }}
           path: tests/ui/test-results/
           retention-days: 14
 
@@ -225,13 +264,13 @@ jobs:
         if: always()
         uses: dorny/test-reporter@v3
         with:
-          name: Playwright UI Tests
+          name: Playwright UI Tests (Polarion ${{ matrix.polarion }})
           path: tests/ui/test-results/junit.xml
           reporter: java-junit
           fail-on-error: false
 
       # ------------------------------------------------------------------
-      # 9. Dump Docker logs on failure for debugging
+      # 10. Dump Docker logs on failure for debugging
       # ------------------------------------------------------------------
       - name: Dump Polarion container logs on failure
         if: failure()

@@ -1,5 +1,17 @@
 package boesger.polarion.codeeditor.api;
 
+// ============================================================================
+// DUAL-PLATFORM SERVLET — single javax.servlet source.
+//
+// This project ships two JARs from this one javax-only source tree: the
+// default (Polarion 2606 / Tomcat 11 / jakarta.servlet) build and a
+// -pre2606 (Polarion 2512 / Tomcat 9 / javax.servlet) build, produced at
+// Maven build time by org.eclipse.transformer:transformer-maven-plugin,
+// which rewrites the compiled bytecode's javax.servlet.* references to
+// jakarta.servlet.* for the default jar. Do not hand-write a jakarta
+// variant of this file — edit only this javax source.
+// ============================================================================
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -12,8 +24,6 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.apache.commons.io.IOUtils;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -260,7 +270,7 @@ public class CodeEditorServlet extends HttpServlet {
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
-				String content = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+				String content = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 				handleUpdateFile(projectId, fileName, content, resp);
 			}
 			else {
@@ -339,7 +349,7 @@ public class CodeEditorServlet extends HttpServlet {
 
 	private void handlePostRename(HttpServletRequest req, String projectId, HttpServletResponse resp)
 			throws IOException, CodeEditorException {
-		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		String body = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 		RenameRequest renameReq = gson.fromJson(body, RenameRequest.class);
 
 		if(renameReq == null || renameReq.oldName == null || renameReq.newName == null) {
