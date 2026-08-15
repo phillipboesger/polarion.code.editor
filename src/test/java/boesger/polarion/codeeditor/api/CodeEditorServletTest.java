@@ -327,4 +327,63 @@ public class CodeEditorServletTest {
 
 		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
 	}
+
+	@Test
+	public void testDoGetPermissions_whenNotAdmin_shouldReturn403() throws ServletException, IOException {
+		// getRolesForUser is left unstubbed on purpose: the mock returns an empty collection, i.e. a
+		// user holding neither the global admin nor the project_admin role.
+		when(request.getPathInfo()).thenReturn("/permissions");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
+				"Permission management requires administrator rights");
+	}
+
+	@Test
+	public void testDoPostPermissions_whenNotAdmin_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/permissions");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doPost(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
+				"Permission management requires administrator rights");
+	}
+
+	@Test
+	public void testDoGetPermissions_whenNotAdminInProjectScope_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/permissions");
+		when(request.getParameter("projectId")).thenReturn("myProject");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
+				"Permission management requires administrator rights");
+	}
+
+	@Test
+	public void testDoGetPermissions_whenReadDenied_shouldStillBeAdminGated() throws ServletException, IOException {
+		// /permissions is exempt from the read-permission check (an admin manages grants without
+		// necessarily holding them), so the admin gate must be what rejects a plain user here.
+		when(request.getPathInfo()).thenReturn("/permissions");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+		when(securityService.hasPermission(any(IPermission.class), any(IContextId.class))).thenReturn(false);
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN,
+				"Permission management requires administrator rights");
+	}
+
+	@Test
+	public void testDoPostPermissions_whenUnauthenticated_shouldReturn401() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/permissions");
+
+		servlet.doPost(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_UNAUTHORIZED);
+	}
 }
