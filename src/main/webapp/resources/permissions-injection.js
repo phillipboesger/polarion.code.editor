@@ -36,6 +36,7 @@
   var _savedSnapshot = null; // snapshot of _grantedMap at last successful save (for Cancel)
   var _cepiActive = false; // true when any cepi row is selected
   var _globalGrantedMap = {}; // global-scope grants, used as inheritance baseline in project scope
+  var _globalGrantsUnknown = false; // true when the global scope could not be read (e.g. project_admin)
   var _lastKnownProjectId; // undefined = not yet tracked; used to detect scope switches
 
   /* ── DOM helpers ────────────────────────────────────────────────────── */
@@ -243,18 +244,25 @@
         clone.querySelectorAll(".selected,.hover").forEach(function (n) {
           n.classList.remove("selected", "hover");
         });
+
+        // These clones exist ONLY to reproduce the native column layout. Nothing ever fills them
+        // with the real grants, so a cloned checkbox would sit there permanently unchecked and
+        // claim the permission is not granted when it is — and it stayed clickable on top of that,
+        // because the on* strip below used to skip form controls, leaving Polarion's own inline
+        // handlers attached to a control with a rewritten id. Drop the controls; the tri-state
+        // detail panel is the one place that shows and edits real state.
         clone
-          .querySelectorAll("input[type=checkbox],input[type=radio]")
-          .forEach(function (inp) {
-            inp.checked = false;
-            inp.removeAttribute("aria-checked");
+          .querySelectorAll("input,select,textarea,button")
+          .forEach(function (control) {
+            if (control.parentNode) control.parentNode.removeChild(control);
           });
         clone.querySelectorAll("*").forEach(function (el) {
-          if (!/^(input|select|option|textarea)$/i.test(el.tagName)) {
-            Array.from(el.attributes || []).forEach(function (a) {
-              if (/^on/i.test(a.name)) el.removeAttribute(a.name);
-            });
-          }
+          Array.from(el.attributes || []).forEach(function (a) {
+            if (/^on/i.test(a.name)) el.removeAttribute(a.name);
+          });
+        });
+        Array.from(clone.attributes || []).forEach(function (a) {
+          if (/^on/i.test(a.name)) clone.removeAttribute(a.name);
         });
         replaceId(clone, sourcePid, targetPid);
         childRow.appendChild(clone);
@@ -396,7 +404,7 @@
     // null: show what's inherited from global (greyed)
     if (globalState === true) return p.base + "checkbox/yesGrey.png" + p.bid;
     if (globalState === false) return p.base + "checkbox/noGrey.png" + p.bid;
-    return p.base + "checkbox/yesGrey.png" + p.bid; // nothing anywhere
+    return p.base + "checkbox/yesGrey.png" + p.bid; // nothing anywhere, or global scope unreadable
   }
 
   /** Build the title/tooltip text for a role cell in project scope. */
@@ -407,6 +415,11 @@
       return "Inherited: Grant (from global – click to override)";
     if (globalState === false)
       return "Inherited: Deny (from global – click to override)";
+    if (_globalGrantsUnknown)
+      return (
+        "No project-specific value. The GLOBAL configuration could not be read " +
+        "(it requires the global admin role), so any inherited grant or deny is NOT shown here."
+      );
     return "Not set – click to cycle: grant → deny → reset";
   }
 
@@ -472,7 +485,12 @@
     var projectId = _currentProjectId();
     if (projectId) {
       // In project scope: load global first (for inheritance), then project-specific
-      _fetchGlobalGrants(function () {
+      _fetchGlobalGrants(function (globalLoaded) {
+        // A project_admin is refused the global scope by canManagePermissions, which requires the
+        // GLOBAL admin role. Treating that 403 as "nothing is granted globally" made every role
+        // read "Not set" even where a global grant or deny applies, and the admin then overrode a
+        // rule they could not see. Remember that it is unknown and say so instead.
+        _globalGrantsUnknown = !globalLoaded;
         _fetchGrantsFromBackend(function (loaded) {
           if (!loaded) cepiShowError(LOAD_FAILED_MSG);
           _afterGrantsLoaded();
@@ -1066,9 +1084,13 @@
         var isRefresh = !!t.querySelector('img[src*="refreshBtn"]');
 
         if (text === "Save") {
+          // Only swallow the click when there is actually something of ours to save. Intercepting
+          // unconditionally meant that selecting the Code Editor row (which sets _cepiActive) after
+          // editing a native permission made Save a no-op: GWT never saw the click, the native edits
+          // were dropped, and nothing said so.
+          if (!_dirty) return;
           e.stopImmediatePropagation();
           e.preventDefault();
-          if (!_dirty) return;
           // Clear the dirty state only once the server has CONFIRMED the write. Doing it up front
           // (as this did) made a rejected save — 403, a failed SVN commit, a rolled back
           // transaction — look exactly like a successful one: the editor read "saved and clean"
@@ -1086,9 +1108,10 @@
             setCepiButtonsDirty(false);
           });
         } else if (text === "Cancel") {
+          // Same rule as Save: nothing of ours pending means the click belongs to GWT.
+          if (!_dirty) return;
           e.stopImmediatePropagation();
           e.preventDefault();
-          if (!_dirty) return;
           _grantedMap = deepCloneGrants(_savedSnapshot);
           setCepiButtonsDirty(false);
           if (_activePermId) renderDetailPanel();
