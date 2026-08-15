@@ -6,15 +6,30 @@
 	</contribution>
 
 	<!--
-		The custom sidebar navigation entry previously registered here extended
-		com.polarion.alm.ui.server.navigation.NavigationExtender, which Polarion
-		2606 removed.  On 2606 HiveMind aborts the whole module with a FATAL when
-		it cannot resolve that interface, which also prevents this bundle's
-		com.polarion.portal.tomcat.webapps contribution (the editor webapp) from
-		being registered.  The Code Editor is reached via the administration page
-		extender above on every supported platform, so the redundant custom
-		extender is dropped to keep the bundle loading cleanly on 2512 and 2606.
+		Sidebar navigation entry (User View).  This was removed in PR #47 on the
+		premise that Polarion 2606 had dropped NavigationExtender; that premise
+		was WRONG and is disproven against a live 2606 (3.26.6) install:
+		  - com/polarion/alm/ui/server/navigation/NavigationExtender.class and
+		    NavigationExtenderNode.class both ship in com.polarion.alm.ui_3.26.6/ui.jar
+		  - the customNavigationExtenders configuration-point still exists in that
+		    bundle's hivemodule.xml (module id com.polarion.xray.webui — the same
+		    module that provides administrationPageExtenders above), with the same
+		    NavigationExtenderWrapper conversion
+		  - the 2606 NavigationExtender declares exactly the six abstract methods
+		    CodeEditorNavigationExtender implements, so the class compiled against
+		    3.25.12 binds unchanged on 3.26.6
+		The startup FATAL that motivated the removal was the duplicate-bundle
+		loading documented in PROJECT_LOG 2026-04-19, not this contribution.
 	-->
+	<service-point id="CodeEditorNavigationExtender" interface="com.polarion.alm.ui.server.navigation.NavigationExtender">
+		<invoke-factory>
+			<construct class="boesger.polarion.codeeditor.navigation.CodeEditorNavigationExtender"/>
+		</invoke-factory>
+	</service-point>
+
+	<contribution configuration-id="com.polarion.xray.webui.customNavigationExtenders">
+		<extenders extender="CodeEditorNavigationExtender"/>
+	</contribution>
 
 	<!--
 		Registers the two custom Code Editor permissions with Polarion's security framework.
