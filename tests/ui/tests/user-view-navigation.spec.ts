@@ -36,14 +36,23 @@ let topicsSnapshot: TopicsSnapshot | undefined;
 async function openUserView(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/polarion/#/`);
   await page.waitForLoadState('domcontentloaded');
-  // The portal navigation is GWT-rendered; give the router time to paint it.
-  await page.waitForTimeout(3_000);
 
+  // Do NOT synchronize on a fixed sleep here. After login the page is usually
+  // already on a /polarion/#… route, so the goto above is a same-document hash
+  // change that resolves without a document load — leaving the sleep as the
+  // only wait. On a slow CI runner the GWT panel can still be unpainted when it
+  // expires, the button count is then 0, the expand silently does not happen,
+  // and the caller's poll runs against a DOM the remaining topics never enter.
   const expandButton = page.locator('.polarion-NavigationPanel-ExpandCollapseButton').first();
-  if (await expandButton.count() > 0) {
-    await expandButton.click({ timeout: 10_000 }).catch(() => {/* already expanded */});
-    await page.waitForTimeout(1_500);
-  }
+  await expect
+    .poll(async () => expandButton.count(), {
+      timeout: 30_000,
+      message: 'The GWT navigation panel never rendered its expand/collapse button.',
+    })
+    .toBeGreaterThan(0);
+
+  await expandButton.click({ timeout: 10_000 }).catch(() => {/* already expanded */});
+  await page.waitForTimeout(1_500);
 }
 
 /**
@@ -98,21 +107,25 @@ test.describe.serial('Polarion User View – Code Editor navigation entry', () =
 
     await openUserView(page);
 
-    // Diagnostic screenshot, captured on success as well as failure (mirrors
-    // admin-code-editor.spec.ts) so a CI failure here is inspectable.
-    await page.screenshot({ path: 'playwright-report/user-view-navigation.png', fullPage: true });
+    try {
+      await expect
+        .poll(async () => navEntry(page).count(), {
+          timeout: 30_000,
+          message:
+            `No navigation entry linking to the Code Editor was found in the User View. ` +
+            `Either the customNavigationExtenders contribution in META-INF/hivemodule.xml is ` +
+            `missing/unresolved, or the <topic id="${CODE_EDITOR_TOPIC_ID}"/> setup did not take effect.`,
+        })
+        .toBeGreaterThan(0);
 
-    await expect
-      .poll(async () => navEntry(page).count(), {
-        timeout: 30_000,
-        message:
-          `No navigation entry linking to the Code Editor was found in the User View. ` +
-          `Either the customNavigationExtenders contribution in META-INF/hivemodule.xml is ` +
-          `missing/unresolved, or the <topic id="${CODE_EDITOR_TOPIC_ID}"/> setup did not take effect.`,
-      })
-      .toBeGreaterThan(0);
-
-    await expect(navEntry(page).first()).toBeVisible({ timeout: 15_000 });
+      await expect(navEntry(page).first()).toBeVisible({ timeout: 15_000 });
+    } finally {
+      // Diagnostic screenshot AFTER the poll (mirrors admin-code-editor.spec.ts).
+      // Taken before it, the PNG would show the page at t≈0 rather than at the
+      // moment of failure, which is precisely the state that says nothing about
+      // why a 30 s poll timed out.
+      await page.screenshot({ path: 'playwright-report/user-view-navigation.png', fullPage: true });
+    }
   });
 
   test('the navigation entry points at the Code Editor page', async ({ page }) => {
@@ -121,13 +134,29 @@ test.describe.serial('Polarion User View – Code Editor navigation entry', () =
 
     await expect.poll(async () => navEntry(page).count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
-    // CodeEditorNavigationExtender.getId() is "code-editor" and getPageUrl()
-    // returns /polarion/code-editor/editor.html. Polarion wraps nav targets in
-    // its own SPA hash route, so assert on the id fragment both forms share
-    // rather than on the raw editor.html path.
-    const href = await navEntry(page).first().getAttribute('href');
-    expect(href, 'navigation entry has no href').toBeTruthy();
-    expect(href).toContain(CODE_EDITOR_TOPIC_ID);
+    // Asserting only that the href contains "code-editor" would prove nothing:
+    // the locator already selects the entry by data-debug-id, and every URL this
+    // node could plausibly carry (SPA hash route, raw editor.html, even the
+    // extender's icon URL) contains that string — so the assertion would still
+    // pass if getPageUrl() returned the wrong target entirely.
+    //
+    // Follow the entry instead: Polarion loads the target into its "working_area"
+    // frame, so the frame's resulting URL is what getPageUrl() actually resolved
+    // to. Same hook helpers/editor.ts uses (GWT navigates the contentWindow
+    // directly without touching the iframe's src attribute, so framenavigated is
+    // the only reliable signal).
+    const editorFramePromise = page.waitForEvent('framenavigated', {
+      predicate: (frame) => frame.name() === 'working_area' && frame.url().includes('code-editor'),
+      timeout: process.env.CI ? 60_000 : 30_000,
+    });
+
+    await navEntry(page).first().click();
+
+    const editorFrame = await editorFramePromise;
+    expect(
+      editorFrame.url(),
+      `The navigation entry loaded ${editorFrame.url()}, which is not the editor page CodeEditorNavigationExtender.getPageUrl() returns.`,
+    ).toContain('/polarion/code-editor/editor.html');
   });
 
 });

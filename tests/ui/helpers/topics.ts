@@ -73,13 +73,48 @@ ${entries}
 `;
 }
 
-/** Reads the global topics.xml, or returns null when it does not exist yet. */
+/**
+ * Reports whether topics.xml is actually present, by listing its directory.
+ *
+ * Needed because a failed GET cannot answer that question on its own: the
+ * servlet turns a missing file into the same 500 it uses for a transient
+ * repository error (handleGetFile lets the IOException reach doGet's catch).
+ */
+async function topicsFileExists(page: Page): Promise<boolean> {
+  const dir = TOPICS_PATH.substring(0, TOPICS_PATH.lastIndexOf('/'));
+  const response = await page.request.get(
+    `/polarion/code-editor/api/files/tree?path=${encodeURIComponent(dir)}`,
+  );
+  expect(
+    response.ok(),
+    `GET /files/tree?path=${dir} failed with status ${response.status()} — cannot determine whether ${TOPICS_PATH} exists`,
+  ).toBeTruthy();
+  const entries = (await response.json()) as Array<{ name?: string }>;
+  return entries.some((entry) => entry.name === 'topics.xml');
+}
+
+/**
+ * Reads the global topics.xml, or returns null when it does not exist yet.
+ *
+ * A non-2xx is NOT taken as "no file" on its own. Doing that would make a
+ * transient failure (expired session, SVN hiccup, Polarion still warming up)
+ * indistinguishable from a genuinely absent file — and the caller reacts to
+ * "absent" by writing a synthetic config over the real one and DELETING it in
+ * the restore, which would strip the shared instance's navigation for every
+ * later spec and every later run against that container. So the directory
+ * listing has to confirm the absence before we believe it.
+ */
 export async function readTopics(page: Page): Promise<string | null> {
   const response = await page.request.get(apiUrl(TOPICS_PATH));
-  if (!response.ok()) {
-    return null;
+  if (response.ok()) {
+    return response.text();
   }
-  return response.text();
+  const exists = await topicsFileExists(page);
+  expect(
+    exists,
+    `GET ${TOPICS_PATH} failed with status ${response.status()} although the file exists — refusing to treat that as "no config" and overwrite it`,
+  ).toBeFalsy();
+  return null;
 }
 
 /**
@@ -95,9 +130,21 @@ export async function writeTopics(page: Page, xml: string): Promise<void> {
   ).toBeTruthy();
 }
 
-/** Best-effort deletion of the global topics.xml (used to restore "no file existed"). */
+/**
+ * Deletes the global topics.xml (used to restore "no file existed").
+ *
+ * Asserts the status rather than catching: request.delete() only rejects on a
+ * network-level error, while a servlet-level failure arrives as an ordinary
+ * 404/500 response — so a swallowing .catch() could never see the case that
+ * matters and would report success while leaving this run's synthetic config
+ * behind permanently.
+ */
 export async function deleteTopics(page: Page): Promise<void> {
-  await page.request.delete(apiUrl(TOPICS_PATH)).catch(() => {/* best-effort */});
+  const response = await page.request.delete(apiUrl(TOPICS_PATH));
+  expect(
+    response.ok(),
+    `DELETE ${TOPICS_PATH} failed with status ${response.status()} — the topics.xml this run created is still in place`,
+  ).toBeTruthy();
 }
 
 /**
