@@ -48,6 +48,24 @@ public class CodeEditorService {
 	}
 
 	/**
+	 * Returns all files, optionally excluding the ones that live in the global repository root.
+	 * <p>
+	 * In project scope the listing normally merges global files in (they are visible from every
+	 * project). A caller that only established read permission for the project must pass
+	 * {@code false}, or the response would disclose the global configuration to someone not
+	 * permitted to read it.
+	 *
+	 * @param  includeGlobal whether files outside the project folder may appear in the result
+	 * @return               the matching files, sorted by name
+	 */
+	public List<RepoFile> getAllFiles(boolean includeGlobal) {
+		if(includeGlobal || !hasProjectScope()) { return getAllFiles(); }
+		return getAllFiles().stream()
+				.filter(file -> Objects.nonNull(file.getProjectId()))
+				.collect(Collectors.toList());
+	}
+
+	/**
 	 * Returns the direct children (files and sub-folders) of the given relative path.
 	 * <p>
 	 * <b>Folder detection heuristic:</b> an entry is classified as a folder when its
@@ -147,6 +165,32 @@ public class CodeEditorService {
 
 	public String loadFileContent(String fileName) throws IllegalArgumentException, IOException {
 		return loadFileContent(this.projectId, fileName, null);
+	}
+
+	/**
+	 * Reports whether {@code fileName} resolves to the GLOBAL repository root rather than this
+	 * service's project folder.
+	 * <p>
+	 * Callers that authorize an operation must ask this <b>before</b> acting: a request carrying
+	 * {@code projectId=X} does not necessarily touch project X. {@link #getFileRepoLocation}
+	 * prefers the project location but falls back to the global root whenever the file does not
+	 * exist under the project, so a permission checked against project X alone would authorize a
+	 * write to the repository root. The resolution below deliberately mirrors that method
+	 * step for step — keep the two in sync.
+	 *
+	 * @param  fileName the requested file name, project-relative or global
+	 * @return          {@code true} if the operation would act on the global repository root
+	 */
+	public boolean resolvesToGlobalScope(String fileName) {
+		if(!hasProjectScope()) { return true; }
+
+		ILocation projectLocation = PolarionUtils.getTrackerProject(projectId).getLocation().append(fileName);
+		if(repoConnection.exists(projectLocation)) { return false; }
+
+		String cleanName = fileName.startsWith("/") ? fileName.substring(1) : fileName;
+		ILocation globalLocation = Location.getLocationWithRepository(IRepositoryService.DEFAULT, "/" + cleanName);
+		// Neither exists: getFileRepoLocation creates it under the project, so this stays project scope.
+		return repoConnection.exists(globalLocation);
 	}
 
 	private ILocation getFileRepoLocation(String projectId, String fileName)

@@ -379,6 +379,43 @@ public class CodeEditorServletTest {
 	}
 
 	@Test
+	public void testDoPut_whenScopeCannotBeResolved_shouldReturn403() throws ServletException, IOException {
+		// A project-scoped file request must resolve where the write would actually land before it is
+		// authorized (the service falls back to the GLOBAL root when the name does not exist under the
+		// project). Here the resolution itself fails — no Polarion platform in a unit test — and the
+		// only safe answer is to deny rather than fall back to the requested projectId.
+		when(request.getPathInfo()).thenReturn("/config/file/global-config.xml");
+		when(request.getParameter("projectId")).thenReturn("myProject");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doPut(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+	}
+
+	@Test
+	public void testDoDelete_whenScopeCannotBeResolved_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/global-config.xml");
+		when(request.getParameter("projectId")).thenReturn("myProject");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doDelete(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
+	}
+
+	@Test
+	public void testDoGetFile_whenScopeCannotBeResolved_shouldReturn403() throws ServletException, IOException {
+		when(request.getPathInfo()).thenReturn("/config/file/global-config.xml");
+		when(request.getParameter("projectId")).thenReturn("myProject");
+		when(securityService.getCurrentUser()).thenReturn("tester");
+
+		servlet.doGet(request, response);
+
+		verify(response).sendError(HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
+	}
+
+	@Test
 	public void testDoPostPermissions_whenUnauthenticated_shouldReturn401() throws ServletException, IOException {
 		when(request.getPathInfo()).thenReturn("/permissions");
 

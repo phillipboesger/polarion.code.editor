@@ -59,6 +59,12 @@ Custom permissions are registered with Polarion's security framework by contribu
   the project result with the global context; that would re-grant a project‑denied permission.
 - `doGet` requires `read` (except `/health` and `/permissions`); `doPut`/`doPost`/`doDelete`
   require `write`. Missing permission → `403`; unauthenticated → `401`.
+- **The scope checked is the scope actually resolved, not the requested `projectId`.** A file name
+  that does not exist under the project resolves to the global repository root, so an operation sent
+  with `?projectId=X` can act globally; single-file requests are therefore authorized against the
+  resolved location (`CodeEditorService.resolvesToGlobalScope`), and a rename must clear the check
+  for both names. Likewise `/config/list` merges global files into a project listing, so those are
+  filtered out for a caller without global `read`.
 - **Fail closed:** if a permission cannot be constructed (factory missing) the field is `null` and
   access is denied. There is **no admin‑role bypass** — a deliberately denied non‑admin is blocked;
   a global `admin` still passes because Polarion grants admin every permission natively.
@@ -74,6 +80,10 @@ the plugin injects the two rows itself:
 - `src/main/webapp/editor.html` contains a small bootstrap: when the Code Editor admin page is
   loaded in the admin SPA's iframe, it injects `resources/permissions-injection.js` into the parent
   document (same origin, idempotent — guarded by `[data-cepi-parent]` / `#cepi-permissions-script`).
+  **Known limitation:** that bootstrap is the only loader, so the Code Editor rows appear on the
+  Permissions Management page only once the Code Editor page has been opened in the same SPA session
+  (the script lives in the parent document and is lost on a full page reload). An admin who loads
+  Polarion and goes straight to Permissions Management sees no Code Editor rows.
 - `permissions-injection.js` detects the Permissions Management page (global and project scope),
   appends a **Code Editor** parent row + READ/WRITE child rows to the native JSTreeTable, clones the
   role columns, renders tri‑state grant/deny/inherited cells, and hooks Save/Cancel.
@@ -94,8 +104,15 @@ Exposed via two servlet endpoints, both **admin‑gated** (`canManagePermissions
 global `admin` role or `project_admin`/`admin` in the project scope) and therefore exempt from the
 read/write code‑editor checks:
 
-- `GET  /polarion/code-editor/api/permissions[?projectId=…]` → `{ "grants": { permId: { role: bool } } }`
-- `POST /polarion/code-editor/api/permissions[?projectId=…]` with the same shape → persists.
+- `GET  /polarion/code-editor/api/permissions[?projectId=…]` →
+  `{ "grants": { permId: { role: bool } }, "customSets": [ … ] }`.
+  A read failure is reported as `500`, **not** as an empty grant map: rendering "nothing is granted"
+  as if it were the truth would make the next save (which replaces every Code Editor role block)
+  delete the real configuration.
+- `POST /polarion/code-editor/api/permissions[?projectId=…]` → persists.
+  `grants` is required and **replaces** all Code Editor grants. `customSets` is optional: omit it to
+  leave the persisted sets untouched, or pass a list (`[]` included) to replace them. Both parts are
+  written in a single read-modify-write cycle, so a request either applies fully or not at all.
 
 ## 5. Navigation
 

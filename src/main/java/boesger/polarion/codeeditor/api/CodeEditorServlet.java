@@ -62,6 +62,7 @@ public class CodeEditorServlet extends HttpServlet {
 	private static final String PATH_FILES_TREE = "/files/tree"; // NOSONAR: Internal servlet routing constant
 	private static final String PATH_PERMISSIONS = "/permissions"; // NOSONAR: Internal servlet routing constant
 	private static final String MSG_PROJECT_ID = " ProjectId: ";
+	private static final String MSG_FORBIDDEN_READ = "Missing Code Editor read permission";
 	private static final String MSG_FORBIDDEN_WRITE = "Missing Code Editor write permission";
 	private static final String MSG_FORBIDDEN_MANAGE = "Permission management requires administrator rights";
 	private static final String ROLE_ADMIN = "admin";
@@ -126,6 +127,36 @@ public class CodeEditorServlet extends HttpServlet {
 	}
 
 	/**
+	 * Checks the permission in the scope the requested file actually resolves to.
+	 * <p>
+	 * The {@code projectId} query parameter states the scope a client <i>asks</i> for, not the one
+	 * it gets: {@code CodeEditorService} falls back to the global repository root whenever the file
+	 * does not exist under the project. Authorizing on {@code projectId} alone therefore lets a user
+	 * holding the permission in one project act on global files — including one who is explicitly
+	 * denied globally. Resolve first, then check the scope that will actually be written to or read.
+	 *
+	 * @param  permission the permission to check; {@code null} (unregistered) always denies
+	 * @param  projectId  the requested project scope, or {@code null}/empty for global scope
+	 * @param  fileName   the requested file name
+	 * @return            {@code true} if the permission holds in the resolved scope
+	 */
+	private boolean hasPermissionForFile(IPermission permission, String projectId, String fileName) {
+		String resolvedScope = projectId;
+		if(projectId != null && !projectId.isEmpty()) {
+			try {
+				if(new CodeEditorService(projectId).resolvesToGlobalScope(fileName)) {
+					resolvedScope = null;
+				}
+			}
+			catch(RuntimeException e) {
+				log.error("Could not resolve the scope of '" + fileName + "'. Access denied.", e);
+				return false;
+			}
+		}
+		return hasPermission(permission, resolvedScope);
+	}
+
+	/**
 	 * Reads the current Code Editor grants for the scope and writes them as JSON.
 	 * Backs the Permissions-editor injection; requires permission-management rights (else 403).
 	 *
@@ -133,7 +164,8 @@ public class CodeEditorServlet extends HttpServlet {
 	 * @param resp      the response to write the grants JSON to
 	 * @throws IOException if writing the response fails
 	 */
-	private void handleGetPermissions(String projectId, HttpServletResponse resp) throws IOException {
+	private void handleGetPermissions(String projectId, HttpServletResponse resp)
+			throws IOException, CodeEditorException {
 		if(!canManagePermissions(projectId)) {
 			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_MANAGE);
 			return;
@@ -169,8 +201,11 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 		PermissionsService svc = new PermissionsService(projectId);
-		svc.saveGrants(grantsReq.grants);
-		svc.saveCustomSets(grantsReq.customSets);
+		// An ABSENT customSets field means "do not touch the sets", not "delete them all". The two
+		// are only distinguishable here: saveCustomSets(null) would map to an empty list and strip
+		// the whole block, so a caller following the documented {"grants": …} body would silently
+		// wipe every custom set — as would the UI whenever its initial GET had failed.
+		svc.saveGrants(grantsReq.grants, grantsReq.customSets);
 		sendJson(resp, "{\"status\":\"saved\"}");
 	}
 
@@ -216,7 +251,7 @@ public class CodeEditorServlet extends HttpServlet {
 		}
 
 		if(!"/health".equals(pathInfo) && !PATH_PERMISSIONS.equals(pathInfo) && !hasPermission(readPermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor read permission");
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_READ);
 			return;
 		}
 
@@ -228,10 +263,16 @@ public class CodeEditorServlet extends HttpServlet {
 				handleGetPermissions(projectId, resp);
 			}
 			else if("/config/list".equals(pathInfo)) {
-				handleListConfigs(projectId, resp);
+				handleListConfigs(projectId, hasPermission(readPermission, null), resp);
 			}
 			else if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
+				// The project-scope check above is not enough: a project-scoped request reads a
+				// GLOBAL file whenever the name does not exist under the project.
+				if(!hasPermissionForFile(readPermission, projectId, fileName)) {
+					sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_READ);
+					return;
+				}
 				boolean forceDownload = "true".equalsIgnoreCase(req.getParameter("download"));
 				handleGetFile(projectId, fileName, forceDownload, resp);
 			}
@@ -243,7 +284,7 @@ public class CodeEditorServlet extends HttpServlet {
 				sendErrorSafely(resp, HttpServletResponse.SC_NOT_FOUND, "Endpoint not found");
 			}
 		}
-		catch(IOException e) {
+		catch(CodeEditorException | IOException e) {
 			log.error("Error in GET " + pathInfo + ": " + e);
 			resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 			sendJsonSafely(resp, "{\"error\": \"" + e.getMessage() + "\"}");
@@ -262,14 +303,13 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
-		if(!hasPermission(writePermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
-			return;
-		}
-
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
+				if(!hasPermissionForFile(writePermission, projectId, fileName)) {
+					sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_WRITE);
+					return;
+				}
 				String content = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 				handleUpdateFile(projectId, fileName, content, resp);
 			}
@@ -295,14 +335,13 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
-		if(!hasPermission(writePermission, projectId)) {
-			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, "Missing Code Editor write permission");
-			return;
-		}
-
 		try {
 			if(pathInfo != null && pathInfo.startsWith(PATH_CONFIG_FILE)) {
 				String fileName = pathInfo.substring(PATH_CONFIG_FILE.length());
+				if(!hasPermissionForFile(writePermission, projectId, fileName)) {
+					sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_WRITE);
+					return;
+				}
 				handleDeleteFile(projectId, fileName, resp);
 			}
 			else {
@@ -357,12 +396,20 @@ public class CodeEditorServlet extends HttpServlet {
 			return;
 		}
 
+		// A rename touches two locations, and either of them can resolve to the global root, so both
+		// have to clear the check — otherwise a project-scoped grant could move a global file.
+		if(!hasPermissionForFile(writePermission, projectId, renameReq.oldName)
+				|| !hasPermissionForFile(writePermission, projectId, renameReq.newName)) {
+			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_WRITE);
+			return;
+		}
+
 		handleRenameFile(projectId, renameReq.oldName, renameReq.newName, resp);
 	}
 
-	private void handleListConfigs(String projectId, HttpServletResponse resp) throws IOException {
+	private void handleListConfigs(String projectId, boolean mayReadGlobal, HttpServletResponse resp) throws IOException {
 		CodeEditorService editor = new CodeEditorService(projectId);
-		List<RepoFile> files = editor.getAllFiles();
+		List<RepoFile> files = editor.getAllFiles(mayReadGlobal);
 		List<Map<String, String>> result = files.stream().map(f -> {
 			Map<String, String> m = new HashMap<>();
 			m.put("name", f.getFileName());

@@ -332,6 +332,41 @@
     return false;
   }
 
+  /* ── Error reporting ────────────────────────────────────────────────── */
+
+  var LOAD_FAILED_MSG =
+    "The Code Editor permissions could not be read from permissions.xml. " +
+    "The rows below do NOT reflect the stored configuration — reload before changing anything.";
+
+  /**
+   * Surfaces a failure to the admin instead of letting it pass silently.
+   *
+   * This UI edits security configuration, so "it did not work and nobody said so" is the one
+   * outcome it must never have: a load that quietly showed an empty state, or a save that quietly
+   * did not persist, both end with someone believing an access rule is in force when it is not.
+   */
+  function cepiShowError(message) {
+    try {
+      var box = document.getElementById("cepi-error");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "cepi-error";
+        box.style.cssText =
+          "position:fixed;top:8px;right:8px;z-index:100000;max-width:520px;padding:10px 14px;" +
+          "background:#fdecea;border:1px solid #d32f2f;color:#611a15;font-size:12px;" +
+          "border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;";
+        box.title = "Click to dismiss";
+        box.addEventListener("click", function () {
+          if (box.parentNode) box.parentNode.removeChild(box);
+        });
+        document.body.appendChild(box);
+      }
+      box.textContent = message;
+    } catch (e) {
+      /* last resort: never let error reporting break the page */
+    }
+  }
+
   /* ── Detail panel helpers ───────────────────────────────────────────── */
 
   function escHtml(s) {
@@ -433,39 +468,20 @@
     }
   }
 
-  /**
-   * Versioned, scope-specific localStorage key.
-   * The v2 prefix ignores stale data written by older code (which incorrectly
-   * saved null values as explicit false, causing phantom red denies on reload).
-   */
-  function _grantsStorageKey() {
-    return "cepi-grants-v2-" + (_currentProjectId() || "global");
-  }
-
   function loadGrants() {
     var projectId = _currentProjectId();
     if (projectId) {
       // In project scope: load global first (for inheritance), then project-specific
       _fetchGlobalGrants(function () {
         _fetchGrantsFromBackend(function (loaded) {
-          if (!loaded) {
-            try {
-              var s = localStorage.getItem(_grantsStorageKey());
-              if (s) _grantedMap = JSON.parse(s);
-            } catch (e) {}
-          }
+          if (!loaded) cepiShowError(LOAD_FAILED_MSG);
           _afterGrantsLoaded();
         });
       });
     } else {
       // Global scope: also set _globalGrantedMap from the same fetch
       _fetchGrantsFromBackend(function (loaded) {
-        if (!loaded) {
-          try {
-            var s = localStorage.getItem(_grantsStorageKey());
-            if (s) _grantedMap = JSON.parse(s);
-          } catch (e) {}
-        }
+        if (!loaded) cepiShowError(LOAD_FAILED_MSG);
         _globalGrantedMap = _grantedMap; // global == itself
         _afterGrantsLoaded();
       });
@@ -473,10 +489,9 @@
   }
 
   function saveGrants() {
-    // Mirror to localStorage as fast session cache (scoped + versioned key)
-    try {
-      localStorage.setItem(_grantsStorageKey(), JSON.stringify(_grantedMap));
-    } catch (e) {}
+    // Deliberately NO local mirror: permissions.xml is the single source of truth. A browser-side
+    // copy of security state outlives the tab, can disagree with the server, and (when it was read
+    // back on a failed fetch) turned a stale snapshot into the payload of the next full-replace save.
     // Mark dirty so Save/Cancel buttons become active
     setCepiButtonsDirty(true);
   }
@@ -519,7 +534,11 @@
     }
   }
 
-  function _pushGrantsToBackend() {
+  /**
+   * Persists grants (and custom sets) and reports the outcome to onDone(ok, status).
+   * The callback is what lets the caller keep the editor dirty when the server refused.
+   */
+  function _pushGrantsToBackend(onDone) {
     var projectId = _currentProjectId();
     var url =
       _apiBase() +
@@ -540,12 +559,19 @@
     });
     // Custom sets are persisted to permissions.xml alongside the flat grants.
     var body = JSON.stringify({ grants: filteredGrants, customSets: _customSets });
+    var done = typeof onDone === "function" ? onDone : function () {};
     try {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        done(xhr.status >= 200 && xhr.status < 300, xhr.status);
+      };
       xhr.send(body);
-    } catch (e) {}
+    } catch (e) {
+      done(false, 0);
+    }
   }
 
   function loadCustomSets() {
@@ -555,7 +581,15 @@
 
   function saveCustomSets() {
     // Persist custom sets to permissions.xml via the backend (same POST as grants).
-    _pushGrantsToBackend();
+    _pushGrantsToBackend(function (ok, status) {
+      if (!ok) {
+        cepiShowError(
+          "Saving the Code Editor custom sets FAILED (HTTP " +
+            status +
+            "). Nothing was written to permissions.xml.",
+        );
+      }
+    });
   }
 
   function genId() {
@@ -1035,35 +1069,33 @@
           e.stopImmediatePropagation();
           e.preventDefault();
           if (!_dirty) return;
-          _pushGrantsToBackend();
-          try {
-            localStorage.setItem(
-              _grantsStorageKey(),
-              JSON.stringify(_grantedMap),
-            );
-          } catch (ex) {}
-          _savedSnapshot = deepCloneGrants(_grantedMap);
-          setCepiButtonsDirty(false);
+          // Clear the dirty state only once the server has CONFIRMED the write. Doing it up front
+          // (as this did) made a rejected save — 403, a failed SVN commit, a rolled back
+          // transaction — look exactly like a successful one: the editor read "saved and clean"
+          // while permissions.xml was unchanged, so an admin believed a deny was in force.
+          _pushGrantsToBackend(function (ok, status) {
+            if (!ok) {
+              cepiShowError(
+                "Saving the Code Editor permissions FAILED (HTTP " +
+                  status +
+                  "). Nothing was written to permissions.xml — your changes are still pending.",
+              );
+              return;
+            }
+            _savedSnapshot = deepCloneGrants(_grantedMap);
+            setCepiButtonsDirty(false);
+          });
         } else if (text === "Cancel") {
           e.stopImmediatePropagation();
           e.preventDefault();
           if (!_dirty) return;
           _grantedMap = deepCloneGrants(_savedSnapshot);
-          try {
-            localStorage.setItem(
-              _grantsStorageKey(),
-              JSON.stringify(_grantedMap),
-            );
-          } catch (ex) {}
           setCepiButtonsDirty(false);
           if (_activePermId) renderDetailPanel();
         } else if (isRefresh) {
-          // Intercept Refresh: hard reload from backend – discard any stale in-memory / localStorage state
+          // Intercept Refresh: hard reload from the backend, discarding in-memory state.
           e.stopImmediatePropagation();
           e.preventDefault();
-          try {
-            localStorage.removeItem(_grantsStorageKey());
-          } catch (ex) {}
           loadGrants(); // fetches permissions.xml fresh, then re-renders panel
         }
       },

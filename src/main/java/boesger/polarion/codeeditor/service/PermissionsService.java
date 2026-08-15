@@ -80,15 +80,18 @@ public class PermissionsService {
 	 *
 	 * @return map of {@code permissionId → { roleName → null|true|false }}
 	 */
-	public Map<String, Map<String, Boolean>> loadGrants() {
+	public Map<String, Map<String, Boolean>> loadGrants() throws CodeEditorException {
 		try {
 			String xml = readPermissionsXml();
+			// No file yet is a legitimate empty state; a failure to READ one is not, and must not be
+			// reported as "nothing is granted": the editor would render that as the truth, and the
+			// next save — which replaces every Code Editor role block — would delete the real grants.
 			if(xml == null) return Collections.emptyMap();
 			return parseCepiGrants(xml);
 		}
 		catch(Exception e) {
-			log.warn("Could not load permissions.xml: " + e.getMessage());
-			return Collections.emptyMap();
+			log.error("Could not load permissions.xml: " + e.getMessage(), e);
+			throw new CodeEditorException("Failed to read permissions.xml: " + e.getMessage(), e);
 		}
 	}
 
@@ -99,9 +102,28 @@ public class PermissionsService {
 	 * @param grants map of {@code permissionId → { roleName → null|true|false }}
 	 */
 	public void saveGrants(Map<String, Map<String, Boolean>> grants) throws CodeEditorException {
+		saveGrants(grants, null);
+	}
+
+	/**
+	 * Persists grants and, when supplied, custom sets in a single read-modify-write cycle.
+	 * <p>
+	 * Both parts must go through one document build and one commit. Writing them as two cycles left
+	 * a window in which the grants were already committed and the custom-set write then failed — a
+	 * half-applied security change reported to the client as a plain 500 — and made correctness
+	 * depend on the second cycle's read-only connection already observing the first commit.
+	 *
+	 * @param grants     map of {@code permissionId → { roleName → null|true|false }}
+	 * @param customSets the sets to persist, or {@code null} to leave the persisted sets untouched
+	 */
+	public void saveGrants(Map<String, Map<String, Boolean>> grants, List<CustomSet> customSets)
+			throws CodeEditorException {
 		try {
 			String xml = readPermissionsXml();
 			String updated = mergeCepiGrants(xml, grants);
+			if(customSets != null) {
+				updated = mergeCustomSets(updated, customSets);
+			}
 			writePermissionsXml(updated);
 		}
 		catch(CodeEditorException e) {
@@ -260,22 +282,34 @@ public class PermissionsService {
 			doc.appendChild(root);
 		}
 
-		// 1. Remove all existing cepi <role> blocks that only contain cepi grants/denies
-		removeCepiElements(root);
+		// 1. Clear every previously persisted cepi entry, wherever it sits. Removing only the
+		//    role blocks that consist EXCLUSIVELY of cepi entries used to leave any cepi entry
+		//    inside a mixed block untouched — so revoking a permission in the UI did not revoke it,
+		//    and step 2 then added a contradicting second entry for the same role and permission.
+		removeCepiEntries(root);
 
-		// 2. Add a single <role name="..."> block per role that has at least one grant/deny
+		// 2. Write each role's entries into that role's EXISTING block when there is one. Appending
+		//    an unconditional second <role name="admin"> next to Polarion's own block leaves the file
+		//    with two blocks for one role, and how Polarion's ACLParser resolves that is not
+		//    something this plugin should be betting the access rules on.
 		Map<String, Map<String, Boolean>> byRole = invertGrants(grants);
 		byRole.forEach((roleName, permMap) -> {
 			if(permMap.isEmpty()) return;
-			Element roleEl = doc.createElement("role");
-			roleEl.setAttribute("name", roleName);
-			permMap.forEach((permId, value) -> {
-				if(value == null) return; // null = not set → omit
-				Element entry = doc.createElement(Boolean.TRUE.equals(value) ? "grant" : "deny");
-				entry.setAttribute("permission", permId);
+			Element roleEl = findRoleElement(root, roleName);
+			boolean isNewBlock = roleEl == null;
+			if(isNewBlock) {
+				roleEl = doc.createElement("role");
+				roleEl.setAttribute("name", roleName);
+			}
+			boolean wrote = false;
+			for(Map.Entry<String, Boolean> perm : permMap.entrySet()) {
+				if(perm.getValue() == null) continue; // null = not set → omit
+				Element entry = doc.createElement(Boolean.TRUE.equals(perm.getValue()) ? "grant" : "deny");
+				entry.setAttribute("permission", perm.getKey());
 				roleEl.appendChild(entry);
-			});
-			if(roleEl.hasChildNodes()) {
+				wrote = true;
+			}
+			if(wrote && isNewBlock) {
 				root.appendChild(doc.createTextNode("\n    "));
 				root.appendChild(roleEl);
 			}
@@ -286,27 +320,60 @@ public class PermissionsService {
 	}
 
 	/**
-	 * Removes {@code <role>} elements whose children consist *exclusively* of
-	 * cepi permission grants/denies (so we can replace them cleanly).
+	 * Returns the {@code <role name="…">} element directly under {@code root}, or {@code null}.
 	 */
-	private void removeCepiElements(Element root) {
+	private Element findRoleElement(Element root, String roleName) {
 		NodeList roles = root.getElementsByTagName("role");
-		var toRemove = new java.util.ArrayList<Node>();
 		for(int i = 0; i < roles.getLength(); i++) {
 			Node n = roles.item(i);
-			if(n.getNodeType() == Node.ELEMENT_NODE) {
-				Element roleEl = (Element) n;
-				if(roleEl.getParentNode() == root && hasCepiChildrenOnly(roleEl)) {
-					toRemove.add(n);
-				}
+			if(n.getNodeType() == Node.ELEMENT_NODE && n.getParentNode() == root
+					&& roleName.equals(((Element) n).getAttribute("name"))) {
+				return (Element) n;
 			}
 		}
-		for(Node n : toRemove) {
-			Node prev = n.getPreviousSibling();
+		return null;
+	}
+
+	/**
+	 * Removes every persisted {@code boesger.codeeditor.*} grant/deny, including entries sitting in
+	 * a role block that also carries native permissions, and drops role blocks left empty by that.
+	 * Native entries are never touched.
+	 */
+	private void removeCepiEntries(Element root) {
+		NodeList roles = root.getElementsByTagName("role");
+		var roleElements = new java.util.ArrayList<Element>();
+		for(int i = 0; i < roles.getLength(); i++) {
+			Node n = roles.item(i);
+			if(n.getNodeType() == Node.ELEMENT_NODE && n.getParentNode() == root) {
+				roleElements.add((Element) n);
+			}
+		}
+
+		var emptied = new java.util.ArrayList<Element>();
+		for(Element roleEl : roleElements) {
+			boolean wasCepiOnly = hasCepiChildrenOnly(roleEl);
+			var cepiChildren = new java.util.ArrayList<Node>();
+			NodeList children = roleEl.getChildNodes();
+			for(int i = 0; i < children.getLength(); i++) {
+				Node c = children.item(i);
+				if(c.getNodeType() != Node.ELEMENT_NODE) continue;
+				String perm = ((Element) c).getAttribute("permission");
+				if(perm != null && perm.startsWith(CEPI_PERMISSION_PREFIX)) {
+					cepiChildren.add(c);
+				}
+			}
+			cepiChildren.forEach(roleEl::removeChild);
+			if(wasCepiOnly) {
+				emptied.add(roleEl);
+			}
+		}
+
+		for(Element roleEl : emptied) {
+			Node prev = roleEl.getPreviousSibling();
 			if(prev != null && prev.getNodeType() == Node.TEXT_NODE) {
 				root.removeChild(prev);
 			}
-			root.removeChild(n);
+			root.removeChild(roleEl);
 		}
 	}
 
