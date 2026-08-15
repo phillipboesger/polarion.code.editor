@@ -161,7 +161,7 @@ public class CodeEditorServlet extends HttpServlet {
 			sendErrorSafely(resp, HttpServletResponse.SC_FORBIDDEN, MSG_FORBIDDEN_MANAGE);
 			return;
 		}
-		String body = IOUtils.toString(req.getInputStream(), StandardCharsets.UTF_8);
+		String body = new String(req.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 		GrantsRequest grantsReq = gson.fromJson(body, new TypeToken<GrantsRequest>() {
 		}.getType());
 		if(grantsReq == null || grantsReq.grants == null) {
