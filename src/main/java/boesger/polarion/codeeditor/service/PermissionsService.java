@@ -139,38 +139,20 @@ public class PermissionsService {
 	 * A set is a {@code <customset>} whose id starts with {@value #CEPI_SET_ID_PREFIX}, together with
 	 * its per-role grants stored as {@code @<setId>.boesger.codeeditor.*} grant/deny entries.
 	 *
-	 * @return the list of custom sets (never {@code null}; empty when none or on read error)
+	 * @return the list of custom sets (never {@code null}; empty only when there are none)
 	 */
-	public List<CustomSet> loadCustomSets() {
+	public List<CustomSet> loadCustomSets() throws CodeEditorException {
 		try {
 			String xml = readPermissionsXml();
+			// Same reasoning as loadGrants: an empty list must mean "there are none", never "the read
+			// failed". The client posts back the sets it was handed, so a silently empty read would
+			// come straight back as an empty customSets array and delete every persisted set.
 			if(xml == null) return new ArrayList<>();
 			return parseCustomSets(xml);
 		}
 		catch(Exception e) {
-			log.warn("Could not load custom sets from permissions.xml: " + e.getMessage());
-			return new ArrayList<>();
-		}
-	}
-
-	/**
-	 * Persists the Code Editor custom permission sets into permissions.xml, replacing any previously
-	 * stored Code Editor sets. Other content (native permissions, flat Code Editor grants) is preserved.
-	 *
-	 * @param sets the custom sets to store (a {@code null} list is treated as empty)
-	 * @throws CodeEditorException if persisting to the repository fails
-	 */
-	public void saveCustomSets(List<CustomSet> sets) throws CodeEditorException {
-		try {
-			String xml = readPermissionsXml();
-			String updated = mergeCustomSets(xml, sets != null ? sets : new ArrayList<>());
-			writePermissionsXml(updated);
-		}
-		catch(CodeEditorException e) {
-			throw e;
-		}
-		catch(Exception e) {
-			throw new CodeEditorException("Failed to save custom sets: " + e.getMessage(), e);
+			log.error("Could not load custom sets from permissions.xml: " + e.getMessage(), e);
+			throw new CodeEditorException("Failed to read permissions.xml: " + e.getMessage(), e);
 		}
 	}
 
