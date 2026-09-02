@@ -6,7 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A server-side OSGi plugin for **Polarion ALM** that embeds a Monaco (VS Code) editor into the Polarion Administration / User View. It browses and edits text and image files stored in the Polarion SVN repository over a small REST API. Backend is Java 21; frontend is a single static webapp. Supported: **Polarion 2512 and 2606, Java 21** (no backport to older Polarion or Java — deliberate policy, see README). Ships two JARs from one javax.servlet source tree — the default (no-suffix) jar targets Polarion 2606 (jakarta.servlet, primary target); a `-pre2606` jar targets Polarion 2512 (javax.servlet) during the migration window and will be dropped once those installs are retired. See "Dual-platform build" below.
 
-> Note: `.github/copilot-instructions.md` is **stale** — it describes an unrelated "Copilot/LLM" plugin under `boesger.polarion.copilot`. The real code lives under `boesger.polarion.codeeditor`. Ignore that file.
 
 ## Build & test
 
