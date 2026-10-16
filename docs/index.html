@@ -259,19 +259,20 @@
 @media (prefers-reduced-motion: reduce) { .ed-code .caret { animation: none; } }
 
   
-/* ─── SITE BAR: the same top navigation as boesger.com ─── */
-html { scroll-padding-top: 110px; }
-.sitebar { position: fixed; top: 0; left: 0; right: 0; z-index: 101; height: 34px; background: rgba(11,42,76,0.97); border-bottom: 1px solid var(--border); }
-.sitebar-in { max-width: none; height: 100%; margin: 0 auto; padding: 0 48px; display: flex; align-items: center; gap: 22px; font-size: 12.5px; }
-.sitebar a { color: var(--text-sub); text-decoration: none; transition: color .2s; }
-.sitebar a:hover { color: #fff; }
-.sitebar .sb-home { font-family: var(--mono); font-weight: 600; color: var(--accent); margin-right: 6px; }
-.sitebar .sb-links { display: flex; gap: 20px; flex: 1; }
-.sitebar .sb-cta { color: var(--accent); font-weight: 600; }
-nav { top: 34px; }
+/* ─── ONE NAV: boesger.com links plus this page's own sections ─── */
+html { scroll-padding-top: 90px; }
+.nav-link.nav-site { color: #fff; font-weight: 500; }
+.nav-sep { width: 1px; height: 18px; background: var(--border); margin: 0 10px; }
 .hero h1 { font-size: clamp(24px, 6.6vw, 86px); }
-.hero { padding-top: 154px; }
-@media (max-width: 768px) { .sitebar-in { padding: 0 16px; gap: 14px; } .sitebar .sb-links { gap: 14px; } .sitebar .sb-cta { display: none; } }
+@media (max-width: 1180px) { .nav-local, .nav-sep { display: none; } }
+@media (max-width: 768px) {
+  nav { padding: 12px 16px; }
+  .nav-links { display: flex; gap: 0; }
+  .nav-link { padding: 6px 7px; font-size: 13px; }
+  .nav-brand span { display: none; }
+  .nav-cta { padding: 8px 10px; margin-left: 6px; }
+  .nav-cta .cta-text { display: none; }
+}
   </style>
 </head>
 <body>
@@ -279,18 +280,6 @@ nav { top: 34px; }
 <canvas id="particles"></canvas>
 
 <!-- ─── NAV ─── -->
-<div class="sitebar">
-  <div class="sitebar-in">
-    <a href="https://boesger.com" class="sb-home">boesger.com</a>
-    <span class="sb-links">
-      <a href="https://boesger.com/">Home</a>
-      <a href="https://boesger.com/profile">Profile</a>
-      <a href="https://boesger.com/work">Projects</a>
-      <a href="https://polarion.boesger.com" target="_blank" rel="noopener">Blog</a>
-    </span>
-    <a href="https://boesger.com/contact" class="sb-cta">Get in touch</a>
-  </div>
-</div>
 <nav>
   <a href="https://boesger.com" class="nav-brand">
     <div class="nav-brand-logo">
@@ -299,13 +288,17 @@ nav { top: 34px; }
     <span><strong>Bösger</strong> Digital</span>
   </a>
   <div class="nav-links">
-    <a href="#features" class="nav-link">Features</a>
-    <a href="#how" class="nav-link">How it works</a>
-    <a href="#compatibility" class="nav-link">Compatibility</a>
-    <a href="#install" class="nav-link">Install</a>
-    <a href="https://polarion.boesger.com" class="nav-link" target="_blank">Blog ↗</a>
+    <a href="https://boesger.com/" class="nav-link nav-site">Home</a>
+    <a href="https://boesger.com/profile" class="nav-link nav-site">Profile</a>
+    <a href="https://boesger.com/work" class="nav-link nav-site">Projects</a>
+    <a href="https://polarion.boesger.com" class="nav-link nav-site" target="_blank" rel="noopener">Blog</a>
+    <span class="nav-sep" aria-hidden="true"></span>
+    <a href="#features" class="nav-link nav-local">Features</a>
+    <a href="#how" class="nav-link nav-local">How it works</a>
+    <a href="#compatibility" class="nav-link nav-local">Compatibility</a>
+    <a href="#install" class="nav-link nav-local">Install</a>
     <a href="https://github.com/phillipboesger/polarion.code.editor/releases/latest" class="nav-cta" target="_blank">
-      ↓ Download
+      <span>↓</span><span class="cta-text">&nbsp;Download</span>
     </a>
   </div>
 </nav>
