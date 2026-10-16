@@ -273,6 +273,9 @@ html { scroll-padding-top: 90px; }
   .nav-cta { padding: 8px 10px; margin-left: 6px; }
   .nav-cta .cta-text { display: none; }
 }
+
+/* ─── AUDIT FIXES ─── */
+.cta-inner h2 { line-height: 1.08; text-wrap: balance; }
   </style>
 </head>
 <body>
@@ -541,14 +544,14 @@ html { scroll-padding-top: 90px; }
         <div class="compat-version">2512</div>
         <div class="compat-subtitle">Tomcat 9 · javax.servlet · Java 21</div>
         <p class="compat-info">Legacy build for Polarion 2512, running Tomcat 9 with the classic <code class="mono" style="font-size:12px">javax.servlet</code> namespace. Releases before 2512 are not supported.</p>
-        <div class="compat-jar">boesger.polarion.code-editor-<span style="color:var(--accent)">1.5.2</span><span style="color:var(--accent)">-pre2606</span>.jar</div>
+        <div class="compat-jar">boesger.polarion.code-editor-<span style="color:var(--accent)" data-ver>1.5.2</span><span style="color:var(--accent)">-pre2606</span>.jar</div>
       </div>
 
       <div class="compat-card" style="border-color: var(--border-acc);">
         <div class="compat-version" style="display:flex;align-items:center;gap:12px;">2606 <span style="font-size:12px;color:var(--accent);border:1px solid var(--border-acc);padding:2px 10px;border-radius:100px;font-family:var(--font);font-weight:500;letter-spacing:0.06em;">Latest</span></div>
         <div class="compat-subtitle">Tomcat 11 · jakarta.servlet · Java 21</div>
         <p class="compat-info">For Polarion 2606 running Tomcat 11 with the new <code class="mono" style="font-size:12px">jakarta.servlet</code> namespace (Jakarta EE 11 / Servlet 6.1).</p>
-        <div class="compat-jar">boesger.polarion.code-editor-<span style="color:var(--accent)">1.5.2</span>.jar</div>
+        <div class="compat-jar">boesger.polarion.code-editor-<span style="color:var(--accent)" data-ver>1.5.2</span>.jar</div>
       </div>
     </div>
 
@@ -577,7 +580,7 @@ html { scroll-padding-top: 90px; }
         <button class="code-copy" onclick="copyCode('p2606')">Copy</button>
         <pre id="code-p2606"><span style="color:#6b7280"># Download from GitHub Releases</span>
 <span style="color:#86efac">curl</span> -L -o boesger.polarion.code-editor.jar \
-  <span style="color:#fde68a">https://github.com/phillipboesger/polarion.code.editor/releases/latest/download/boesger.polarion.code-editor-1.5.2.jar</span>
+  <span style="color:#fde68a">https://github.com/phillipboesger/polarion.code.editor/releases/latest/download/boesger.polarion.code-editor-<span data-ver>1.5.2</span>.jar</span>
 
 <span style="color:#6b7280"># Deploy to Polarion (Tomcat 11 / jakarta.servlet)</span>
 <span style="color:#86efac">cp</span> boesger.polarion.code-editor.jar \
@@ -592,7 +595,7 @@ html { scroll-padding-top: 90px; }
         <button class="code-copy" onclick="copyCode('p2512')">Copy</button>
         <pre id="code-p2512"><span style="color:#6b7280"># Download from GitHub Releases</span>
 <span style="color:#86efac">curl</span> -L -o boesger.polarion.code-editor-pre2606.jar \
-  <span style="color:#fde68a">https://github.com/phillipboesger/polarion.code.editor/releases/latest/download/boesger.polarion.code-editor-1.5.2-pre2606.jar</span>
+  <span style="color:#fde68a">https://github.com/phillipboesger/polarion.code.editor/releases/latest/download/boesger.polarion.code-editor-<span data-ver>1.5.2</span>-pre2606.jar</span>
 
 <span style="color:#6b7280"># Deploy to Polarion (Tomcat 9 / javax.servlet)</span>
 <span style="color:#86efac">cp</span> boesger.polarion.code-editor-pre2606.jar \
@@ -657,7 +660,7 @@ html { scroll-padding-top: 90px; }
       <h3>Built by Phillip Bösger</h3>
       <p class="about-role">Polarion & AI Freelancer · Bösger Digital</p>
       <p class="about-bio">
-        Nearly a decade of Polarion experience. I built the Code Editor because editing Velocity macros in Polarion's built-in text area is painful — and everyone deserves a proper editor inside the tool they're already using.
+        8 years of Polarion, from Siemens enterprise to startup. I built the Code Editor because editing Velocity macros in Polarion's built-in text area is painful — and everyone deserves a proper editor inside the tool they're already using.
       </p>
       <div class="about-links">
         <a href="https://polarion.boesger.com" class="about-link" target="_blank">
@@ -760,6 +763,18 @@ html { scroll-padding-top: 90px; }
   }
 </script>
 
+<script>
+  // Fill in the latest release version, so download names never go stale. The static value is the fallback.
+  fetch('https://api.github.com/repos/phillipboesger/polarion.code.editor/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (rel) {
+      if (!rel || !rel.tag_name) return;
+      var v = String(rel.tag_name).replace(/^v/, '');
+      if (!/^\d+\.\d+\.\d+/.test(v)) return;
+      document.querySelectorAll('[data-ver]').forEach(function (el) { el.textContent = v; });
+    })
+    .catch(function () {});
+</script>
 <script src="viz.js?v=20261016b"></script>
 </body>
 </html>
