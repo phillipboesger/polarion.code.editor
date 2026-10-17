@@ -509,8 +509,14 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     // Right-click inside the editor to open the Monaco context menu
     await frame.locator('.monaco-editor').first().click({ button: 'right' });
 
-    // The "Format Document" action should appear in the context menu
-    const menuItem = frame.locator('.monaco-menu .action-item').filter({ hasText: 'Format Document' }).first();
+    // The plugin's own "Format Document" action should appear in the context menu.
+    // Monaco also lists its built-in "Format Document" (other shortcut) above it, so pick
+    // ours by its Ctrl+Shift+F keybinding instead of .first(): the built-in item can no-op
+    // on JSON and left this test flaky.
+    const menuItem = frame
+      .locator('.monaco-menu .action-item')
+      .filter({ hasText: 'Format Document' })
+      .filter({ hasText: /Shift\+F/ });
     await expect(menuItem).toBeVisible({ timeout: 8_000 });
 
     // Click the menu item and verify formatting was applied

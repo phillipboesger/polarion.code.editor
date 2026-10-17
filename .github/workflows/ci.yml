@@ -11,8 +11,15 @@ name: CI – Build & Test
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: [main]
+    # The marketing site in docs/ and Markdown do not touch the plugin.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 
 jobs:
   test:

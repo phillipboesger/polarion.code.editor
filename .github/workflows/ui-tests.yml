@@ -21,6 +21,10 @@ name: UI Tests – Playwright
 on:
   pull_request:
     branches: [main]
+    # The marketing site in docs/ and Markdown do not touch the plugin.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
 
 jobs:
