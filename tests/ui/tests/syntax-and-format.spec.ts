@@ -506,25 +506,28 @@ test.describe('Code Editor – Auto Formatting (Shift+Mod+F)', () => {
     // can run before the editor regains focus and the action silently no-ops.
     await frame.locator('#editor-container').click();
 
-    // Right-click inside the editor to open the Monaco context menu
-    await frame.locator('.monaco-editor').first().click({ button: 'right' });
-
     // The plugin's own "Format Document" action should appear in the context menu.
     // Monaco also lists its built-in "Format Document" (other shortcut) above it, so pick
-    // ours by its Ctrl+Shift+F keybinding instead of .first(): the built-in item can no-op
-    // on JSON and left this test flaky.
+    // ours by its Ctrl+Shift+F keybinding instead of .first().
     const menuItem = frame
       .locator('.monaco-menu .action-item')
       .filter({ hasText: 'Format Document' })
       .filter({ hasText: /Shift\+F/ });
-    await expect(menuItem).toBeVisible({ timeout: 8_000 });
 
-    // Click the menu item and verify formatting was applied
-    await menuItem.click();
-
-    await expect
-      .poll(() => getEditorContent(frame), { timeout: 15_000 })
-      .not.toBe(compact);
+    // A mouse click on a just-opened Monaco context menu is sometimes swallowed: the item
+    // highlights but the menu stays open (seen on both CI legs). Activate the hovered item
+    // with Enter instead, and reopen the menu and retry if the first attempt did not land.
+    await expect(async () => {
+      if (!(await menuItem.isVisible())) {
+        await frame.locator('.monaco-editor').first().click({ button: 'right' });
+      }
+      await expect(menuItem).toBeVisible({ timeout: 8_000 });
+      await menuItem.hover();
+      await page.keyboard.press('Enter');
+      await expect
+        .poll(() => getEditorContent(frame), { timeout: 4_000 })
+        .not.toBe(compact);
+    }).toPass({ timeout: 30_000 });
 
     const formatted = await getEditorContent(frame);
     expect(formatted).toContain('\n');
