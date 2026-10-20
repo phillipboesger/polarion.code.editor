@@ -43,7 +43,16 @@ test.describe('Code Editor – Page Load & Empty State', () => {
     await page.context().clearCookies();
     await loginAsPolarionAdmin(page);
     await page.evaluate(() => localStorage.clear());
-    const frame: Frame = await openEditor(page);
+    // The editor iframe navigation event is occasionally never seen right after a fresh
+    // login (60 s timeout on the first attempt, passes immediately on a second open).
+    // Open it again once before failing, instead of burning a whole-test retry.
+    let frame: Frame;
+    try {
+      frame = await openEditor(page);
+    } catch {
+      await page.goto('about:blank');
+      frame = await openEditor(page);
+    }
 
     await expect(frame.locator('#emptyState')).toBeVisible();
     await expect(frame.locator('#emptyState')).toContainText('No File Selected');
