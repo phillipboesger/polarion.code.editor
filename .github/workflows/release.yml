@@ -447,6 +447,8 @@ jobs:
           sed -i \
             "s|<manifest.version>.*</manifest.version>|<manifest.version>${NEW}</manifest.version>|" \
             pom.xml
+          # Render the public download filenames at release time, not in visitors' browsers.
+          sed -i -E "s|(<span data-ver>)[^<]+|\1${NEW}|g" docs/index.html
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
@@ -509,7 +511,7 @@ jobs:
           TAG="${{ needs.prepare-release.outputs.new_tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pom.xml
+          git add pom.xml docs/index.html
           git commit -m "chore: release ${TAG} [skip ci]"
           git tag "${TAG}"
           git push origin HEAD:main
