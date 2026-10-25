@@ -2,14 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>polarion.code.editor · VS Code built into Polarion</title>
   <meta name="description" content="A free, open-source VS Code-like file editor built right into Polarion ALM. Edit Velocity macros, JSON configs, and XML enumerations without leaving your browser. Built by Phillip Bösger." />
-  <link rel="preload" href="https://boesger.com/assets/fonts/geist-var.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="icon" href="https://boesger.com/assets/images/brand-icon-cyan.png" />
+  <link rel="preload" href="fonts/geist-var.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="icon" href="images/brand-icon-cyan.png" />
   <style>
-    @font-face { font-family: 'Geist'; src: url('https://boesger.com/assets/fonts/geist-var.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-    @font-face { font-family: 'Geist Mono'; src: url('https://boesger.com/assets/fonts/geist-mono-var.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: 'Geist'; src: url('fonts/geist-var.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: 'Geist Mono'; src: url('fonts/geist-mono-var.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -346,7 +348,7 @@ html { scroll-padding-top: 90px; }
 <nav>
   <a href="https://boesger.com" class="nav-brand">
     <div class="nav-brand-logo">
-      <img src="https://boesger.com/assets/images/brand-icon-cyan.png" alt="Bösger Digital" />
+      <img src="images/brand-icon-cyan.png" alt="Bösger Digital" />
     </div>
     <span><strong>Bösger</strong> Digital</span>
   </a>
@@ -719,7 +721,7 @@ html { scroll-padding-top: 90px; }
 <section class="about-section">
   <div class="about-inner">
     <div class="about-avatar">
-      <img src="https://boesger.com/assets/images/about-image.webp" alt="Phillip Bösger" onerror="this.style.display='none'" />
+      <img src="images/about-image.webp" alt="Phillip Bösger" onerror="this.style.display='none'" />
     </div>
     <div class="about-text">
       <h3>Built by Phillip Bösger</h3>
@@ -767,7 +769,7 @@ html { scroll-padding-top: 90px; }
 <footer>
   <a href="https://boesger.com" class="footer-brand">
     <div class="footer-brand-logo">
-      <img src="https://boesger.com/assets/images/brand-icon-cyan.png" alt="Bösger Digital" />
+      <img src="images/brand-icon-cyan.png" alt="Bösger Digital" />
     </div>
     Bösger Digital · Phillip Bösger
   </a>
@@ -776,7 +778,7 @@ html { scroll-padding-top: 90px; }
     <a href="https://github.com/phillipboesger/polarion.code.editor" class="footer-link" target="_blank">GitHub</a>
     <a href="https://github.com/phillipboesger/polarion.code.editor/issues" class="footer-link" target="_blank">Issues</a>
     <a href="https://github.com/phillipboesger/polarion-mcp" class="footer-link" target="_blank">polarion-mcp</a>
-    <a href="https://boesger.com/imprint" class="footer-link" target="_blank">Imprint</a>
+    <a href="https://boesger.com/imprint.html" class="footer-link">Impressum</a><a href="https://boesger.com/privacy.html" class="footer-link">Datenschutz / Privacy</a>
   </div>
   <span class="footer-copy">© 2026 Phillip Bösger</span>
 </footer>
@@ -828,18 +830,7 @@ html { scroll-padding-top: 90px; }
   }
 </script>
 
-<script>
-  // Fill in the latest release version, so download names never go stale. The static value is the fallback.
-  fetch('https://api.github.com/repos/phillipboesger/polarion.code.editor/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (rel) {
-      if (!rel || !rel.tag_name) return;
-      var v = String(rel.tag_name).replace(/^v/, '');
-      if (!/^\d+\.\d+\.\d+/.test(v)) return;
-      document.querySelectorAll('[data-ver]').forEach(function (el) { el.textContent = v; });
-    })
-    .catch(function () {});
-</script>
+<!-- Download filenames are updated by the release workflow; no visitor-side API call. -->
 <script src="viz.js?v=20261016b"></script>
 
 <script>
