@@ -74,6 +74,8 @@ public class CodeEditorServiceTest {
 	private ILocation mockChildLoc;
 	@Mock
 	private IRevisionMetaData mockRevision;
+	@Mock
+	private ILocation mockProjectFileLoc;
 
 	private MockedStatic<PolarionUtils> utilsMock;
 	private MockedStatic<Location> locationMock;
@@ -129,6 +131,48 @@ public class CodeEditorServiceTest {
 
 		CodeEditorService s = new CodeEditorService("myProject");
 		assertTrue(s.getDirectoryEntries("").isEmpty());
+	}
+
+	// --- resolvesToGlobalScope (authorization-relevant) ---
+
+	@Test
+	public void resolvesToGlobalScope_noProjectScope_isGlobal() {
+		assertTrue(service.resolvesToGlobalScope("file.txt"));
+	}
+
+	@Test
+	public void resolvesToGlobalScope_fileExistsUnderProject_isProject() {
+		utilsMock.when(() -> PolarionUtils.getTrackerProject("myProject")).thenReturn(mockProject);
+		when(mockProject.getLocation()).thenReturn(mockProjectLoc);
+		when(mockProjectLoc.append(anyString())).thenReturn(mockProjectFileLoc);
+		when(mockRepoConn.exists(mockProjectFileLoc)).thenReturn(true);
+
+		assertFalse(new CodeEditorService("myProject").resolvesToGlobalScope("file.txt"));
+	}
+
+	@Test
+	public void resolvesToGlobalScope_onlyGlobalFileExists_isGlobal() {
+		// The escalation this guards: a request carrying projectId=myProject that ends up writing
+		// the GLOBAL file, because the name does not exist under the project. Authorizing on the
+		// requested projectId alone would let a project-only grant act on the repository root.
+		utilsMock.when(() -> PolarionUtils.getTrackerProject("myProject")).thenReturn(mockProject);
+		when(mockProject.getLocation()).thenReturn(mockProjectLoc);
+		when(mockProjectLoc.append(anyString())).thenReturn(mockProjectFileLoc);
+		when(mockRepoConn.exists(mockProjectFileLoc)).thenReturn(false);
+		when(mockRepoConn.exists(mockGlobalRoot)).thenReturn(true);
+
+		assertTrue(new CodeEditorService("myProject").resolvesToGlobalScope("file.txt"));
+	}
+
+	@Test
+	public void resolvesToGlobalScope_fileExistsNowhere_staysProject() {
+		// A new file is created under the project, so this must NOT demand global permission.
+		utilsMock.when(() -> PolarionUtils.getTrackerProject("myProject")).thenReturn(mockProject);
+		when(mockProject.getLocation()).thenReturn(mockProjectLoc);
+		when(mockProjectLoc.append(anyString())).thenReturn(mockProjectFileLoc);
+		when(mockRepoConn.exists(any())).thenReturn(false);
+
+		assertFalse(new CodeEditorService("myProject").resolvesToGlobalScope("new-file.txt"));
 	}
 
 	// --- getDirectoryEntries ---
