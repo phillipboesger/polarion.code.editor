@@ -27,4 +27,4 @@ cd tests/ui && npm ci && npx playwright install --with-deps && npm test   # UI t
 ## Docs and rules
 
 - `README.md`, `CONTRIBUTING.md`, `.github/WORKFLOWS.md`, `PROJECT_LOG.md`.
-- Path-scoped rules in `.claude/rules/`: `java-architecture.md` (`src/**`), `dual-platform-build.md` (`pom.xml`, transformer, CI), `hivemodule.md` (`META-INF/**`, `plugin.xml`), `ui-tests.md` (`tests/ui/**`, webapp).
+- Path-scoped rules in `.claude/rules/`: `java-architecture.md` (`src/main/java/**`, `src/test/java/**`), `dual-platform-build.md` (`pom.xml`, transformer, CI), `hivemodule.md` (`META-INF/**`, `plugin.xml`), `ui-tests.md` (`tests/ui/**`, webapp).
